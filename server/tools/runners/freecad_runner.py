@@ -74,6 +74,9 @@ try:
             mesh = MeshPart.meshFromShape(Shape=shape, LinearDeflection=0.05, AngularDeflection=0.25, Relative=False)
             mesh.write(path)
         elif fmt == "fcstd":
+            # Overwriting would leave a timestamped .FCBak beside it; git already keeps the history.
+            if os.path.exists(path):
+                os.remove(path)
             doc.saveAs(os.path.abspath(path))
         files.append(path)
 

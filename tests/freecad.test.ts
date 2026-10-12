@@ -148,6 +148,9 @@ pad.Length = 5
   });
   const out = await tool("freecad_build").run({ script: "cad/pd.py", name: "pd", formats: ["step", "fcstd"] }, { projectDir: dir });
   assert.match(out.text, /1 solid\(s\): 30 × 20 × 5 mm, volume 3000 mm³, valid: true/);
+  // Rebuilding replaces the FCStd without leaving FreeCAD's backup files in the project.
+  await tool("freecad_build").run({ script: "cad/pd.py", name: "pd", formats: ["fcstd"] }, { projectDir: dir });
+  assert.deepEqual((await fs.readdir(path.join(dir, "models"))).sort(), ["pd.FCStd", "pd.step"]);
 });
 
 test("project files open in FreeCAD, sandboxed to the project when it is a Flatpak", { timeout: 30_000 }, async () => {

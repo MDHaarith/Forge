@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2 — 2026-10-12
+
+- Rebuilding a FreeCAD part no longer leaves a timestamped .FCBak backup in the project.
+
 ## 0.5.1 — 2026-10-12
 
 - Hole detection no longer reports the rounded inside corners of a pocket as holes, or a small edge chamfer as a countersink.
