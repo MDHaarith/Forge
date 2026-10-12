@@ -7,7 +7,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "../server/index.ts";
-import { OfflineModel } from "../server/model.ts";
+import { OfflineModel, SwitchableModel } from "../server/model.ts";
 import { Projects } from "../server/projects.ts";
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "setup-fedora.sh");
@@ -123,7 +123,7 @@ test("a real run installs packages, FreeCAD, the service and a working forge com
   assert.equal(await fs.readFile(envFile, "utf8"), "ANTHROPIC_API_KEY=kept\n");
 
   // The generated forge command starts the service, waits for Forge to answer, and opens the browser.
-  const model = new OfflineModel();
+  const model = new SwitchableModel("offline", new OfflineModel());
   const server = createServer(new Projects(path.join(root, "projects"), model), model);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;

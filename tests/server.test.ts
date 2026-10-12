@@ -8,7 +8,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createServer } from "../server/index.ts";
-import { OfflineModel } from "../server/model.ts";
+import { type Model, OfflineModel, SwitchableModel } from "../server/model.ts";
 import { Projects } from "../server/projects.ts";
 
 let base = "";
@@ -17,7 +17,7 @@ let close = () => {};
 
 before(async () => {
   home = await fs.mkdtemp(path.join(os.tmpdir(), "forge-home-"));
-  const model = new OfflineModel();
+  const model = new SwitchableModel("offline", new OfflineModel());
   const server = createServer(new Projects(home, model), model);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
@@ -85,4 +85,37 @@ test("under the desktop app, the server stops when its stdin closes", { timeout:
   );
   child.stdin.end();
   assert.equal(await exited, 0);
+});
+
+test("model picker lists providers and rejects unknown ones", async () => {
+  const state = await (await fetch(`${base}/models`)).json();
+  assert.equal(state.provider, "offline");
+  assert.ok(state.providers.some((p: { id: string }) => p.id === "offline"));
+  assert.equal((await post("/model", { provider: "nope" })).status, 400);
+  assert.equal((await post("/model", { provider: "offline" })).status, 200);
+});
+
+test("switching models is refused while an agent is working", async () => {
+  let release = () => {};
+  const blocking: Model = {
+    name: "blocking",
+    respond: () => new Promise((resolve) => (release = () => resolve({ stop_reason: "end_turn", content: [] }))),
+  };
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "forge-home-"));
+  const projects = new Projects(dir, blocking);
+  await projects.create("busy");
+  const server = createServer(projects, new SwitchableModel("offline", blocking));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+  const send = (route: string, body: unknown) =>
+    fetch(url + route, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  try {
+    const chat = await send("/projects/busy/chat", { message: "hi" });
+    assert.equal((await send("/model", { provider: "offline" })).status, 409);
+    release();
+    await chat.text();
+    assert.equal((await send("/model", { provider: "offline" })).status, 200);
+  } finally {
+    server.close();
+  }
 });

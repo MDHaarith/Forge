@@ -78,13 +78,42 @@ the server on changes. `npm test` runs the test suite, `npm run typecheck` the t
 | Variable | Effect |
 |---|---|
 | `ANTHROPIC_API_KEY` | Use Claude. An `ant auth login` profile works too. |
-| `FORGE_MODEL` | Model ID (default `claude-opus-5-5`). |
+| `FORGE_PROVIDER` | Provider to start with: `claude`, `openai`, `openrouter`, `deepseek`, `qwen`, `glm`, `opencode` or `offline`. Default: Claude when it has credentials, else offline. |
+| `FORGE_MODEL` | Model ID for the startup provider (default `claude-opus-5-5`). |
 | `FORGE_OFFLINE=1` | Force the offline demo even with credentials. |
 | `FORGE_ALLOW_COMMANDS=1` | Let the agent run programs in the project folder (`run_command`). Off by default. |
 | `FORGE_HOME` | Where projects are stored. |
 | `FORGE_BLENDER`, `FORGE_FREECAD` | Path to `blender` / `freecadcmd` when they are not on `PATH` (e.g. an AppImage). A native install is preferred over a Flatpak. |
 | `FORGE_NO_FLATPAK=1` | Ignore Flatpak installs of Blender and FreeCAD. |
 | `PORT` | Server port (default 4317). |
+
+## Models and subscriptions
+
+Pick the provider and model from the dropdown in the top bar; the list shows every provider with a
+key in `~/.config/forge/env`, and the model box suggests what the provider offers. Keys are only
+read from that file or the environment, never sent from the page.
+
+```sh
+# ~/.config/forge/env
+ANTHROPIC_API_KEY=...      # Claude (API key; Claude Pro/Max subscriptions cannot be used by other apps)
+OPENAI_API_KEY=...         # OpenAI
+OPENROUTER_API_KEY=...     # OpenRouter
+DEEPSEEK_API_KEY=...       # DeepSeek
+DASHSCOPE_API_KEY=...      # Qwen (Alibaba Model Studio)
+ZAI_API_KEY=...            # GLM (Z.ai); the default endpoint is the GLM Coding Plan's
+OPENCODE_API_KEY=...       # OpenCode Zen
+```
+
+Subscription coding plans are an API key on the plan's own endpoint. Override any provider's
+endpoint with `FORGE_<ID>_BASE_URL`, for example:
+
+```sh
+FORGE_GLM_BASE_URL=https://api.z.ai/api/paas/v4          # pay-as-you-go GLM instead of the Coding Plan
+FORGE_QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1   # mainland China region
+```
+
+Check the endpoint your plan's page gives you. Every provider other than Claude goes through its
+OpenAI-compatible chat API, without streaming, so a long reply appears when it is complete.
 
 ## Capabilities
 

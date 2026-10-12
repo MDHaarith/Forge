@@ -66,10 +66,7 @@ const post = (body: unknown): RequestInit => ({
 async function loadStatus() {
   const status = await api<{ model: string; offline: boolean; tools: ToolInfo[]; open: Record<string, string> }>("/status");
   openers = status.open ?? {};
-  const badge = $("model-badge");
-  badge.textContent = status.offline ? "Offline demo" : status.model;
-  badge.classList.toggle("warn", status.offline);
-  badge.title = status.offline ? "Set ANTHROPIC_API_KEY and restart Forge to use Claude" : "Model in use";
+  await loadModels();
 
   const host = $("capabilities");
   host.replaceChildren();
@@ -93,6 +90,44 @@ async function loadStatus() {
     host.append(group);
   }
 }
+
+interface ProviderInfo {
+  id: string;
+  label: string;
+  models: string[];
+}
+let providers: ProviderInfo[] = [];
+
+async function loadModels() {
+  const state = await api<{ provider: string; model: string; providers: ProviderInfo[] }>("/models");
+  providers = state.providers;
+  const pick = $<HTMLSelectElement>("provider-pick");
+  pick.replaceChildren(...providers.map((p) => new Option(p.label, p.id, false, p.id === state.provider)));
+  const offline = state.provider === "offline";
+  pick.classList.toggle("warn", offline);
+  pick.title = offline ? "Add an API key to ~/.config/forge/env and restart Forge to use a real model" : "Model provider";
+  $<HTMLInputElement>("model-name").value = state.model;
+  const models = providers.find((p) => p.id === state.provider)?.models ?? [];
+  $("model-list").replaceChildren(...models.map((m) => new Option(m, m)));
+}
+
+async function switchModel(model?: string) {
+  const provider = $<HTMLSelectElement>("provider-pick").value;
+  try {
+    await api("/model", post({ provider, model }));
+  } catch (e) {
+    alert((e as Error).message);
+  }
+  await loadModels();
+}
+
+$("provider-pick").addEventListener("change", () => {
+  // A new provider starts on its first listed model; the old model name means nothing there.
+  const provider = $<HTMLSelectElement>("provider-pick").value;
+  void switchModel(providers.find((p) => p.id === provider)?.models[0]);
+});
+$("model-name").addEventListener("change", () => void switchModel($<HTMLInputElement>("model-name").value.trim() || undefined));
+$("model-pick").addEventListener("submit", (e) => e.preventDefault());
 
 async function loadProjects() {
   const names = await api<string[]>("/projects");

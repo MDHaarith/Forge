@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { apiKey, baseURL, findProvider, listModels, PROVIDERS } from "./providers.ts";
 
 type BetaMessage = Anthropic.Beta.BetaMessage;
 type BetaMessageParam = Anthropic.Beta.BetaMessageParam;
@@ -21,17 +22,23 @@ export interface Model {
   respond(request: ModelRequest): Promise<ModelReply>;
 }
 
-export const CLAUDE_MODEL = process.env.FORGE_MODEL ?? "claude-opus-5-5";
+// FORGE_MODEL names a Claude model only when Claude is the startup provider.
+const claudeAtStart = (process.env.FORGE_PROVIDER ?? "claude") === "claude";
+export const CLAUDE_MODEL = (claudeAtStart && process.env.FORGE_MODEL) || "claude-opus-5-5";
 
 export class ClaudeModel implements Model {
-  readonly name = CLAUDE_MODEL;
+  readonly name: string;
   private client = new Anthropic();
+
+  constructor(model = CLAUDE_MODEL) {
+    this.name = model;
+  }
 
   async respond({ system, tools, messages }: ModelRequest): Promise<ModelReply> {
     for (let attempt = 1; ; attempt++) {
       try {
         const stream = this.client.beta.messages.stream({
-          model: CLAUDE_MODEL,
+          model: this.name,
           max_tokens: 64000,
           // Effort is the main quality/cost dial; workshop tasks are multi-step, so stay at high.
           output_config: { effort: "high" },
@@ -113,13 +120,151 @@ export class OfflineModel implements Model {
   }
 }
 
-/** Claude when credentials are configured, otherwise the offline demo. */
-export function defaultModel(): Model {
+type ChatMessage = Record<string, unknown>;
+
+/** Anthropic-shaped history to OpenAI chat messages. Thinking and other Claude-only blocks are dropped. */
+export function toChatMessages(system: string, messages: BetaMessageParam[]): ChatMessage[] {
+  const out: ChatMessage[] = [{ role: "system", content: system }];
+  for (const m of messages) {
+    if (typeof m.content === "string") {
+      out.push({ role: m.role, content: m.content });
+    } else if (m.role === "assistant") {
+      const content = m.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
+      const calls = m.content.flatMap((b) =>
+        b.type === "tool_use" ? [{ id: b.id, type: "function", function: { name: b.name, arguments: JSON.stringify(b.input) } }] : [],
+      );
+      out.push({ role: "assistant", content: content || null, ...(calls.length ? { tool_calls: calls } : {}) });
+    } else {
+      for (const b of m.content) {
+        if (b.type === "text") out.push({ role: "user", content: b.text });
+        if (b.type === "tool_result") {
+          const content = typeof b.content === "string" ? b.content : (b.content ?? []).map((c) => (c.type === "text" ? c.text : "")).join("");
+          out.push({ role: "tool", tool_call_id: b.tool_use_id, content });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+interface ChatReply {
+  choices?: { finish_reason?: string; message?: { content?: string | null; tool_calls?: { id?: string; function: { name: string; arguments?: string } }[] } }[];
+}
+
+/** DeepSeek, Qwen, GLM, OpenCode, OpenRouter, OpenAI: anything with an OpenAI-compatible /chat/completions. */
+export class OpenAICompatModel implements Model {
+  readonly name: string;
+  private baseURL: string;
+  private apiKey: string;
+  private fetch: typeof fetch;
+
+  constructor(model: string, baseURL: string, apiKey: string, fetchImpl: typeof fetch = fetch) {
+    this.name = model;
+    this.baseURL = baseURL;
+    this.apiKey = apiKey;
+    this.fetch = fetchImpl;
+  }
+
+  // shortcut: not streamed, so long replies show nothing until done; switch to SSE if that hurts.
+  // shortcut: DeepSeek thinking mode's reasoning_content is not echoed back; use its non-thinking model.
+  async respond({ system, tools, messages }: ModelRequest): Promise<ModelReply> {
+    const res = await this.fetch(`${this.baseURL}/chat/completions`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: this.name,
+        messages: toChatMessages(system, messages),
+        tools: tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } })),
+      }),
+    });
+    if (!res.ok) throw new Error(`${this.name}: HTTP ${res.status} ${(await res.text()).slice(0, 500)}`);
+    const choice = ((await res.json()) as ChatReply).choices?.[0];
+    if (!choice) throw new Error(`${this.name}: the reply had no choices`);
+
+    const content: BetaMessage["content"] = [];
+    if (choice.message?.content) content.push(text(choice.message.content));
+    for (const call of choice.message?.tool_calls ?? []) {
+      let input: unknown;
+      try {
+        input = JSON.parse(call.function.arguments || "{}");
+      } catch {
+        input = { _unparsed: call.function.arguments }; // validate() in agent.ts reports it back to the model
+      }
+      // Claude only accepts these id characters, and the history may later go to Claude.
+      const id = call.id?.replace(/[^A-Za-z0-9_-]/g, "_") || `toolu_compat_${++toolIds}`;
+      content.push({ type: "tool_use", id, name: call.function.name, input } as unknown as BetaMessage["content"][number]);
+    }
+    const finish = choice.finish_reason;
+    const calls = content.some((b) => b.type === "tool_use");
+    return {
+      content,
+      stop_reason: finish === "length" ? "max_tokens" : finish === "content_filter" ? "refusal" : calls ? "tool_use" : "end_turn",
+    };
+  }
+}
+
+/** One model object shared by every project, so the in-app picker can swap what it talks to. */
+export class SwitchableModel implements Model {
+  provider: string;
+  private current: Model;
+
+  constructor(provider: string, current: Model) {
+    this.provider = provider;
+    this.current = current;
+  }
+
+  get name(): string {
+    return this.current.name;
+  }
+
+  respond(request: ModelRequest): Promise<ModelReply> {
+    return this.current.respond(request);
+  }
+
+  set(provider: string, model: Model): void {
+    this.provider = provider;
+    this.current = model;
+  }
+}
+
+function hasClaudeCredentials(): boolean {
   // The SDK also reads a profile saved by `ant auth login`, so an unset key is not proof of no credentials.
-  const hasCredentials =
+  return Boolean(
     process.env.ANTHROPIC_API_KEY ||
-    process.env.ANTHROPIC_AUTH_TOKEN ||
-    process.env.ANTHROPIC_PROFILE ||
-    fs.existsSync(path.join(os.homedir(), ".config", "anthropic"));
-  return hasCredentials && process.env.FORGE_OFFLINE !== "1" ? new ClaudeModel() : new OfflineModel();
+      process.env.ANTHROPIC_AUTH_TOKEN ||
+      process.env.ANTHROPIC_PROFILE ||
+      fs.existsSync(path.join(os.homedir(), ".config", "anthropic")),
+  );
+}
+
+/** Provider ids with credentials configured, in picker order; the offline demo is always there. */
+export function availableProviders(): string[] {
+  return [...(hasClaudeCredentials() ? ["claude"] : []), ...PROVIDERS.filter((p) => apiKey(p)).map((p) => p.id), "offline"];
+}
+
+export const providerLabel = (id: string) => (id === "claude" ? "Claude" : id === "offline" ? "Offline demo" : (findProvider(id)?.label ?? id));
+
+export async function modelChoices(id: string): Promise<string[]> {
+  if (id === "claude") return [CLAUDE_MODEL];
+  if (id === "offline") return ["offline demo"];
+  const p = findProvider(id);
+  return p ? listModels(p) : [];
+}
+
+/** Callers check the id against availableProviders() first. */
+export function makeModel(id: string, model?: string): Model {
+  if (id === "claude") return new ClaudeModel(model || CLAUDE_MODEL);
+  const p = findProvider(id);
+  if (!p) return new OfflineModel(); // "offline"
+  return new OpenAICompatModel(model || p.defaultModel, baseURL(p), apiKey(p));
+}
+
+/** FORGE_PROVIDER when it is configured, else Claude when it has credentials, else the offline demo. */
+export function defaultModel(): SwitchableModel {
+  const available = availableProviders();
+  const wanted = process.env.FORGE_PROVIDER;
+  const id = process.env.FORGE_OFFLINE === "1" ? "offline" : wanted && available.includes(wanted) ? wanted
+    : available.includes("claude") ? "claude"
+    : "offline";
+  return new SwitchableModel(id, makeModel(id, claudeAtStart ? undefined : process.env.FORGE_MODEL));
 }

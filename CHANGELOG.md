@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 — 2026-10-12
+
+- Model picker in the top bar: switch between Claude, OpenAI, OpenRouter, DeepSeek, Qwen, GLM and OpenCode Zen while Forge runs, with each provider's model list.
+- Subscription coding plans work through their API key and endpoint; `FORGE_<ID>_BASE_URL` points a provider at the plan's endpoint.
+- `FORGE_PROVIDER` picks the provider Forge starts with.
+
 ## 0.8.0 — 2026-10-12
 
 - `rf_antenna_sim`: simulates a board's printed antenna with the openEMS field solver and reports resonance, -10 dB bandwidth, input impedance, efficiency, gain and radiation pattern, with S11 and pattern plots and a Touchstone file; checked against a half-wave dipole.

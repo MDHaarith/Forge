@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultModel, type Model } from "./model.ts";
+import { availableProviders, defaultModel, makeModel, modelChoices, providerLabel, type SwitchableModel } from "./model.ts";
 import { OpenError, openerTypes, openInApp } from "./open.ts";
 import { Projects } from "./projects.ts";
 import { describeTools } from "./tools/registry.ts";
@@ -46,7 +46,7 @@ async function readJson(req: http.IncomingMessage): Promise<Record<string, unkno
   return JSON.parse(body || "{}");
 }
 
-export function createServer(projects: Projects, model: Model): http.Server {
+export function createServer(projects: Projects, model: SwitchableModel): http.Server {
   return http.createServer(async (req, res) => {
     try {
       // Only answer to localhost names, which blocks DNS-rebinding attacks from web pages.
@@ -60,6 +60,20 @@ export function createServer(projects: Projects, model: Model): http.Server {
 
       if (req.method === "GET" && parts[1] === "status" && parts.length === 2) {
         return json(res, 200, { model: model.name, offline: model.name === "offline demo", home: projects.home, tools: describeTools(), open: openerTypes() });
+      }
+      if (req.method === "GET" && parts[1] === "models" && parts.length === 2) {
+        const providers = await Promise.all(
+          availableProviders().map(async (id) => ({ id, label: providerLabel(id), models: await modelChoices(id) })),
+        );
+        return json(res, 200, { provider: model.provider, model: model.name, providers });
+      }
+      if (req.method === "POST" && parts[1] === "model" && parts.length === 2) {
+        const { provider, model: name } = await readJson(req);
+        if (typeof provider !== "string" || !availableProviders().includes(provider)) throw new HttpError(400, "unknown or unconfigured provider");
+        if (name !== undefined && typeof name !== "string") throw new HttpError(400, "model must be a string");
+        if (projects.running()) throw new HttpError(409, "Forge is still working; switch models when it is done");
+        model.set(provider, makeModel(provider, name?.trim()));
+        return json(res, 200, { provider, model: model.name });
       }
       if (parts[1] === "projects" && parts.length === 2) {
         if (req.method === "GET") return json(res, 200, await projects.list());
@@ -143,7 +157,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (process.env.FORGE_EXIT_WITH_STDIN === "1") process.stdin.on("end", () => process.exit(0)).resume();
   createServer(projects, model).listen(port, "127.0.0.1", () => {
     console.log(`Forge is running at http://127.0.0.1:${port}`);
-    console.log(`Model: ${model.name}${model.name === "offline demo" ? " (set ANTHROPIC_API_KEY to use Claude)" : ""}`);
+    console.log(`Model: ${model.name} (${providerLabel(model.provider)})`);
     console.log(`Projects: ${projects.home}`);
   });
 }

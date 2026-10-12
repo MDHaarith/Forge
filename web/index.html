@@ -16,7 +16,11 @@
         <button id="mode-chat" type="button" class="active" aria-pressed="true">Chat</button>
         <button id="mode-design" type="button" aria-pressed="false" title="The PCB and the 3D assembly side by side">Design</button>
       </nav>
-      <span id="model-badge" class="badge"></span>
+      <form id="model-pick" class="model-pick">
+        <select id="provider-pick" aria-label="Model provider"></select>
+        <input id="model-name" list="model-list" aria-label="Model" spellcheck="false" />
+        <datalist id="model-list"></datalist>
+      </form>
     </header>
     <main class="layout">
       <aside class="sidebar">

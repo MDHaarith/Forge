@@ -55,6 +55,11 @@ export class Projects {
     await initRepo(dir);
   }
 
+  /** True while any project's agent is working. */
+  running(): boolean {
+    return [...this.sessions.values()].some((s) => s.agent.running);
+  }
+
   private statePath(name: string): string {
     return path.join(this.home, ".state", `${name}.json`);
   }

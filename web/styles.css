@@ -61,6 +61,9 @@ textarea { resize: vertical; }
 .muted { color: var(--muted); }
 .badge { padding: 2px 8px; border-radius: 999px; background: var(--raised); color: var(--muted); font-size: 12px; }
 .badge.warn { color: var(--warn); }
+.model-pick { display: flex; gap: 6px; }
+.model-pick input { width: 200px; }
+.model-pick select.warn { color: var(--warn); }
 
 .layout {
   flex: 1;

@@ -5,3 +5,12 @@ __pycache__/
 build/
 desktop/target/
 desktop/gen/
+
+# Agent/IDE rule files (caveman), not part of the project
+.cursor/
+.windsurf/
+.clinerules/
+.opencode/
+.github/copilot-instructions.md
+# Added by code-review-graph
+.code-review-graph/
