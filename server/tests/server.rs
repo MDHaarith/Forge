@@ -221,6 +221,8 @@ async fn offline_demo_builds_and_commits_enclosure_end_to_end() {
     )
     .await;
     assert_eq!(log.stdout.trim(), "Add demo enclosure");
+    // A plain folder in the Forge home is not a project.
+    std::fs::create_dir(server.state.projects.home.join("scripts")).unwrap();
     assert_eq!(
         server.get("/projects").await.json::<Value>().await.unwrap(),
         json!(["rover"])

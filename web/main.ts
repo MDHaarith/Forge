@@ -113,9 +113,12 @@ async function loadModels() {
   const offline = state.provider === "offline";
   pick.classList.toggle("warn", offline);
   pick.title = offline ? "Add an API key to ~/.config/forge/env and restart Forge to use a real model" : "Model provider";
-  $<HTMLInputElement>("model-name").value = state.model;
   const models = providers.find((p) => p.id === state.provider)?.models ?? [];
-  $("model-list").replaceChildren(...models.map((m) => new Option(m, m)));
+  const names = models.includes(state.model) ? models : [state.model, ...models];
+  $("model-name").replaceChildren(
+    ...names.map((m) => new Option(m, m, false, m === state.model)),
+    new Option("Custom model…", ""),
+  );
 }
 
 async function switchModel(model?: string) {
@@ -133,7 +136,12 @@ $("provider-pick").addEventListener("change", () => {
   const provider = $<HTMLSelectElement>("provider-pick").value;
   void switchModel(providers.find((p) => p.id === provider)?.models[0]);
 });
-$("model-name").addEventListener("change", () => void switchModel($<HTMLInputElement>("model-name").value.trim() || undefined));
+$("model-name").addEventListener("change", () => {
+  const picked = $<HTMLSelectElement>("model-name").value;
+  const model = picked || prompt("Model name")?.trim();
+  if (model) void switchModel(model);
+  else void loadModels();
+});
 $("model-pick").addEventListener("submit", (e) => e.preventDefault());
 
 async function loadProjects() {

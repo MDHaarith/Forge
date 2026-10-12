@@ -252,50 +252,8 @@ openEMS is not packaged for Fedora; `scripts/setup-fedora.sh --with-rf` builds i
 [openEMS install guide](https://docs.openems.de/en/latest/install/requirements.html) and set
 `FORGE_OPENEMS_PYTHON` to its venv's `python3`.
 
-## Layout
+## For developers and AI agents
 
-```
-server/src/
-  main.rs, http.rs          standalone server, localhost HTTP API and static UI
-  lib.rs, env.rs            shared server entrypoint and ~/.config/forge/env settings
-  platform.rs              distro detection and per-distro install commands (dnf first)
-  agent.rs                 agent loop: model ⇄ tools, append-only history, input validation
-  model.rs                 OpenAI-compatible providers and the offline demo model
-  claude_code.rs, mcp.rs    Claude Code CLI turns and Forge's HTTP MCP endpoint
-  projects.rs              project folders, git init, saved conversations (.state/)
-  tools/mesh.rs            mesh kernel: box/cylinder/sphere → STL and OpenSCAD
-  tools/script3d.rs         Blender build tools
-  tools/freecad.rs          FreeCAD builds, inspection and technical drawings
-  open.rs                  "Open in FreeCAD/Blender/KiCad" for project files
-  tools/launch.rs           runs a program natively or as a Flatpak with only the folders it needs
-  tools/board.rs            pcb_build: runs the PCB engine in a sandboxed Node
-  tools/design.rs, fit.rs   design_assemble and the board-in-enclosure fit check
-  tools/rf.rs, rfmath.rs    rf_calc (transmission lines, matching, link budget) and rf_antenna_sim
-  tools/                   one file per domain; mod.rs lists them all
-server/runners/*.py        scripts inside Blender / FreeCAD / openEMS; forge_cad.py is the CAD helper library
-server/tests/             Rust tests with scripted models and fake Claude CLIs (no network or API key)
-desktop/          Tauri desktop app (Rust): runs the server in-process, shows the UI, builds the RPM
-engines/pcb/      the PCB engine: tscircuit, its exporters and runner.mjs, bundled to dist/pcb-engine.mjs
-web/              UI: projects, chat with tool timeline, file preview, three.js STL/GLB viewer, render images
-web/design.ts     Design view: PCB/schematic beside the 3D assembly, cross-selection, fit highlights
-scripts/setup-fedora.sh   Fedora installer: dnf packages, FreeCAD Flatpak, build, forge command, service, launcher
-scripts/stage-app.sh      gathers the built UI, Python runners and optional PCB engine the desktop app bundles
-```
-
-## Adding a capability
-
-Write a `Tool` (see `server/src/tools/mod.rs`) with a name, description, JSON schema and
-`run` function; set `requires` if it wraps a program; append it in `all_tools` there.
-The agent, the capabilities panel and input validation pick it up automatically.
-
-## Roadmap
-
-1. Desktop shell as a Flatpak (the RPM is done). Needs host access through `flatpak-spawn --host`
-   so the sandboxed app can still run Blender, KiCad and the other tools installed on the system.
-2. Approvals: confirm before tools that write outside `models/`, run commands, or export for manufacture.
-3. FreeCAD assemblies with joints (parts can already be loaded, placed and checked for
-   interference), GD&T tolerances on drawings, and CAM toolpaths.
-4. PCB: export the built-in engine's boards to KiCad; manual part moves in the Design view.
-5. Chip flow: OpenLane on the SkyWater 130 PDK through to GDS; Tiny Tapeout submission template.
-6. Cross-domain links: firmware pin map from the schematic; enclosure generated straight from the board data.
-7. MCP: load third-party MCP servers as capabilities (Forge's tools already reach Claude over MCP).
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how a request flows, every file, the API, how to add a tool.
+- [docs/ROADMAP.md](docs/ROADMAP.md): the plan to make Forge run with no external CAD/EDA programs.
+- [AGENTS.md](AGENTS.md): rules every change must follow.

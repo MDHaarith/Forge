@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1 — 2026-10-13
+
+- Assistant replies in the chat are no longer cut off.
+- Model picker is a dropdown listing every model for the provider, plus a custom model option.
+- Projects list shows only Forge projects (folders with a git repository or saved chat).
+- Added AI-facing docs: AGENTS.md entry point, docs/ARCHITECTURE.md, docs/ROADMAP.md.
+
 ## 0.10.0 — 2026-10-12
 
 - Backend rewritten in Rust, running in-process in the desktop app.

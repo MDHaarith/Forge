@@ -60,7 +60,11 @@ impl Projects {
         let mut out = Vec::new();
         while let Some(entry) = entries.next_entry().await.map_err(|e| e.to_string())? {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if valid_name(&name) && entry.file_type().await.map_err(|e| e.to_string())?.is_dir() {
+            // Only folders Forge made (git repo or saved chat), not every folder in a shared home.
+            if valid_name(&name)
+                && entry.file_type().await.map_err(|e| e.to_string())?.is_dir()
+                && (entry.path().join(".git").exists() || self.state_path(&name).exists())
+            {
                 out.push(name);
             }
         }
