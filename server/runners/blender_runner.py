@@ -2,7 +2,7 @@
 
 Forge launches: blender --background --factory-startup --python-exit-code 1 --python blender_runner.py
 and passes everything through FORGE_* environment variables. Lines starting with FORGE_RESULT
-or FORGE_ERROR are read back by server/tools/blender.ts; everything else is Blender's own log.
+or FORGE_ERROR are read back by server/src/tools/script3d.rs; everything else is Blender's own log.
 """
 
 import json

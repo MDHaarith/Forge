@@ -1,0 +1,428 @@
+{
+  "calc": [
+    {
+      "input": {
+        "calc": "line",
+        "stackup": "jlc-4layer-1.6-7628",
+        "target_ohms": 50
+      },
+      "text": "Width for 50 ohm: 0.372 mm.\nmicrostrip 0.372 mm wide on 0.2104 mm, er 4.4 (JLCPCB JLC04161H-7628, outer layer over layer 2 (7628 prepreg)):\n  Z0 50 ohm; effective er 3.191 at 2450 MHz\n  wavelength on the line 68.5 mm; a quarter wave is 17.13 mm\n  Closed-form model (Hammerstad-Jensen), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width."
+    },
+    {
+      "input": {
+        "calc": "line",
+        "line": "diff_microstrip",
+        "stackup": "jlc-4layer-1.6-7628",
+        "target_ohms": 90,
+        "gap_mm": 0.15
+      },
+      "text": "Width for 90 ohm differential: 0.347 mm.\ndiff_microstrip 0.347 mm wide, 0.15 mm gap on 0.2104 mm, er 4.4 (JLCPCB JLC04161H-7628, outer layer over layer 2 (7628 prepreg)):\n  Z0 90 ohm differential (odd mode 45, even mode 62.94 ohm); effective er 2.953 at 2450 MHz\n  wavelength on the line 71.21 mm; a quarter wave is 17.8 mm\n  Closed-form model (Hammerstad-Jensen), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width."
+    },
+    {
+      "input": {
+        "calc": "line",
+        "height_mm": 0.05,
+        "er": 4.4,
+        "target_ohms": 50
+      },
+      "text": "Width for 50 ohm: 0.0753 mm.\nmicrostrip 0.0753 mm wide on 0.05 mm, er 4.4:\n  Z0 50 ohm; effective er 2.952 at 2450 MHz\n  wavelength on the line 71.22 mm; a quarter wave is 17.81 mm\n  0.0753 mm is below the 0.1 mm (4 mil) most fabs make reliably; use a thinner dielectric or a wider gap.\n  Closed-form model (Hammerstad-Jensen), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width."
+    },
+    {
+      "input": {
+        "calc": "match",
+        "load_re": 20,
+        "load_im": -15,
+        "frequency_mhz": 2450
+      },
+      "text": "Load 20 - j15 ohm at 2450 MHz: return loss 6.59 dB, VSWR 2.76 before matching.\nL networks to 50 ohm, listed from the source (radio) side toward the load (antenna):\n  1. shunt C 1.59 pF → series L 2.57 nH\n     with E24 parts shunt C 1.6 pF → series L 2.7 nH: return loss 25.6 dB, VSWR 1.11\n  2. shunt L 2.65 nH → series C 6.84 pF\n     with E24 parts shunt L 2.7 nH → series C 6.8 pF: return loss 39.4 dB, VSWR 1.02\nLay the parts out as a pi footprint (shunt-series-shunt, 0402) so either network fits, and fit the final values after measuring the antenna on a VNA: the board, enclosure and hand change its impedance."
+    },
+    {
+      "input": {
+        "calc": "match",
+        "load_re": 50,
+        "frequency_mhz": 2450
+      },
+      "text": "Load 50+j0 ohm is already matched to 50 ohm."
+    },
+    {
+      "input": {
+        "calc": "link",
+        "tx_dbm": 20,
+        "sensitivity_dbm": -97,
+        "frequency_mhz": 2450,
+        "distance_m": 30,
+        "environment": "indoor"
+      },
+      "text": "Link at 2450 MHz, indoor (path-loss exponent 3.3): budget 117 dB from 20 dBm out to -97 dBm sensitivity.\n  Range with a 10 dB fade margin: 106 m\n  At 30 m: received -68.98 dBm, 28 dB above sensitivity\n  Estimates from a log-distance model; walls, bodies and the enclosure can cost 10–20 dB more. Transmit power and antenna gain must stay within the band's legal limit (EIRP) where the product is sold."
+    },
+    {
+      "input": {
+        "calc": "line",
+        "line": "cpwg",
+        "height_mm": 1.6,
+        "er": 4.5,
+        "width_mm": 1,
+        "gap_mm": 0.2
+      },
+      "text": "cpwg 1 mm wide, 0.2 mm gap on 1.6 mm, er 4.5:\n  Z0 53.87 ohm; effective er 2.808 at 2450 MHz\n  wavelength on the line 73.02 mm; a quarter wave is 18.26 mm\n  Closed-form model (conformal mapping) that ignores copper thickness: when the gap is under about 5 times the copper thickness the real line reads a few ohms lower. Order impedance control and check the fab's own calculator for the final width."
+    },
+    {
+      "input": {
+        "calc": "line",
+        "line": "stripline",
+        "height_mm": 1,
+        "er": 4.4,
+        "width_mm": 0.5,
+        "copper_mm": 0
+      },
+      "text": "stripline 0.5 mm wide on 1 mm, er 4.4:\n  Z0 47.91 ohm; effective er 4.4 at 2450 MHz\n  wavelength on the line 58.33 mm; a quarter wave is 14.58 mm\n  Closed-form model (Wheeler/Cohn), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width."
+    },
+    {
+      "input": {
+        "calc": "line",
+        "stackup": "jlc-2layer-1.6",
+        "width_mm": 3,
+        "frequency_mhz": 6000
+      },
+      "text": "microstrip 3 mm wide on 1.53 mm, er 4.5 (JLCPCB 2-layer 1.6 mm FR-4, top layer over a bottom ground):\n  Z0 48.34 ohm; effective er 3.547 at 6000 MHz\n  wavelength on the line 26.53 mm; a quarter wave is 6.632 mm\n  Closed-form model (Hammerstad-Jensen), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width."
+    },
+    {
+      "input": {
+        "calc": "line",
+        "stackup": "jlc-4layer-1.6-3313",
+        "target_ohms": 50
+      },
+      "text": "Width for 50 ohm: 0.175 mm.\nmicrostrip 0.175 mm wide on 0.0994 mm, er 4.1 (JLCPCB JLC04161H-3313, outer layer over layer 2 (3313 prepreg)):\n  Z0 50 ohm; effective er 2.926 at 2450 MHz\n  wavelength on the line 71.53 mm; a quarter wave is 17.88 mm\n  Closed-form model (Hammerstad-Jensen), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width."
+    },
+    {
+      "input": {
+        "calc": "match",
+        "load_re": 120,
+        "load_im": 40,
+        "frequency_mhz": 2450
+      },
+      "text": "Load 120 + j40 ohm at 2450 MHz: return loss 6.71 dB, VSWR 2.72 before matching.\nL networks to 50 ohm, listed from the source (radio) side toward the load (antenna):\n  1. series L 4.19 nH → shunt C 0.791 pF\n     with E24 parts series L 4.3 nH → shunt C 0.82 pF: return loss 28.5 dB, VSWR 1.08\n  2. series C 1.01 pF → shunt L 9.04 nH\n     with E24 parts series C 1 pF → shunt L 9.1 nH: return loss 47.1 dB, VSWR 1.01\nLay the parts out as a pi footprint (shunt-series-shunt, 0402) so either network fits, and fit the final values after measuring the antenna on a VNA: the board, enclosure and hand change its impedance."
+    },
+    {
+      "input": {
+        "calc": "match",
+        "load_re": 10,
+        "load_im": 30,
+        "frequency_mhz": 2450
+      },
+      "text": "Load 10 + j30 ohm at 2450 MHz: return loss 2.55 dB, VSWR 6.85 before matching.\nL networks to 50 ohm, listed from the source (radio) side toward the load (antenna):\n  1. series L 3.25 nH → shunt C 2.6 pF\n     with E24 parts series L 3.3 nH → shunt C 2.7 pF: return loss 22 dB, VSWR 1.17\n  2. series C 1.3 pF → shunt C 1.3 pF\n     with E24 parts series C 1.3 pF → shunt C 1.3 pF: return loss 63.5 dB, VSWR 1\n  3. shunt C 2.6 pF → series C 6.5 pF\n     with E24 parts shunt C 2.7 pF → series C 6.8 pF: return loss 25 dB, VSWR 1.12\n  4. shunt L 1.62 nH → series C 1.3 pF\n     with E24 parts shunt L 1.6 nH → series C 1.3 pF: return loss 37 dB, VSWR 1.03\nLay the parts out as a pi footprint (shunt-series-shunt, 0402) so either network fits, and fit the final values after measuring the antenna on a VNA: the board, enclosure and hand change its impedance."
+    },
+    {
+      "input": {
+        "calc": "match",
+        "load_re": 50,
+        "load_im": null,
+        "source_ohms": 50,
+        "frequency_mhz": 2450
+      },
+      "text": "Load 50+j0 ohm is already matched to 50 ohm."
+    },
+    {
+      "input": {
+        "calc": "link",
+        "tx_dbm": 20,
+        "tx_gain_dbi": 2,
+        "rx_gain_dbi": 2,
+        "sensitivity_dbm": -90,
+        "frequency_mhz": 2400,
+        "distance_m": 100
+      },
+      "text": "Link at 2400 MHz, free_space (path-loss exponent 2): budget 114 dB from 20 dBm out to -90 dBm sensitivity.\n  Range with a 10 dB fade margin: 1.58 km\n  At 100 m: received -56.05 dBm, 33.9 dB above sensitivity\n  Estimates from a log-distance model; walls, bodies and the enclosure can cost 10–20 dB more. Transmit power and antenna gain must stay within the band's legal limit (EIRP) where the product is sold."
+    },
+    {
+      "input": {
+        "calc": "link",
+        "tx_dbm": 10,
+        "sensitivity_dbm": -80,
+        "frequency_mhz": 915,
+        "loss_db": 3,
+        "margin_db": 0,
+        "path_loss_exponent": 2.7,
+        "environment": "custom"
+      },
+      "text": "Link at 915 MHz, custom (path-loss exponent 2.7): budget 87 dB from 10 dBm out to -80 dBm sensitivity.\n  Range with a 0 dB fade margin: 112 m\n  Estimates from a log-distance model; walls, bodies and the enclosure can cost 10–20 dB more. Transmit power and antenna gain must stay within the band's legal limit (EIRP) where the product is sold."
+    },
+    {
+      "input": {
+        "calc": "line",
+        "line": null,
+        "height_mm": "1.6",
+        "er": "4.5",
+        "width_mm": "3",
+        "copper_mm": 0,
+        "frequency_mhz": 1
+      },
+      "text": "microstrip 3 mm wide on 1.6 mm, er 4.5:\n  Z0 50.11 ohm; effective er 3.393 at 1 MHz\n  wavelength on the line 162700 mm; a quarter wave is 40690 mm\n  Closed-form model (Hammerstad-Jensen), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width."
+    }
+  ],
+  "errors": [
+    {
+      "input": {
+        "calc": "nope"
+      },
+      "error": "calc must be \"line\", \"match\" or \"link\""
+    },
+    {
+      "input": {
+        "calc": "line",
+        "width_mm": 1
+      },
+      "error": "give a stackup, or height_mm (dielectric to the reference plane; for stripline the plane-to-plane spacing) and er"
+    },
+    {
+      "input": {
+        "calc": "line",
+        "stackup": "mystery",
+        "width_mm": 1
+      },
+      "error": "unknown stackup; use one of jlc-2layer-1.6, jlc-4layer-1.6-7628, jlc-4layer-1.6-3313, or give height_mm and er"
+    },
+    {
+      "input": {
+        "calc": "line",
+        "stackup": "jlc-2layer-1.6"
+      },
+      "error": "give width_mm to analyse a trace, or target_ohms to find its width"
+    },
+    {
+      "input": {
+        "calc": "line",
+        "line": "cpwg",
+        "stackup": "jlc-2layer-1.6",
+        "width_mm": 1
+      },
+      "error": "cpwg needs gap_mm (track to side ground)"
+    },
+    {
+      "input": {
+        "calc": "line",
+        "stackup": "jlc-2layer-1.6",
+        "target_ohms": 250
+      },
+      "error": "no width from 0.01 to 50 mm gives 250 ohm on this stackup; change the gap or the stackup"
+    },
+    {
+      "input": {
+        "calc": "match",
+        "load_re": -5,
+        "frequency_mhz": 2450
+      },
+      "error": "load_re (load resistance, ohm) must be a number from 0.01 to 10000"
+    },
+    {
+      "input": {
+        "calc": "link",
+        "tx_dbm": 20,
+        "sensitivity_dbm": -90,
+        "frequency_mhz": 2450,
+        "environment": "space"
+      },
+      "error": "environment must be free_space, outdoor or indoor (or give path_loss_exponent)"
+    },
+    {
+      "input": {
+        "calc": "line",
+        "line": "unknown"
+      },
+      "error": "line must be one of microstrip, cpwg, stripline, diff_microstrip"
+    },
+    {
+      "input": {
+        "calc": "line",
+        "height_mm": null,
+        "er": 4.4,
+        "width_mm": 1
+      },
+      "error": "height_mm must be a number from 0.01 to 20"
+    },
+    {
+      "input": {
+        "calc": "line",
+        "height_mm": 1,
+        "er": 4.4,
+        "width_mm": 1,
+        "frequency_mhz": ""
+      },
+      "error": "frequency_mhz must be a number from 1 to 300000"
+    },
+    {
+      "input": {
+        "calc": "match",
+        "load_re": 20,
+        "frequency_mhz": null
+      },
+      "error": "frequency_mhz must be a number from 0.001 to 300000"
+    }
+  ],
+  "sim": [
+    {
+      "board": "rf",
+      "quality": "fast",
+      "res": {
+        "antenna": "ANT1",
+        "port": "from the ground plane up to the pin1 pad (1.6 mm probe)",
+        "cells": 200000,
+        "seconds": 61,
+        "f0": 2450000000,
+        "span": [
+          1470000000,
+          3430000000
+        ],
+        "zin_res": [
+          48,
+          2
+        ],
+        "directivity_dbi": 2.5,
+        "peak_gain_dbi": 1.8,
+        "peak_dir": [
+          90,
+          0
+        ],
+        "radiation_efficiency": 0.81,
+        "total_efficiency": 0.5,
+        "ground_under": 0,
+        "files": [],
+        "resonance": 2200000000,
+        "s11_min_db": -18,
+        "band": [
+          2150000000,
+          2260000000,
+          false
+        ],
+        "s11_f0_db": -3,
+        "zin_f0": [
+          20,
+          35
+        ]
+      },
+      "text": "Simulated ANT1 on pcb/rf with openEMS (fast mesh, 200,000 cells, 61 s), fed from the ground plane up to the pin1 pad (1.6 mm probe); swept 1470 MHz to 3430 MHz.\n  Best match -18 dB at 2200 MHz; S11 below -10 dB from 2150 MHz to 2260 MHz (110 MHz).\n  At 2450 MHz: S11 -3 dB, input impedance 20 + j35 ohm.\n  Radiation efficiency 81 %; with the mismatch 50 % of the radio's power is radiated. Peak gain 1.8 dBi toward theta 90°, phi 0° (directivity 2.5 dBi).\n  The antenna resonates below the target: shorten its radiating arm by about 10 % and simulate again.\n  To match it at 2450 MHz: rf_calc with calc \"match\", load_re 20, load_im 35, frequency_mhz 2450.\n  The model is the antenna's copper, the board substrate, the copper pours and vias; other parts, the enclosure and a hand nearby are not in it and usually pull the resonance down a few percent. Tune the matching network on a VNA before certification."
+    },
+    {
+      "board": "rf",
+      "quality": "accurate",
+      "res": {
+        "antenna": "ANT1",
+        "port": "from the ground plane up to the pin1 pad (1.6 mm probe)",
+        "cells": 200000,
+        "seconds": 61,
+        "f0": 2450000000,
+        "span": [
+          1470000000,
+          3430000000
+        ],
+        "zin_res": [
+          48,
+          2
+        ],
+        "directivity_dbi": 2.5,
+        "peak_gain_dbi": 1.8,
+        "peak_dir": [
+          90,
+          0
+        ],
+        "radiation_efficiency": 0.81,
+        "total_efficiency": 0.5,
+        "ground_under": 0,
+        "files": [],
+        "resonance": 2450000000,
+        "s11_min_db": -22,
+        "band": [
+          2380000000,
+          2520000000,
+          false
+        ],
+        "s11_f0_db": -22,
+        "zin_f0": [
+          52,
+          -3
+        ]
+      },
+      "text": "Simulated ANT1 on pcb/rf with openEMS (accurate mesh, 200,000 cells, 61 s), fed from the ground plane up to the pin1 pad (1.6 mm probe); swept 1470 MHz to 3430 MHz.\n  Best match -22 dB at 2450 MHz; S11 below -10 dB from 2380 MHz to 2520 MHz (140 MHz).\n  At 2450 MHz: S11 -22 dB, input impedance 52 - j3 ohm.\n  Radiation efficiency 81 %; with the mismatch 50 % of the radio's power is radiated. Peak gain 1.8 dBi toward theta 90°, phi 0° (directivity 2.5 dBi).\n  The model is the antenna's copper, the board substrate, the copper pours and vias; other parts, the enclosure and a hand nearby are not in it and usually pull the resonance down a few percent. Tune the matching network on a VNA before certification."
+    },
+    {
+      "board": "rf",
+      "quality": "fast",
+      "res": {
+        "antenna": "ANT1",
+        "port": "from the ground plane up to the pin1 pad (1.6 mm probe)",
+        "cells": 200000,
+        "seconds": 61,
+        "f0": 2450000000,
+        "span": [
+          1470000000,
+          3430000000
+        ],
+        "zin_res": [
+          48,
+          2
+        ],
+        "directivity_dbi": 2.5,
+        "peak_gain_dbi": 1.8,
+        "peak_dir": [
+          90,
+          0
+        ],
+        "radiation_efficiency": 0.81,
+        "total_efficiency": 0.5,
+        "ground_under": 1,
+        "files": [],
+        "resonance": 1430000000,
+        "s11_min_db": -1.6,
+        "band": null,
+        "s11_f0_db": -0.6,
+        "zin_f0": [
+          169,
+          477
+        ]
+      },
+      "text": "Simulated ANT1 on pcb/rf with openEMS (fast mesh, 200,000 cells, 61 s), fed from the ground plane up to the pin1 pad (1.6 mm probe); swept 1470 MHz to 3430 MHz.\n  Best match only -1.6 dB, at 1430 MHz: S11 never reaches -10 dB in the sweep.\n  At 2450 MHz: S11 -0.6 dB, input impedance 169 + j477 ohm.\n  Radiation efficiency 81 %; with the mismatch 50 % of the radio's power is radiated. Peak gain 1.8 dBi toward theta 90°, phi 0° (directivity 2.5 dBi).\n  Warning: 100 % of the antenna's trace has ground copper under it or within 2 mm beside it, which turns it into a transmission line rather than an antenna (low, lossy resonance, poor match). Keep every layer's pour out from under and around the radiating arm: put a <keepout> over the antenna area, or place the antenna at a board edge beyond the ground plane, then rebuild and simulate again.\n  To match it at 2450 MHz: rf_calc with calc \"match\", load_re 169, load_im 477, frequency_mhz 2450.\n  The model is the antenna's copper, the board substrate, the copper pours and vias; other parts, the enclosure and a hand nearby are not in it and usually pull the resonance down a few percent. Tune the matching network on a VNA before certification."
+    },
+    {
+      "board": "rf",
+      "quality": "fast",
+      "res": {
+        "antenna": "ANT1",
+        "port": "from the ground plane up to the pin1 pad (1.6 mm probe)",
+        "cells": 1234567,
+        "seconds": 61.5,
+        "f0": 2450000000,
+        "span": [
+          1470000000,
+          3430000000
+        ],
+        "zin_res": [
+          48,
+          2
+        ],
+        "directivity_dbi": null,
+        "peak_gain_dbi": 1.8,
+        "peak_dir": [
+          90,
+          0
+        ],
+        "radiation_efficiency": 0.81,
+        "total_efficiency": 0.5,
+        "ground_under": 0,
+        "files": [],
+        "resonance": 2900000000,
+        "s11_min_db": -8,
+        "band": [
+          2800000000,
+          3100000000,
+          true
+        ],
+        "s11_f0_db": -2,
+        "zin_f0": [
+          12.345,
+          0
+        ]
+      },
+      "text": "Simulated ANT1 on pcb/rf with openEMS (fast mesh, 1,234,567 cells, 62 s), fed from the ground plane up to the pin1 pad (1.6 mm probe); swept 1470 MHz to 3430 MHz.\n  Best match -8 dB at 2900 MHz; S11 below -10 dB from 2800 MHz to 3100 MHz (300 MHz, runs past the sweep).\n  At 2450 MHz: S11 -2 dB, input impedance 12.3 + j0 ohm.\n  Radiation efficiency 81 %; with the mismatch 50 % of the radio's power is radiated. Peak gain 1.8 dBi toward theta 90°, phi 0°.\n  The antenna resonates above the target: lengthen its radiating arm by about 18 % and simulate again.\n  To match it at 2450 MHz: rf_calc with calc \"match\", load_re 12.35, load_im 0, frequency_mhz 2450.\n  The model is the antenna's copper, the board substrate, the copper pours and vias; other parts, the enclosure and a hand nearby are not in it and usually pull the resonance down a few percent. Tune the matching network on a VNA before certification."
+    }
+  ]
+}

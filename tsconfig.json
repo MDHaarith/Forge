@@ -12,5 +12,5 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["server", "web", "tests", "vite.config.ts"]
+  "include": ["web", "vite.config.ts"]
 }

@@ -117,6 +117,80 @@ pub fn precision(n: f64, digits: usize) -> f64 {
         + 0.0
 }
 
+/// n.toPrecision(digits) keeps trailing zeroes, including in matching-network keys.
+pub fn precision_string(n: f64, digits: usize) -> String {
+    if !n.is_finite() {
+        return number(n);
+    }
+    let rounded = precision(n, digits);
+    let raw = format!("{:.*e}", digits - 1, rounded);
+    let (mantissa, exponent) = raw.split_once('e').unwrap();
+    let exponent: i32 = exponent.parse().unwrap();
+    if exponent < -6 || exponent >= digits as i32 {
+        format!("{mantissa}e{}{exponent}", if exponent >= 0 { "+" } else { "" })
+    } else {
+        format!("{:.*}", (digits as i32 - 1 - exponent) as usize, rounded + 0.0)
+    }
+}
+
+/// String(value), including JavaScript's array and missing-value coercion.
+pub fn string(value: Option<&Value>) -> String {
+    match value {
+        None => "undefined".into(),
+        Some(Value::Null) => "null".into(),
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Bool(b)) => b.to_string(),
+        Some(Value::Number(n)) => number(n.as_f64().unwrap()),
+        Some(Value::Array(a)) => a.iter().map(|v| if v.is_null() { String::new() } else { string(Some(v)) }).collect::<Vec<_>>().join(","),
+        Some(Value::Object(_)) => "[object Object]".into(),
+    }
+}
+
+/// Number(string) accepts decimal exponents, unsigned radix prefixes and Infinity.
+pub fn parse_number(text: &str) -> f64 {
+    let text = trim(text);
+    if text.is_empty() { return 0.0; }
+    if matches!(text, "Infinity" | "+Infinity") { return f64::INFINITY; }
+    if text == "-Infinity" { return f64::NEG_INFINITY; }
+    for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] {
+        if text.get(..2).is_some_and(|v| v.eq_ignore_ascii_case(prefix)) {
+            let mut out = 0.0;
+            if text.len() == 2 { return f64::NAN; }
+            for c in text[2..].chars() {
+                let Some(digit) = c.to_digit(radix) else { return f64::NAN; };
+                out = out * radix as f64 + digit as f64;
+            }
+            return out;
+        }
+    }
+    let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
+    if !unsigned.bytes().any(|b| b.is_ascii_digit()) || !unsigned.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-')) {
+        return f64::NAN;
+    }
+    text.parse().unwrap_or(f64::NAN)
+}
+
+/// Number(value). Missing is NaN, whereas null is zero.
+pub fn numeric(value: Option<&Value>) -> f64 {
+    match value {
+        None => f64::NAN,
+        Some(Value::Null) => 0.0,
+        Some(Value::Bool(b)) => u8::from(*b) as f64,
+        Some(Value::Number(n)) => n.as_f64().unwrap(),
+        Some(value) => parse_number(&string(Some(value))),
+    }
+}
+
+pub fn truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().is_some_and(|n| n != 0.0 && !n.is_nan()),
+        Value::String(s) => !s.is_empty(),
+        _ => true,
+    }
+}
+
 /// toLocaleString("en") groups integer digits in threes.
 pub fn locale(n: f64) -> String {
     let rounded = if n.abs() >= 1e21 {
@@ -172,9 +246,40 @@ pub fn normalize_json(value: &mut Value) {
     }
 }
 
+/// JSON.stringify(value, null, 2), with JavaScript's number spelling.
+pub fn stringify_pretty(value: &Value) -> Result<String, serde_json::Error> {
+    let text = serde_json::to_string_pretty(value)?;
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let start = i;
+        if bytes[i] == b'"' {
+            i += 1;
+            while bytes[i] != b'"' { i += if bytes[i] == b'\\' { 2 } else { 1 }; }
+            i += 1;
+            out.push_str(&text[start..i]);
+        } else if bytes[i].is_ascii_digit() || bytes[i] == b'-' {
+            i += 1;
+            while i < bytes.len() && matches!(bytes[i], b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-') { i += 1; }
+            out.push_str(&number(text[start..i].parse().unwrap()));
+        } else {
+            out.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn javascript_pretty_json_numbers_and_escaped_strings() {
+        let value = serde_json::json!({"5.0": [5.0, -0.0, 1e-6, 1e-7, 1e21], "text": "é 5.0 \\\" -0.0", "empty": [], "nested": {"n": 0.1}});
+        assert_eq!(stringify_pretty(&value).unwrap(), "{\n  \"5.0\": [\n    5,\n    0,\n    0.000001,\n    1e-7,\n    1e+21\n  ],\n  \"text\": \"é 5.0 \\\\\\\" -0.0\",\n  \"empty\": [],\n  \"nested\": {\n    \"n\": 0.1\n  }\n}");
+        assert_eq!(stringify_pretty(&serde_json::json!(1e-6)).unwrap(), "0.000001");
+    }
     #[test]
     fn javascript_numbers() {
         assert_eq!(trim("\u{feff} hello \u{feff}"), "hello");
@@ -202,5 +307,24 @@ mod tests {
         assert_eq!(locale(12.3455), "12.346");
         assert_eq!(locale(1e21), "1,000,000,000,000,000,000,000");
         assert_eq!(json_number(5.0).to_string(), "5");
+    }
+
+    #[test]
+    fn javascript_precision_keys_and_coercion() {
+        assert_eq!(precision_string(4.7e-9, 6), "4.70000e-9");
+        assert_eq!(precision_string(0.000001, 6), "0.00000100000");
+        assert_eq!(precision_string(1234567.0, 6), "1.23457e+6");
+        assert_eq!(precision_string(0.0, 6), "0.00000");
+        assert_eq!(precision_string(-0.0, 6), "0.00000");
+        assert_eq!(precision_string(9.999999, 6), "10.0000");
+        assert_eq!(string(None), "undefined");
+        assert_eq!(string(Some(&serde_json::json!([1, null, [2, 3]]))), "1,,2,3");
+        assert_eq!(numeric(Some(&Value::Null)), 0.0);
+        assert_eq!(parse_number(" 0x10 "), 16.0);
+        assert_eq!(parse_number("0b11"), 3.0);
+        assert_eq!(parse_number("0o10"), 8.0);
+        assert_eq!(parse_number("-1.5e2"), -150.0);
+        assert_eq!(parse_number("Infinity"), f64::INFINITY);
+        for s in ["inf", "infinity", "+0x10", "0x", "1 2"] { assert!(parse_number(s).is_nan()); }
     }
 }

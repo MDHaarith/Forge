@@ -51,17 +51,17 @@ pub fn router(state: AppState) -> Router {
 }
 
 #[derive(Debug)]
-struct HttpError {
+pub(crate) struct HttpError {
     status: u16,
     message: String,
 }
-fn error(status: u16, message: impl Into<String>) -> HttpError {
+pub(crate) fn error(status: u16, message: impl Into<String>) -> HttpError {
     HttpError {
         status,
         message: message.into(),
     }
 }
-fn json_response(status: u16, body: Value) -> Response<Body> {
+pub(crate) fn json_response(status: u16, body: Value) -> Response<Body> {
     bytes_response(status, "application/json", body.to_string())
 }
 fn bytes_response(status: u16, content_type: &str, body: impl Into<Body>) -> Response<Body> {
@@ -79,13 +79,19 @@ async fn handle(State(state): State<AppState>, request: Request<Body>) -> Respon
     }
 }
 
-async fn read_json(request: Request<Body>, field: &str) -> Result<Value, HttpError> {
+pub(crate) async fn read_json(request: Request<Body>, field: &str) -> Result<Value, HttpError> {
     // Requiring JSON forces a CORS preflight, so other websites cannot post to Forge.
     if !request
         .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.starts_with("application/json"))
+        .is_some_and(|v| {
+            v.split(';')
+                .next()
+                .unwrap_or("")
+                .trim()
+                .eq_ignore_ascii_case("application/json")
+        })
     {
         return Err(error(415, "expected application/json"));
     }
@@ -194,6 +200,13 @@ async fn route(state: AppState, request: Request<Body>) -> Result<Response<Body>
         .filter(|p| !p.is_empty())
         .map(decode_segment)
         .collect::<Result<Vec<_>, _>>()?;
+    if parts.first().map(String::as_str) == Some("mcp") && parts.len() == 2 {
+        if method != "POST" {
+            return Err(error(405, "method not allowed"));
+        }
+        let body = read_json(request, "method").await?;
+        return crate::mcp::handle(&state, &parts[1], body).await;
+    }
     if parts.first().map(String::as_str) != Some("api") {
         return serve_static(&state.settings.app_dir, &path).await;
     }

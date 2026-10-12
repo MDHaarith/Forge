@@ -32,53 +32,29 @@ async fn identity(cwd: &Path) -> Vec<String> {
 }
 
 pub fn tools() -> Vec<Tool> {
-    vec![
-        {
-            let mut tool = Tool::new(
-                "vcs",
-                "git_status",
-                "Show which project files changed since the last commit.",
-                json!({"type": "object", "properties": {}}),
-                git_status,
-            );
-            tool.requires = vec!["git".into()];
-            tool.install = Some(
-                serde_json::from_value::<InstallHint>(
-                    json!({"dnf": "git", "apt": "git", "brew": "git"}),
-                )
-                .unwrap(),
-            );
-            tool
-        },
-        {
-            let mut tool = Tool::new("vcs", "git_commit", "Record every current change in the project's history with a message. Commit after each meaningful step so the user can review and roll back.", json!({"type": "object", "properties": {"message": {"type": "string", "description": "What changed and why, one line"}}, "required": ["message"]}), git_commit);
-            tool.requires = vec!["git".into()];
-            tool.install = Some(
-                serde_json::from_value::<InstallHint>(
-                    json!({"dnf": "git", "apt": "git", "brew": "git"}),
-                )
-                .unwrap(),
-            );
-            tool
-        },
-        {
-            let mut tool = Tool::new(
-                "vcs",
-                "git_log",
-                "Show the most recent commits in the project.",
-                json!({"type": "object", "properties": {"limit": {"type": "integer", "description": "How many commits (default 20)"}}}),
-                git_log,
-            );
-            tool.requires = vec!["git".into()];
-            tool.install = Some(
-                serde_json::from_value::<InstallHint>(
-                    json!({"dnf": "git", "apt": "git", "brew": "git"}),
-                )
-                .unwrap(),
-            );
-            tool
-        },
-    ]
+    let mut tools = vec![
+        Tool::new(
+            "vcs",
+            "git_status",
+            "Show which project files changed since the last commit.",
+            json!({"type": "object", "properties": {}}),
+            git_status,
+        ),
+        Tool::new("vcs", "git_commit", "Record every current change in the project's history with a message. Commit after each meaningful step so the user can review and roll back.", json!({"type": "object", "properties": {"message": {"type": "string", "description": "What changed and why, one line"}}, "required": ["message"]}), git_commit),
+        Tool::new(
+            "vcs",
+            "git_log",
+            "Show the most recent commits in the project.",
+            json!({"type": "object", "properties": {"limit": {"type": "integer", "description": "How many commits (default 20)"}}}),
+            git_log,
+        ),
+    ];
+    let install: InstallHint = serde_json::from_value(json!({"dnf": "git", "apt": "git", "brew": "git"})).unwrap();
+    for tool in &mut tools {
+        tool.requires = vec!["git".into()];
+        tool.install = Some(install.clone());
+    }
+    tools
 }
 
 fn git_status(_input: Value, ctx: ToolContext) -> ToolFuture {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 — 2026-10-12
+
+- Backend rewritten in Rust, running in-process in the desktop app.
+- Claude runs through the Claude Code CLI with Forge tools over MCP.
+- Node is only needed for the UI build and `pcb_build`.
+- Anthropic SDK removed.
+
 ## 0.9.1 — 2026-10-12
 
 - New layout modelled on FreeCAD, Blender and KiCad: project and file tree on the left, the selected file in a full-size viewport in the middle, the assistant on the right, and a status bar with the project, mouse hints and the tools list.

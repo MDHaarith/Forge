@@ -1,7 +1,9 @@
 pub mod agent;
+pub mod claude_code;
 pub mod env;
 pub mod http;
 pub mod jsfmt;
+pub mod mcp;
 pub mod model;
 pub mod open;
 pub mod platform;
@@ -9,7 +11,8 @@ pub mod projects;
 pub mod providers;
 pub mod tools;
 
-use providers::Providers;
+use model::Model;
+use providers::{provider_label, Providers};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 /// Configuration is captured once; tests construct it without changing process environment.
@@ -18,6 +21,7 @@ pub struct Settings {
     pub home: PathBuf,
     pub app_dir: PathBuf,
     pub allow_commands: bool,
+    /// Resolved at startup so request handlers never probe PATH and project cwd cannot change it.
     pub claude_program: Option<PathBuf>,
     pub providers: Arc<Providers>,
     pub startup_provider: Option<String>,
@@ -26,6 +30,9 @@ pub struct Settings {
     pub blender_program: Option<PathBuf>,
     pub freecad_program: Option<PathBuf>,
     pub freecad_gui_program: Option<PathBuf>,
+    pub node_program: Option<PathBuf>,
+    pub node_env: Vec<(String, String)>,
+    pub openems_python: Vec<String>,
 }
 
 impl Settings {
@@ -42,6 +49,15 @@ impl Settings {
             blender_program: None,
             freecad_program: None,
             freecad_gui_program: None,
+            node_program: None,
+            node_env: vec![
+                ("PATH".into(), std::env::var("PATH").unwrap_or_default()),
+                (
+                    "LANG".into(),
+                    std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()),
+                ),
+            ],
+            openems_python: tools::rf::openems_python(),
         }
     }
 
@@ -57,6 +73,12 @@ impl Settings {
         settings.offline = vars.get("FORGE_OFFLINE").is_some_and(|v| v == "1");
         settings.startup_provider = vars.get("FORGE_PROVIDER").cloned();
         settings.startup_model = vars.get("FORGE_MODEL").cloned();
+        // FORGE_CLAUDE selects the user's CLI; its inherited environment supplies the login.
+        settings.claude_program = claude_code::resolve_program(
+            vars.get("FORGE_CLAUDE")
+                .map(String::as_str)
+                .unwrap_or("claude"),
+        );
         settings.blender_program = vars
             .get("FORGE_BLENDER")
             .filter(|v| !v.is_empty())
@@ -67,6 +89,10 @@ impl Settings {
             .map(PathBuf::from);
         settings.freecad_gui_program = vars
             .get("FORGE_FREECAD_GUI")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from);
+        settings.node_program = vars
+            .get("FORGE_NODE")
             .filter(|v| !v.is_empty())
             .map(PathBuf::from);
         settings.providers = Arc::new(Providers::new(vars));
@@ -86,5 +112,19 @@ pub async fn serve_with_settings(
     settings: Settings,
 ) -> std::io::Result<()> {
     let state = AppState::from_settings(settings);
+    let _ = state.projects.server_url.set(format!(
+        "http://127.0.0.1:{}",
+        listener.local_addr()?.port()
+    ));
+    println!(
+        "Forge is running at http://127.0.0.1:{}",
+        listener.local_addr()?.port()
+    );
+    println!(
+        "Model: {} ({})",
+        state.model.name(),
+        provider_label(&state.model.provider())
+    );
+    println!("Projects: {}", state.projects.home.display());
     axum::serve(listener, router(state)).await
 }

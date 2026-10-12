@@ -4,18 +4,21 @@ use crate::{
     tools::{available_tools, paths::project_path, vcs::init_repo, ToolContext},
     Settings,
 };
+use futures_util::FutureExt;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
-use tokio::sync::OnceCell;
+use tokio::sync::{mpsc::UnboundedSender, OnceCell};
 
 pub struct Session {
     pub agent: Arc<Agent>,
     pub events: Mutex<Vec<AgentEvent>>,
     pub claude_session: Mutex<Option<String>>,
+    /// MCP tasks enqueue events; only the turn task writes history and the chat stream.
+    pub live: Mutex<Option<UnboundedSender<AgentEvent>>>,
 }
 
 /// Projects are folders under the Forge home (default ~/Forge), each its own git repository.
@@ -23,8 +26,10 @@ pub struct Session {
 pub struct Projects {
     sessions: Mutex<HashMap<String, Arc<OnceCell<Arc<Session>>>>>,
     pub home: PathBuf,
-    model: Arc<dyn Model>,
-    settings: Settings,
+    pub(crate) model: Arc<dyn Model>,
+    pub(crate) settings: Settings,
+    /// The listener's actual loopback URL, including its dynamically allocated port.
+    pub server_url: OnceLock<String>,
 }
 
 pub fn valid_name(name: &str) -> bool {
@@ -42,6 +47,7 @@ impl Projects {
             home: settings.home.clone(),
             model,
             settings,
+            server_url: OnceLock::new(),
         }
     }
     pub async fn list(&self) -> Result<Vec<String>, String> {
@@ -118,6 +124,7 @@ impl Projects {
                     agent,
                     events: Mutex::new(vec![]),
                     claude_session: Mutex::new(None),
+                    live: Mutex::new(None),
                 });
                 if let Ok(data) = tokio::fs::read(self.state_path(name)).await {
                     if let Ok(saved) = serde_json::from_slice::<Value>(&data) {
@@ -148,6 +155,11 @@ impl Projects {
         session.agent.try_start()?;
         Ok(session)
     }
+    pub(crate) fn live_sender(&self, name: &str) -> Option<UnboundedSender<AgentEvent>> {
+        let cell = self.sessions.lock().unwrap().get(name).cloned()?;
+        let sender = cell.get()?.live.lock().unwrap().clone();
+        sender
+    }
     pub async fn chat(&self, name: &str, text: &str, emit: &Emit<'_>) -> Result<(), String> {
         let session = self.begin_chat(name).await?;
         self.chat_started(name, session, text, emit).await
@@ -159,13 +171,33 @@ impl Projects {
         text: &str,
         emit: &Emit<'_>,
     ) -> Result<(), String> {
-        session
-            .agent
-            .send_started(text, &|event| {
-                session.events.lock().unwrap().push(event.clone());
-                emit(event);
-            })
+        let record = |event: AgentEvent| {
+            session.events.lock().unwrap().push(event.clone());
+            emit(event);
+        };
+        if self.model.provider().as_deref() == Some("claude") {
+            let _busy = session.agent.turn_guard();
+            // shortcut: switching providers does not carry history between Claude Code and Forge; add a summary hand-off if users switch often.
+            record(AgentEvent::User { text: text.into() });
+            let result = std::panic::AssertUnwindSafe(crate::claude_code::send(
+                self, name, &session, text, &record,
+            ))
+            .catch_unwind()
             .await;
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(message)) => record(AgentEvent::Error { message }),
+                Err(_) => record(AgentEvent::Error {
+                    message: "Claude Code turn panicked".into(),
+                }),
+            }
+            record(AgentEvent::Done);
+            return self.save(name, &session).await;
+        }
+        session.agent.send_started(text, &record).await;
+        self.save(name, &session).await
+    }
+    pub(crate) async fn save(&self, name: &str, session: &Session) -> Result<(), String> {
         let mut saved = json!({"messages":session.agent.messages.lock().unwrap().clone(),"events":session.events.lock().unwrap().clone()});
         if let Some(id) = session.claude_session.lock().unwrap().clone() {
             saved["claude_session"] = json!(id);

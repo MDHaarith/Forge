@@ -103,6 +103,9 @@ impl Agent {
     pub fn running(&self) -> bool {
         self.busy.load(Ordering::Acquire)
     }
+    pub(crate) fn turn_guard(&self) -> BusyGuard<'_> {
+        BusyGuard(&self.busy)
+    }
     pub fn try_start(&self) -> Result<(), String> {
         self.busy
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -192,7 +195,15 @@ impl Agent {
                 });
                 let (ok, outcome) = match halted {
                     Some(reason) => (false, ToolResult::text(format!("Not run: {reason}."))),
-                    None => self.execute(by_name.get(name).copied(), name, input).await,
+                    None => {
+                        execute_tool(
+                            by_name.get(name).copied(),
+                            name,
+                            input,
+                            self.context.clone(),
+                        )
+                        .await
+                    }
                 };
                 emit(AgentEvent::ToolResult {
                     id: id.into(),
@@ -225,34 +236,41 @@ impl Agent {
         });
         Ok(())
     }
-    async fn execute(&self, tool: Option<&Tool>, name: &str, input: &Value) -> (bool, ToolResult) {
-        let Some(tool) = tool else {
-            return (
-                false,
-                ToolResult::text(format!("Unknown or unavailable tool \"{name}\".")),
-            );
-        };
-        let problems = validate(input, &tool.input_schema);
-        if !problems.is_empty() {
-            return (
-                false,
-                ToolResult::text(json!({"INVALID_INPUT":problems,"received":input}).to_string()),
-            );
-        }
-        match (tool.run)(input.clone(), self.context.clone()).await {
-            Ok(result) => (true, result),
-            Err(error) => {
-                let message = match error {
-                    ToolError::Expected(message) => message,
-                    ToolError::Unexpected(message) => format!("{name} failed: {message}"),
-                };
-                (false, ToolResult::text(message))
-            }
+}
+
+/// Both model loops share validation and error wording at the tool boundary.
+pub(crate) async fn execute_tool(
+    tool: Option<&Tool>,
+    name: &str,
+    input: &Value,
+    context: ToolContext,
+) -> (bool, ToolResult) {
+    let Some(tool) = tool else {
+        return (
+            false,
+            ToolResult::text(format!("Unknown or unavailable tool \"{name}\".")),
+        );
+    };
+    let problems = validate(input, &tool.input_schema);
+    if !problems.is_empty() {
+        return (
+            false,
+            ToolResult::text(json!({"INVALID_INPUT":problems,"received":input}).to_string()),
+        );
+    }
+    match (tool.run)(input.clone(), context).await {
+        Ok(result) => (true, result),
+        Err(error) => {
+            let message = match error {
+                ToolError::Expected(message) => message,
+                ToolError::Unexpected(message) => format!("{name} failed: {message}"),
+            };
+            (false, ToolResult::text(message))
         }
     }
 }
 
-struct BusyGuard<'a>(&'a AtomicBool);
+pub(crate) struct BusyGuard<'a>(&'a AtomicBool);
 impl Drop for BusyGuard<'_> {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Release);

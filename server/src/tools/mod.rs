@@ -1,3 +1,11 @@
+pub mod board;
+pub mod chip;
+pub mod design;
+pub mod fit;
+pub mod freecad;
+pub mod pcb;
+pub mod rf;
+pub mod rfmath;
 pub mod cad;
 pub mod code;
 pub mod exec;
@@ -26,6 +34,11 @@ pub struct ToolContext {
     pub project_dir: PathBuf,
     pub app_dir: PathBuf,
     pub allow_commands: bool,
+    pub blender_program: Option<PathBuf>,
+    pub freecad_program: Option<PathBuf>,
+    pub node_program: Option<PathBuf>,
+    pub node_env: Vec<(String, String)>,
+    pub openems_python: Vec<String>,
 }
 
 impl ToolContext {
@@ -34,11 +47,21 @@ impl ToolContext {
             project_dir: paths::lexical_path(&project_dir),
             app_dir: paths::lexical_path(&app_dir),
             allow_commands: false,
+            blender_program: None,
+            freecad_program: None,
+            node_program: None,
+            node_env: vec![("PATH".into(), std::env::var("PATH").unwrap_or_default()), ("LANG".into(), std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()))],
+            openems_python: rf::openems_python(),
         }
     }
     pub fn from_settings(project_dir: PathBuf, settings: &Settings) -> Self {
         let mut context = Self::new(project_dir, settings.app_dir.clone());
         context.allow_commands = settings.allow_commands;
+        context.blender_program = settings.blender_program.clone();
+        context.freecad_program = settings.freecad_program.clone();
+        context.node_program = settings.node_program.clone();
+        context.node_env = settings.node_env.clone();
+        context.openems_python = settings.openems_python.clone();
         context
     }
 }
@@ -138,8 +161,14 @@ pub fn all_tools() -> Vec<Tool> {
     let mut tools = workspace::tools();
     tools.extend(vcs::tools());
     tools.extend(code::tools());
+    tools.extend(script3d::tools());
+    tools.extend(freecad::tools());
     tools.extend(cad::tools());
-    // phase 2: append script3d, freecad, board, rf, design, pcb, chip (and openscad_render).
+    tools.extend(board::tools());
+    tools.extend(rf::tools());
+    tools.extend(design::tools());
+    tools.extend(pcb::tools());
+    tools.extend(chip::tools());
     tools
 }
 
@@ -148,18 +177,16 @@ pub fn is_available(tool: &Tool, settings: &Settings) -> bool {
         return code::commands_allowed(settings);
     }
     if let Some(app) = &tool.app {
-        return resolve_app(app).is_some();
+        let program = if app.label == "blender" { settings.blender_program.as_deref() } else { settings.freecad_program.as_deref() };
+        return resolve_app(&script3d::with_override(app, program)).is_some();
     }
-    if tool.requires.is_empty() {
-        return true;
+    if tool.name == "pcb_build" {
+        return board::pcb_engine(&settings.app_dir).is_some() && exec::on_path(&board::node_program(settings.node_program.as_deref()));
     }
-    tool.requires.iter().any(|program| {
-        if program.contains(['/', '\\']) && !std::path::Path::new(program).is_absolute() {
-            exec::on_path(&settings.app_dir.join(program).to_string_lossy())
-        } else {
-            exec::on_path(program)
-        }
-    })
+    if tool.name == "rf_antenna_sim" {
+        return exec::find_program(&settings.openems_python).is_some();
+    }
+    tool.requires.is_empty() || exec::find_program(&tool.requires).is_some()
 }
 
 /// The tools the agent may call right now: those whose external programs are installed.

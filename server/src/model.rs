@@ -27,6 +27,9 @@ pub type ModelFuture<'a> = Pin<Box<dyn Future<Output = Result<ModelReply, String
 /// What the agent talks to. Claude in normal use; scripted models in tests and offline mode.
 pub trait Model: Send + Sync {
     fn name(&self) -> String;
+    fn provider(&self) -> Option<String> {
+        None
+    }
     fn respond<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a>;
 }
 
@@ -71,7 +74,7 @@ impl Model for OfflineModel {
                         )],
                     ));
                 }
-                return Ok(reply("end_turn",vec![text("Done. The enclosure is in models/: open demo-enclosure.stl to see it in 3D, or the .scad file to edit it. This is the offline demo; set ANTHROPIC_API_KEY and restart Forge to work with Claude.")]));
+                return Ok(reply("end_turn",vec![text("Done. The enclosure is in models/: open demo-enclosure.stl to see it in 3D, or the .scad file to edit it. This is the offline demo; sign in with the Claude Code CLI and restart Forge to work with Claude.")]));
             }
             let prompt = last["content"]
                 .as_str()
@@ -112,7 +115,7 @@ impl Model for OfflineModel {
                     ],
                 ));
             }
-            Ok(reply("end_turn",vec![text("Forge is running in offline demo mode, so I can only build a sample part. Ask me to \"design an enclosure\" to see the 3D pipeline, or set ANTHROPIC_API_KEY and restart Forge to work with Claude on code, 3D, PCB and chip designs.")]))
+            Ok(reply("end_turn",vec![text("Forge is running in offline demo mode, so I can only build a sample part. Ask me to \"design an enclosure\" to see the 3D pipeline, or sign in with the Claude Code CLI and restart Forge to work with Claude on code, 3D, PCB and chip designs.")]))
         })
     }
 }
@@ -281,6 +284,9 @@ impl SwitchableModel {
     }
 }
 impl Model for SwitchableModel {
+    fn provider(&self) -> Option<String> {
+        Some(self.provider())
+    }
     fn name(&self) -> String {
         self.current.read().unwrap().1.name()
     }
@@ -292,7 +298,15 @@ impl Model for SwitchableModel {
 
 /// Callers check the id against available_providers() first.
 pub fn make_model(id: &str, model: Option<&str>, settings: &Settings) -> Arc<dyn Model> {
-    // phase 3: construct the Claude Code model here, without an Anthropic SDK.
+    if id == "claude" {
+        return Arc::new(crate::claude_code::ClaudeCodeModel(
+            model
+                .filter(|s| !s.is_empty())
+                .or(settings.startup_model.as_deref().filter(|s| !s.is_empty()))
+                .unwrap_or(crate::providers::CLAUDE_MODELS[0])
+                .into(),
+        ));
+    }
     match find_provider(id) {
         Some(p) => Arc::new(OpenAICompatModel::new(
             model
@@ -306,7 +320,7 @@ pub fn make_model(id: &str, model: Option<&str>, settings: &Settings) -> Arc<dyn
     }
 }
 
-/// FORGE_PROVIDER when it is configured, else the offline demo (Claude Code is added in phase 3).
+/// FORGE_PROVIDER when it is configured, else Claude when its CLI is installed, else the offline demo.
 pub fn default_model(settings: &Settings) -> Arc<SwitchableModel> {
     let available = available_providers(settings);
     let id = if settings.offline {
@@ -316,7 +330,11 @@ pub fn default_model(settings: &Settings) -> Arc<SwitchableModel> {
             .startup_provider
             .as_deref()
             .filter(|id| available.iter().any(|v| v == id))
-            .unwrap_or("offline")
+            .unwrap_or(if available.iter().any(|id| id == "claude") {
+                "claude"
+            } else {
+                "offline"
+            })
     };
     let model = if settings.startup_provider.as_deref().unwrap_or("claude") == "claude" {
         None

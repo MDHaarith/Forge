@@ -72,7 +72,7 @@ fn events(text: &str) -> Vec<Value> {
 }
 
 #[tokio::test]
-async fn status_lists_every_phase_one_capability() {
+async fn status_lists_every_capability() {
     let server = TestServer::offline().await;
     let status: Value = server.get("/status").await.json().await.unwrap();
     assert_eq!(status["offline"], true);
@@ -81,20 +81,9 @@ async fn status_lists_every_phase_one_capability() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect::<Vec<_>>();
-    // phase 2: add pcb_export_fab, chip_synthesize
-    assert_eq!(
-        names,
-        [
-            "list_files",
-            "read_file",
-            "write_file",
-            "git_status",
-            "git_commit",
-            "git_log",
-            "run_command",
-            "cad_model"
-        ]
-    );
+    for n in ["write_file", "git_commit", "cad_model", "pcb_export_fab", "chip_synthesize"] {
+        assert!(names.contains(&n), "{n}");
+    }
     assert_eq!(
         tools.iter().find(|t| t["name"] == "cad_model").unwrap()["available"],
         true

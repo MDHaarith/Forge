@@ -1,11 +1,5 @@
 use forge_server::jsfmt::trim;
-use forge_server::{
-    env,
-    http::{router, AppState},
-    model::Model,
-    providers::provider_label,
-    Settings,
-};
+use forge_server::{env, serve_with_settings, Settings};
 use std::{
     io::{self, Read},
     path::PathBuf,
@@ -15,7 +9,10 @@ fn app_dir() -> io::Result<PathBuf> {
     if let Some(path) = std::env::var_os("FORGE_APP_DIR") {
         return Ok(PathBuf::from(path));
     }
-    if cfg!(debug_assertions) {
+    // cargo run --release still needs the repository's UI and runners, not target/release.
+    if cfg!(debug_assertions)
+        || std::env::var("CARGO_MANIFEST_DIR").is_ok_and(|dir| dir == env!("CARGO_MANIFEST_DIR"))
+    {
         return Ok(PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/..")));
     }
     Ok(std::env::current_exe()?
@@ -58,7 +55,7 @@ async fn main() -> io::Result<()> {
     let settings = Settings::from_env(app_dir()?);
     let port = parse_port(&std::env::var("PORT").unwrap_or_else(|_| "4317".into()))?;
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
-    // The desktop app holds our stdin open; when it closes (the app quit or crashed), stop too.
+    // Optional supervision for callers that hold stdin open: stop when that pipe closes.
     if std::env::var("FORGE_EXIT_WITH_STDIN").as_deref() == Ok("1") {
         std::thread::spawn(|| {
             let mut input = io::stdin().lock();
@@ -71,18 +68,7 @@ async fn main() -> io::Result<()> {
             }
         });
     }
-    let state = AppState::from_settings(settings);
-    println!(
-        "Forge is running at http://127.0.0.1:{}",
-        listener.local_addr()?.port()
-    );
-    println!(
-        "Model: {} ({})",
-        state.model.name(),
-        provider_label(&state.model.provider())
-    );
-    println!("Projects: {}", state.projects.home.display());
-    axum::serve(listener, router(state)).await
+    serve_with_settings(listener, settings).await
 }
 
 #[cfg(test)]

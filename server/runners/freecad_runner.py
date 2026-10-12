@@ -4,7 +4,7 @@ Forge launches: freecadcmd freecad_runner.py with FORGE_* environment variables.
 The script gets App/FreeCAD, Part, Vector, `forge` (engineering helpers, forge_cad.py) and a
 fresh document `doc`. It either assigns `result = <Part.Shape>`, or adds objects to `doc`
 (Part features or PartDesign bodies); then every top-level solid is exported.
-Lines starting with FORGE_RESULT or FORGE_ERROR are read back by server/tools/freecad.ts.
+Lines starting with FORGE_RESULT or FORGE_ERROR are read back by server/src/tools/freecad.rs.
 """
 
 import json

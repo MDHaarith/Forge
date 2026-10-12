@@ -149,18 +149,28 @@ impl Providers {
 
 /// Provider ids with credentials configured, in picker order; the offline demo is always there.
 pub fn available_providers(settings: &Settings) -> Vec<String> {
-    // phase 3: insert "claude" first when the configured Claude Code CLI is available.
-    let mut ids: Vec<String> = PROVIDERS
-        .iter()
-        .filter(|p| !settings.providers.api_key(p).is_empty())
-        .map(|p| p.id.into())
-        .collect();
+    let mut ids = Vec::new();
+    if settings
+        .claude_program
+        .as_ref()
+        .is_some_and(|p| p.is_file())
+    {
+        ids.push("claude".into());
+    }
+    ids.extend(
+        PROVIDERS
+            .iter()
+            .filter(|p| !settings.providers.api_key(p).is_empty())
+            .map(|p| p.id.to_owned()),
+    );
     ids.push("offline".into());
     ids
 }
 
 pub fn provider_label(id: &str) -> &str {
-    if id == "offline" {
+    if id == "claude" {
+        "Claude (Claude Code)"
+    } else if id == "offline" {
         "Offline demo"
     } else {
         find_provider(id).map(|p| p.label).unwrap_or(id)
@@ -168,6 +178,9 @@ pub fn provider_label(id: &str) -> &str {
 }
 
 pub async fn model_choices(id: &str, settings: &Settings) -> Vec<String> {
+    if id == "claude" {
+        return CLAUDE_MODELS.iter().map(|id| (*id).into()).collect();
+    }
     if id == "offline" {
         return vec!["offline demo".into()];
     }
@@ -176,6 +189,8 @@ pub async fn model_choices(id: &str, settings: &Settings) -> Vec<String> {
         None => vec![],
     }
 }
+
+pub const CLAUDE_MODELS: &[&str] = &["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
 
 #[cfg(test)]
 mod tests {

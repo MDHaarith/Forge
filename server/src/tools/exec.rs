@@ -43,7 +43,33 @@ pub async fn run(
     timeout_ms: u64,
     env: &[(String, String)],
 ) -> ExecResult {
+    execute(cmd, args, cwd, timeout_ms, env, None).await
+}
+
+/// The PCB engine inherits no credentials, and has its own timeout message.
+pub async fn run_isolated(
+    cmd: &str,
+    args: &[String],
+    cwd: &Path,
+    timeout_ms: u64,
+    env: &[(String, String)],
+    timeout_message: &str,
+) -> ExecResult {
+    execute(cmd, args, cwd, timeout_ms, env, Some(timeout_message)).await
+}
+
+async fn execute(
+    cmd: &str,
+    args: &[String],
+    cwd: &Path,
+    timeout_ms: u64,
+    env: &[(String, String)],
+    isolated_timeout: Option<&str>,
+) -> ExecResult {
     let mut command = Command::new(cmd);
+    if isolated_timeout.is_some() {
+        command.env_clear();
+    }
     command
         .args(args)
         .current_dir(cwd)
@@ -74,6 +100,7 @@ pub async fn run(
         )
     })
     .await;
+    let timed_out = result.is_err();
     let (code, failure) = match result {
         Ok(Ok((status, _, _))) => (status.code().unwrap_or(1), None),
         Ok(Err(error)) => (1, Some(error.to_string())),
@@ -91,6 +118,11 @@ pub async fn run(
     }
     let stdout = String::from_utf8_lossy(&out).into_owned();
     let mut stderr = String::from_utf8_lossy(&err).into_owned();
+    if timed_out {
+        if let Some(message) = isolated_timeout {
+            stderr = message.into();
+        }
+    }
     if code != 0 && stderr.is_empty() {
         stderr = failure.unwrap_or_else(|| format!("Command failed: {cmd} {}\n", args.join(" ")));
     }

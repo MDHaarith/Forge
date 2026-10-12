@@ -75,7 +75,7 @@ say "Setting up Forge on ${ID^} ${VERSION_ID} for: $DOMAINS"
 
 # --- 2. System packages --------------------------------------------------------------
 
-PACKAGES=(git nodejs nodejs-npm curl xdg-utils)
+PACKAGES=(git rust cargo nodejs nodejs-npm curl xdg-utils)
 want 3d && PACKAGES+=(blender python3-numpy openscad librsvg2-tools flatpak)
 want pcb && PACKAGES+=(kicad)
 want chip && PACKAGES+=(iverilog yosys)
@@ -83,13 +83,13 @@ want chip && PACKAGES+=(iverilog yosys)
 want rf && PACKAGES+=(gcc gcc-c++ cmake git boost-devel tinyxml-devel hdf5-devel CGAL-devel vtk-devel
   python3-pip python3-setuptools python3-wheel python3-setuptools_scm python3-Cython python3-numpy python3-h5py python3-matplotlib)
 # What building the desktop app (Tauri) needs.
-[ "$DESKTOP" = 1 ] && PACKAGES+=(gcc rust cargo webkit2gtk4.1-devel openssl-devel librsvg2-devel libxdo-devel)
+[ "$DESKTOP" = 1 ] && PACKAGES+=(gcc webkit2gtk4.1-devel openssl-devel librsvg2-devel libxdo-devel)
 
 say "Installing packages with dnf"
 want pcb && echo "(KiCad with its libraries is a large download, about 1-2 GB.)"
 run $SUDO dnf install -y "${PACKAGES[@]}"
 
-# Forge needs Node.js 22.18 or newer, for built-in TypeScript support.
+# The UI build and PCB engine need Node.js 22.18 or newer.
 node_ok() { "$1" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=18)?0:1)' 2>/dev/null; }
 find_node() { for n in node node-24 node-22; do command -v "$n" >/dev/null && node_ok "$(command -v "$n")" && { command -v "$n"; return; }; done; }
 NODE="$(find_node || true)"
@@ -133,12 +133,13 @@ say "Installing Forge's dependencies, its built-in PCB engine, and building the 
 run "$NPM" --prefix "$REPO" ci --no-audit --no-fund
 run "$NPM" --prefix "$REPO" run pcb-engine
 run "$NPM" --prefix "$REPO" run build
+run cargo build --release -p forge-server --manifest-path "$REPO/Cargo.toml"
 
 if [ "$DESKTOP" = 1 ]; then
   say "Building the Forge desktop app (the first build compiles for several minutes)"
   run "$NPM" --prefix "$REPO" run desktop:build
   VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$REPO/package.json")"
-  run $SUDO dnf install -y "$REPO/desktop/target/release/bundle/rpm/Forge-$VERSION-1.$(uname -m).rpm"
+  run $SUDO dnf install -y "$REPO/target/release/bundle/rpm/Forge-$VERSION-1.$(uname -m).rpm"
 fi
 
 # --- 5. Settings, service, command and launcher --------------------------------------
@@ -146,11 +147,13 @@ fi
 CONFIG="$HOME/.config/forge"
 ENV_FILE="$CONFIG/env"
 if [ ! -e "$ENV_FILE" ]; then
-  say "Creating $ENV_FILE for your API key and settings"
+  say "Creating $ENV_FILE for your settings and optional provider keys"
   write "$ENV_FILE" <<'EOF'
 # Forge settings, read when Forge starts. Keep this file private (chmod 600).
-# Get a key at https://console.anthropic.com/ and paste it after the = sign:
-ANTHROPIC_API_KEY=
+# Claude uses your Claude Code CLI login: run claude to sign in.
+# FORGE_CLAUDE=/path/to/claude     # override the claude executable on PATH
+# FORGE_NODE=/usr/bin/node         # Node is only needed at runtime for pcb_build
+# OPENAI_API_KEY=                  # optional key for another provider
 # FORGE_HOME=~/Forge          # where projects are stored
 # FORGE_MODEL=claude-opus-5-5
 # FORGE_ALLOW_COMMANDS=1      # let the agent run programs in a project folder
@@ -170,7 +173,11 @@ Documentation=file://$REPO/README.md
 
 [Service]
 WorkingDirectory=$REPO
-ExecStart=$NODE $REPO/server/index.ts
+Environment=FORGE_APP_DIR=$REPO
+Environment=FORGE_NODE=$NODE
+# systemd user services do not get ~/.local/bin, where the Claude Code CLI installs itself.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=$REPO/target/release/forge-server
 Restart=on-failure
 
 [Install]
@@ -239,8 +246,8 @@ fi
 
 say "Done"
 cat <<EOF
-1. Add your Anthropic API key to $ENV_FILE
-   (without one, Forge runs an offline demo).
+1. Sign in with the Claude Code CLI (claude), or add another provider's key to $ENV_FILE
+   (without an available provider, Forge runs an offline demo).
 2. Start Forge from the app menu, or run: forge (opens it in your browser)
    (if 'forge' is not found, log out and back in so ~/.local/bin is on your PATH).
 3. Optional: start Forge at login with: forge autostart on

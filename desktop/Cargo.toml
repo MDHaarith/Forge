@@ -10,5 +10,7 @@ publish = false
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+forge-server = { path = "../server" }
+tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 tauri = { version = "2", features = [] }
 serde_json = "1"

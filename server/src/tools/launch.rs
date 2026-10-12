@@ -133,8 +133,8 @@ pub fn launch_args(
         },
         Resolved::Flatpak { id, command } => {
             let mut launch = vec!["run".into(), format!("--command={command}")];
-            launch.extend(rw.iter().map(|d| format!("--filesystem={d}")));
-            launch.extend(ro.iter().map(|d| format!("--filesystem={d}:ro")));
+            launch.extend(rw.iter().map(|d| format!("--filesystem={}", super::paths::lexical_path(std::path::Path::new(d)).display())));
+            launch.extend(ro.iter().map(|d| format!("--filesystem={}:ro", super::paths::lexical_path(std::path::Path::new(d)).display())));
             launch.extend(env.iter().map(|(k, v)| format!("--env={k}={v}")));
             launch.push(id.clone());
             launch.extend(args);

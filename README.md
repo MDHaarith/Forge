@@ -20,16 +20,17 @@ scripts/setup-fedora.sh            # or: --only "3d chip", --dry-run to preview
 
 The script:
 
-- installs Node.js, git, Blender, OpenSCAD, rsvg-convert (PDF drawings), KiCad, Icarus Verilog and Yosys with `dnf`
+- installs Rust, Cargo, Node.js, git, Blender, OpenSCAD, rsvg-convert (PDF drawings), KiCad, Icarus Verilog and Yosys with `dnf`
   (KiCad is a large download; leave it out with `--only "3d chip"`);
 - installs **FreeCAD from Flathub** for your user, because Fedora's repositories have no FreeCAD
   package. Forge runs it inside its Flatpak sandbox and gives it access to the project folder only;
 - with `--with-rf` (or `--only rf` later), builds the openEMS field solver from source into
   `~/opt/openEMS` for antenna simulation (about 20 minutes);
 - builds Forge and its built-in PCB engine, and adds a `forge` command, an app-menu launcher, and a systemd user service;
-- creates `~/.config/forge/env` (private, mode 600) for your API key and settings.
+- creates `~/.config/forge/env` (private, mode 600) for your settings and optional provider keys.
 
-Then put your key in `~/.config/forge/env` and start Forge from the app menu or with `forge`.
+Then sign in with the Claude Code CLI (`claude`), or put another provider's key in
+`~/.config/forge/env`, and start Forge from the app menu or with `forge`.
 
 | Command | Does |
 |---|---|
@@ -49,53 +50,66 @@ scripts/setup-fedora.sh --desktop    # adds the Rust and WebKitGTK build package
 
 The desktop app (Tauri, `forge-desktop`, "Forge" in the app menu) opens Forge in its own window
 instead of the browser. It starts a private Forge server on a free local port, so it never clashes
-with the `forge` service, and stops that server when the window closes. It reads the same
-`~/.config/forge/env`. The RPM requires `nodejs(engine) >= 22.18`, git and WebKitGTK, and
-recommends Blender, OpenSCAD, KiCad, Icarus Verilog and Yosys.
+with the `forge` service, and runs that Rust server in-process until the app exits. It reads the same
+`~/.config/forge/env`. The RPM requires git and WebKitGTK, and recommends Node.js for
+`pcb_build`, Blender, OpenSCAD, KiCad, Icarus Verilog and Yosys. The window starts without Node.
 
-To build the RPM yourself: `npm ci && npm run desktop:build` (output in
-`desktop/target/release/bundle/rpm/`). `npm run desktop` runs a development build from the repository.
+To build the RPM yourself: `npm ci && npm run pcb-engine && npm run desktop:build` (output in
+`target/release/bundle/rpm/`). The PCB engine is optional; leave out `npm run pcb-engine` if
+you do not need `pcb_build`. `npm run desktop` runs a development build from the repository;
+run `sh scripts/stage-app.sh` once first so Tauri's resource folder exists.
 
 ## Run it anywhere else
 
-Requires Node.js 22.18 or newer and git.
+Requires the Rust toolchain (Rust and Cargo), Node.js 22.18 or newer for the UI build,
+and git. Node is only needed at runtime for `pcb_build`.
 
 ```sh
 npm install
-export ANTHROPIC_API_KEY=...   # optional: without it Forge runs an offline demo
+claude                         # optional: sign in with the Claude Code CLI
 npm start                      # builds the UI and serves http://127.0.0.1:4317
 ```
 
 Settings can also go in `~/.config/forge/env` (or the file named by `FORGE_ENV_FILE`); variables
 already set in the environment take precedence.
 
+Cargo runs use the repository's app folder, including release builds. A standalone release
+binary uses its own folder; set `FORGE_APP_DIR` when the UI and runners live elsewhere.
+
 Projects live in `~/Forge/<name>` (override with `FORGE_HOME`). Try a project with
 "Design a 60 × 40 mm enclosure with M3 standoffs", then click the STL to orbit it.
 
-For development, `npm run dev` serves the UI with hot reload on Vite's port and restarts
-the server on changes. `npm test` runs the test suite, `npm run typecheck` the type check.
+For development, `npm run dev` starts the Rust server and serves the UI with hot reload
+on Vite's port. Restart it after backend changes. `cargo test --workspace` (or `npm test`)
+runs the test suite; `npm run typecheck` checks the UI and Vite config.
 
 | Variable | Effect |
 |---|---|
-| `ANTHROPIC_API_KEY` | Use Claude. An `ant auth login` profile works too. |
-| `FORGE_PROVIDER` | Provider to start with: `claude`, `openai`, `openrouter`, `deepseek`, `qwen`, `glm`, `opencode` or `offline`. Default: Claude when it has credentials, else offline. |
+| `FORGE_CLAUDE` | Path to the Claude Code CLI; defaults to `claude` on `PATH`. Uses that CLI's login. |
+| `FORGE_NODE` | Path to Node for `pcb_build`; defaults to `node` on `PATH`. |
+| `FORGE_PROVIDER` | Provider to start with: `claude`, `openai`, `openrouter`, `deepseek`, `qwen`, `glm`, `opencode` or `offline`. Default: Claude when its CLI is available, else offline. |
 | `FORGE_MODEL` | Model ID for the startup provider (default `claude-opus-5-5`). |
 | `FORGE_OFFLINE=1` | Force the offline demo even with credentials. |
 | `FORGE_ALLOW_COMMANDS=1` | Let the agent run programs in the project folder (`run_command`). Off by default. |
 | `FORGE_HOME` | Where projects are stored. |
+| `FORGE_APP_DIR` | Folder holding `dist/`, `server/runners/` and `engines/pcb/dist/` for a standalone binary. |
 | `FORGE_BLENDER`, `FORGE_FREECAD` | Path to `blender` / `freecadcmd` when they are not on `PATH` (e.g. an AppImage). A native install is preferred over a Flatpak. |
 | `FORGE_NO_FLATPAK=1` | Ignore Flatpak installs of Blender and FreeCAD. |
 | `PORT` | Server port (default 4317). |
 
 ## Models and subscriptions
 
-Pick the provider and model from the dropdown in the top bar; the list shows every provider with a
-key in `~/.config/forge/env`, and the model box suggests what the provider offers. Keys are only
-read from that file or the environment, never sent from the page.
+Pick the provider and model from the dropdown in the top bar. Claude uses your installed
+**Claude Code CLI** (`claude` on `PATH`, or `FORGE_CLAUDE`) and its existing login, with a
+subscription or an API key. Forge needs no `ANTHROPIC_API_KEY` and offers no separate Claude
+login. Forge's tools reach Claude Code over MCP, and the next turn resumes its saved session.
+
+The list also shows providers with a key in `~/.config/forge/env`, and the model box suggests
+what the provider offers. Keys are only read from that file or the environment, never sent
+from the page.
 
 ```sh
 # ~/.config/forge/env
-ANTHROPIC_API_KEY=...      # Claude (API key; Claude Pro/Max subscriptions cannot be used by other apps)
 OPENAI_API_KEY=...         # OpenAI
 OPENROUTER_API_KEY=...     # OpenRouter
 DEEPSEEK_API_KEY=...       # DeepSeek
@@ -115,6 +129,9 @@ FORGE_QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1   # mainla
 Check the endpoint your plan's page gives you. Every provider other than Claude goes through its
 OpenAI-compatible chat API, without streaming, so a long reply appears when it is complete.
 
+Anthropic does not allow third-party products to offer claude.ai login. Recheck its terms
+before distributing Forge.
+
 ## Capabilities
 
 The right-hand panel shows which tools are live. A tool that wraps a program stays hidden
@@ -131,7 +148,7 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+, native or Flatpak `org.blender.Blender` |
 | 3D: quick | `cad_model` (STL + OpenSCAD + JSON from primitives) | – |
 | | `openscad_render` | [OpenSCAD](https://openscad.org) |
-| PCB | `pcb_build`: board from tscircuit code → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM | built in (`npm run pcb-engine`) |
+| PCB | `pcb_build`: board from tscircuit code → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM | Node.js and the built-in engine (`npm run pcb-engine`) |
 | | `design_assemble`: boards and enclosure parts in one 3D assembly, with a fit check | – |
 | RF | `rf_calc`: impedance and trace width (microstrip, coplanar, stripline, differential) on fab stackups, antenna matching networks, link budget and range | – |
 | | `rf_antenna_sim`: full-wave simulation of the board's antenna → S11, bandwidth, impedance, efficiency, gain pattern, Touchstone file | openEMS (`--with-rf`) |
@@ -147,13 +164,13 @@ open. **Blender** is for visual work: organic shapes, materials, scenes and rend
 
 Both work the same way. The agent writes a Python script into the project (`cad/*.py` for
 FreeCAD, `art/*.py` for Blender), Forge runs it in the real program with no window
-(`server/tools/runners/`), and the exported files appear in the project and the viewer. The
+(`server/runners/`), and the exported files appear in the project and the viewer. The
 script stays in git, so a design is reproducible and can be edited and re-run.
 
 - FreeCAD scripts get `App`, `Part`, `Vector`, a new document `doc` and the `forge` helpers, and
   set `result = <shape>` or add objects to `doc` (PartDesign bodies and constrained sketches
   work too). Forge reports whether the solid is valid, its volume and its bounding box.
-- The `forge` helpers (`server/tools/runners/forge_cad.py`) know ISO metric hardware:
+- The `forge` helpers (`server/runners/forge_cad.py`) know ISO metric hardware:
   `forge.hole(part, x, y, "M3", kind="counterbore")` cuts a clearance hole with the right
   counterbore for an ISO 4762 screw; `kind` can also be `"countersink"`, `"tap"` (tap drill)
   or `"insert"` (heat-set insert). There are also `rounded_box`, `enclosure`, `lid`,
@@ -165,7 +182,7 @@ script stays in git, so a design is reproducible and can be edited and re-run.
   linear, polar and path patterns, mirror, scale and split; ribs, slots, coil springs, embossed
   and engraved text; modelled ISO metric threads (`thread`, `threaded_hole`); and sheet-metal
   parts bent from a profile with their flat pattern.
-- Blender scripts get their own `forge` helpers (`server/tools/runners/forge_art.py`): bevel,
+- Blender scripts get their own `forge` helpers (`server/runners/forge_art.py`): bevel,
   solidify, subdivision, array, mirror, exact booleans, screw/lathe, decimate, remesh,
   shrinkwrap, displace, twist/bend deforms and more as modifiers; face extrude, inset and bisect
   as mesh edits; `apply_all` to bake them; and metal, plastic, rubber, glass, ceramic and
@@ -205,7 +222,8 @@ in red and tight spots in amber, and "See-through case" makes the enclosure tran
   against the case's triangles, so the agent can move a connector or raise a lid until it fits.
 
 The engine has its own `engines/pcb/package.json` (tscircuit needs TypeScript 5, Forge uses 7);
-`npm run pcb-engine` installs and bundles it, and the setup script and desktop build do this for you.
+`npm run pcb-engine` installs and bundles it, and the setup script does this for you.
+The desktop build includes the engine if it is already built.
 
 ## Radios and antennas
 
@@ -237,37 +255,37 @@ openEMS is not packaged for Fedora; `scripts/setup-fedora.sh --with-rf` builds i
 ## Layout
 
 ```
-server/
-  index.ts        HTTP API (localhost only) and static UI
-  env.ts          loads ~/.config/forge/env before anything reads settings
-  platform.ts     distro detection and per-distro install commands (dnf first)
-  agent.ts        agent loop: model ⇄ tools, append-only history, input validation
-  model.ts        Claude (streaming, adaptive thinking, refusal fallback) and the offline demo model
-  projects.ts     project folders, git init, saved conversations (.state/)
-  cad/mesh.ts     mesh kernel: box/cylinder/sphere → STL and OpenSCAD
-  tools/script3d.ts         Blender and FreeCAD build tools
-  tools/freecad.ts          FreeCAD inspection and technical drawings
-  open.ts                   "Open in FreeCAD/Blender/KiCad" for project files
-  tools/launch.ts           runs a program natively or as a Flatpak with only the folders it needs
-  tools/runners/*.py        scripts that run inside Blender / FreeCAD; forge_cad.py is the helper library
-  tools/board.ts            pcb_build: runs the PCB engine in a sandboxed Node
-  tools/design.ts, fit.ts   design_assemble and the board-in-enclosure fit check
-  tools/rf.ts, rfmath.ts    rf_calc (transmission lines, matching, link budget) and rf_antenna_sim
-  tools/runners/openems_antenna.py   circuit.json → openEMS model, S11, far field, plots
-  tools/          one file per domain; registry.ts lists them all
-desktop/          Tauri desktop app (Rust): starts the server, shows the UI, builds the RPM
+server/src/
+  main.rs, http.rs          standalone server, localhost HTTP API and static UI
+  lib.rs, env.rs            shared server entrypoint and ~/.config/forge/env settings
+  platform.rs              distro detection and per-distro install commands (dnf first)
+  agent.rs                 agent loop: model ⇄ tools, append-only history, input validation
+  model.rs                 OpenAI-compatible providers and the offline demo model
+  claude_code.rs, mcp.rs    Claude Code CLI turns and Forge's HTTP MCP endpoint
+  projects.rs              project folders, git init, saved conversations (.state/)
+  tools/mesh.rs            mesh kernel: box/cylinder/sphere → STL and OpenSCAD
+  tools/script3d.rs         Blender build tools
+  tools/freecad.rs          FreeCAD builds, inspection and technical drawings
+  open.rs                  "Open in FreeCAD/Blender/KiCad" for project files
+  tools/launch.rs           runs a program natively or as a Flatpak with only the folders it needs
+  tools/board.rs            pcb_build: runs the PCB engine in a sandboxed Node
+  tools/design.rs, fit.rs   design_assemble and the board-in-enclosure fit check
+  tools/rf.rs, rfmath.rs    rf_calc (transmission lines, matching, link budget) and rf_antenna_sim
+  tools/                   one file per domain; mod.rs lists them all
+server/runners/*.py        scripts inside Blender / FreeCAD / openEMS; forge_cad.py is the CAD helper library
+server/tests/             Rust tests with scripted models and fake Claude CLIs (no network or API key)
+desktop/          Tauri desktop app (Rust): runs the server in-process, shows the UI, builds the RPM
 engines/pcb/      the PCB engine: tscircuit, its exporters and runner.mjs, bundled to dist/pcb-engine.mjs
 web/              UI: projects, chat with tool timeline, file preview, three.js STL/GLB viewer, render images
 web/design.ts     Design view: PCB/schematic beside the 3D assembly, cross-selection, fit highlights
 scripts/setup-fedora.sh   Fedora installer: dnf packages, FreeCAD Flatpak, build, forge command, service, launcher
-scripts/stage-app.sh      gathers the server, built UI and runtime packages the desktop app bundles
-tests/            node:test suites (no network, no API key needed)
+scripts/stage-app.sh      gathers the built UI, Python runners and optional PCB engine the desktop app bundles
 ```
 
 ## Adding a capability
 
-Write a `ForgeTool` (see `server/tools/types.ts`) with a name, description, JSON schema and
-`run` function; set `requires` if it wraps a program; append it in `server/tools/registry.ts`.
+Write a `Tool` (see `server/src/tools/mod.rs`) with a name, description, JSON schema and
+`run` function; set `requires` if it wraps a program; append it in `all_tools` there.
 The agent, the capabilities panel and input validation pick it up automatically.
 
 ## Roadmap
@@ -280,4 +298,4 @@ The agent, the capabilities panel and input validation pick it up automatically.
 4. PCB: export the built-in engine's boards to KiCad; manual part moves in the Design view.
 5. Chip flow: OpenLane on the SkyWater 130 PDK through to GDS; Tiny Tapeout submission template.
 6. Cross-domain links: firmware pin map from the schematic; enclosure generated straight from the board data.
-7. MCP: expose Forge tools as an MCP server and load third-party MCP servers as capabilities.
+7. MCP: load third-party MCP servers as capabilities (Forge's tools already reach Claude over MCP).
