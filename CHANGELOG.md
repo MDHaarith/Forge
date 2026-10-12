@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 — 2026-10-12
+
+- Hole detection no longer reports the rounded inside corners of a pocket as holes, or a small edge chamfer as a countersink.
+- Counterbore depth is measured from the surface, so a chamfered mouth does not shorten it.
+- Blind 3.6 mm holes are identified as M2.5 insert holes, not loose M3 clearance.
+- Drawings place hole tags clear of other holes, tags and the part outline, and size hole-table columns to their text.
+
 ## 0.5.0 — 2026-10-12
 
 - `forge` helper library for FreeCAD scripts: ISO clearance, counterbore, countersink, tapped and heat-set insert holes, rounded boxes, enclosures, lids, standoffs, edge fillets and chamfers, loading parts for assemblies.

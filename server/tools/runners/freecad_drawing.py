@@ -281,6 +281,28 @@ def main():
     found = forge.holes_in(shape)
     rows = []
     looks = {"Z": top, "Y": front, "X": side}
+    # Hole outlines on the sheet, so tags are put where they cover no hole and no other tag.
+    circles = []
+    for h in found:
+        view = looks.get(h["axis"])
+        if view is not None:
+            cx, cy = view.sheet(*view.to_view(V(*h["center"])))
+            r = h.get("counterbore", [h.get("countersink") or h["diameter"]])[0] / 2 * view.scale
+            circles.append((view, cx, cy, r))
+    taken = []
+
+    def clashes(box, view):
+        x0, y0, x1, y1 = box
+        l, t, r, b = view.box
+        # A tag either side of the view's outline is readable; one on the outline is not.
+        if (x0 < l < x1 or x0 < r < x1) and y1 > t and y0 < b or (y0 < t < y1 or y0 < b < y1) and x1 > l and x0 < r:
+            return True
+        for _, cx, cy, r in circles:
+            nx, ny = min(max(cx, x0), x1), min(max(cy, y0), y1)
+            if (nx - cx) ** 2 + (ny - cy) ** 2 < (r + 0.6) ** 2:
+                return True
+        return any(x0 < b[2] and b[0] < x1 and y0 < b[3] and b[1] < y1 for b in taken)
+
     for i, h in enumerate(found, 1):
         tag = f"H{i}"
         view = looks.get(h["axis"])
@@ -289,8 +311,20 @@ def main():
             centre_mark(svg, view, c, h["diameter"] / 2)
             cx, cy = view.sheet(*view.to_view(c))
             off = h.get("counterbore", [h.get("countersink") or h["diameter"]])[0] / 2 * view.scale
-            svg.line((cx + off * 0.7, cy - off * 0.7), (cx + off + 3, cy - off - 3), "thin")
-            svg.text(cx + off + 3.5, cy - off - 3.5, tag, size=2.5, anchor="start")
+            tw, th = 1.7 * len(tag) + 0.6, 2.6
+            options = []
+            for reach in (3.0, 6.0, 10.0):
+                for dx, dy in ((1, -1), (-1, -1), (1, 1), (-1, 1), (1, 0), (-1, 0), (0, -1), (0, 1)):
+                    n = math.hypot(dx, dy)
+                    ux, uy = dx / n, dy / n
+                    ex, ey = cx + ux * (off + reach), cy + uy * (off + reach)
+                    lx = ex + 0.5 if dx > 0 else ex - tw - 0.5 if dx < 0 else ex - tw / 2
+                    ly = ey - 0.4 - th if dy < 0 else ey + 0.4 if dy > 0 else ey - th / 2
+                    options.append(((cx + ux * off * 0.7, cy + uy * off * 0.7), (ex, ey), (lx, ly, lx + tw, ly + th)))
+            start, end, box = next((o for o in options if not clashes(o[2], view)), options[0])
+            taken.append(box)
+            svg.line(start, end, "thin")
+            svg.text(box[0], box[3] - 0.45, tag, size=2.5, anchor="start")
         desc = f"Ø{fmt(h['diameter'])} " + ("THRU" if h["through"] else f"↧{fmt(h['depth'])}")
         if "counterbore" in h:
             desc += f"  CBORE Ø{fmt(h['counterbore'][0])} ↧{fmt(h['counterbore'][1])}"
@@ -310,8 +344,9 @@ def main():
         lowest = max(v.box[3] for v in (front, top, side)) + 9
         if ty < lowest:
             tx, ty = tb_left, tb_top - 4 - table_h
-        cols = [10, 52, 8, 34, 26]
         heads = ["TAG", "HOLE", "AXIS", "POSITION", "FOR"]
+        # Each column as wide as its longest text at 2.3 mm (about 1.35 mm a character).
+        cols = [round(max(len(r[k]) for r in [heads] + shown) * 1.35 + 2.6, 1) for k in range(5)]
         svg.add(f'<rect class="thin" x="{tx:.2f}" y="{ty:.2f}" width="{sum(cols)}" height="{table_h:.2f}"/>')
         for j, row in enumerate([heads] + shown):
             y = ty + row_h * (j + 1)

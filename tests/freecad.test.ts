@@ -61,6 +61,23 @@ test("forge helpers cut ISO holes, and inspection identifies each one with mass 
   assert.match(out.text, /0 mm² overhangs steeper than 45°/);
 });
 
+test("rounded pocket corners and edge chamfers are not holes, and blind 3.6 mm holes are M2.5 inserts", { skip, timeout: 120_000 }, async () => {
+  const dir = await project({
+    "cad/box.py": `
+box = forge.enclosure(90, 60, 32, wall=2.4, floor=2.4, radius=5)
+box = forge.standoffs(box, forge.grid(12.5, 15, 65, 30), "M2.5", height=5, base=2.4)
+box = forge.hole(box, 45, 30, "M3", top=2.4)
+result = forge.chamfer(box, 0.4, forge.edges_at(box, 0))
+`,
+  });
+  await tool("freecad_build").run({ script: "cad/box.py", name: "box", formats: ["step"] }, { projectDir: dir });
+  const out = await tool("freecad_inspect").run({ models: ["models/box.step"] }, { projectDir: dir });
+  assert.match(out.text, /5 hole\(s\)/);
+  assert.equal((out.text.match(/Ø3\.6 5 deep along Z .*\[M2\.5 insert\]/g) ?? []).length, 4, out.text);
+  assert.match(out.text, /Ø3\.4 through along Z at \(45, 30, 2\.4\) \[M3 clearance\]/);
+  assert.doesNotMatch(out.text, /countersink/);
+});
+
 test("inspection finds interference and clearance between the parts of an assembly", { skip, timeout: 120_000 }, async () => {
   const dir = await project({
     "cad/asm.py": `

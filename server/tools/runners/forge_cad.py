@@ -278,7 +278,7 @@ def holes_in(shape, tol=1e-3):
         span = [p.dot(axis) for p in (face.BoundBox.getPoint(i) for i in range(8))]
         lo, hi = min(lo, *span), max(hi, *span)
         if isinstance(surf, Part.Cylinder):
-            groups.setdefault(key, {"axis": axis, "across": across, "cyl": [], "cone": []})["cyl"].append((surf.Radius * 2, lo, hi, face))
+            groups.setdefault(key, {"axis": axis, "across": across, "cyl": [], "cone": []})["cyl"].append((surf.Radius * 2, lo, hi, face, u1 - u0))
         else:
             groups.setdefault(key, {"axis": axis, "across": across, "cyl": [], "cone": []})["cone"].append((lo, hi, face))
 
@@ -288,6 +288,9 @@ def holes_in(shape, tol=1e-3):
             continue
         axis, across = g["axis"], g["across"]
         cyls = sorted(g["cyl"], key=lambda c: c[0])
+        # A hole goes all the way round; a rounded inside corner of a pocket is only part of a circle.
+        if sum(c[4] for c in cyls if abs(c[0] - cyls[0][0]) < tol) < 2 * math.pi - 1e-3:
+            continue
         diameter = round(cyls[0][0], 3)
         hi = max([c[2] for c in g["cyl"]] + [c[1] for c in g["cone"]])
         bore_lo = min(c[1] for c in cyls if abs(c[0] - cyls[0][0]) < tol)
@@ -307,29 +310,47 @@ def holes_in(shape, tol=1e-3):
         }
         bigger = [c for c in cyls if c[0] > cyls[0][0] + tol]
         if bigger:
-            d, blo, bhi, _ = bigger[-1]
-            hole["counterbore"] = [round(d, 3), round(bhi - blo, 3)]
-        if g["cone"]:
-            clo, chi, cface = g["cone"][0]
-            hole["countersink"] = round(max(e.Curve.Radius for e in cface.Edges if isinstance(e.Curve, Part.Circle)) * 2, 3) if any(isinstance(e.Curve, Part.Circle) for e in cface.Edges) else None
-        hole["fits"] = describe_diameter(diameter)
+            d, blo = bigger[-1][:2]
+            # Measured from the surface, so a chamfer at the mouth does not shorten it.
+            hole["counterbore"] = [round(d, 3), round(hi - blo, 3)]
+        for _, _, cface in g["cone"]:
+            circles = [e.Curve.Radius * 2 for e in cface.Edges if isinstance(e.Curve, Part.Circle)]
+            if not circles:
+                continue
+            small, big = min(circles), max(circles)
+            # A countersink starts at the bore and is wide enough for a screw head; a narrower
+            # cone is an edge break (chamfer), which is not a feature of the hole.
+            if abs(small - diameter) < 0.05 and (big - small) / 2 >= 0.25 * diameter:
+                hole["countersink"] = round(big, 3)
+        hole["fits"] = describe_diameter(diameter, through)
         found.append(hole)
     found.sort(key=lambda h: (h["axis"], -h["center"][2], h["center"][1], h["center"][0]))
     return found
 
 
-def describe_diameter(d, tol=0.02):
-    """What a hole diameter is for, if it matches a standard size (e.g. 'M3 clearance')."""
-    for size, drill in TAP_DRILL.items():
-        if abs(drill - d) < tol:
-            return f"{size} tap"
-    for size, fits in CLEARANCE.items():
-        for fit, i in FITS.items():
-            if abs(fits[i] - d) < tol:
-                return f"{size} clearance" + ("" if fit == "normal" else f" ({fit})")
-    for size, (hole_d, _) in INSERT.items():
-        if abs(hole_d - d) < tol:
-            return f"{size} insert"
+def describe_diameter(d, through=True, tol=0.02):
+    """What a hole diameter is for, if it matches a standard size (e.g. 'M3 clearance').
+
+    Some sizes mean two things (3.6 mm is a loose M3 clearance and an M2.5 insert hole), so a
+    blind hole is matched to inserts before clearances.
+    """
+    def tap():
+        return next((f"{size} tap" for size, drill in TAP_DRILL.items() if abs(drill - d) < tol), None)
+
+    def insert():
+        return next((f"{size} insert" for size, (hole_d, _) in INSERT.items() if abs(hole_d - d) < tol), None)
+
+    def clear():
+        for size, fits in CLEARANCE.items():
+            for fit, i in FITS.items():
+                if abs(fits[i] - d) < tol:
+                    return f"{size} clearance" + ("" if fit == "normal" else f" ({fit})")
+        return None
+
+    for match in (tap, clear, insert) if through else (tap, insert, clear):
+        found = match()
+        if found:
+            return found
     return None
 
 
