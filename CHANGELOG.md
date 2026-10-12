@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 — 2026-10-12
+
+- `rf_calc` line: impedance or trace width for microstrip, grounded coplanar waveguide, stripline and differential pairs, on JLCPCB stackups or any height and permittivity, with the wavelength on the line.
+- `rf_calc` match: L matching networks from an antenna's impedance to 50 ohm, with E24 part values and the return loss they achieve.
+- `rf_calc` link: link budget and range for free space, outdoor and indoor paths.
+- `pcb_build` documents antennas (2.4 GHz monopole, inverted-F, folded dipole), keepouts, copper pours and differential pairs, and the agent designs RF boards with them.
+- Copper pours are generated again (the bundled engine now finds its geometry library), and engine steps that fail are reported as errors instead of being skipped silently.
+- `pcb_build` lists the board's copper pours and keepout areas.
+
 ## 0.6.0 — 2026-10-12
 
 - Built-in PCB engine (tscircuit, `npm run pcb-engine`): `pcb_build` turns a board written as code into an autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place and a JLCPCB BOM, with no KiCad needed.

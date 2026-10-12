@@ -75,6 +75,8 @@ Write the board first with write_file as pcb/<name>.tsx: a default-exported Reac
   <chip name="U1" footprint="soic8" pinLabels={{ pin1: "VCC", pin8: "GND" }} /> for ICs (footprints: soic8, sot23, sot23_5, qfn20, tssop16, dip8, bga64 ...) and <pinheader name="J1" pinCount={4} pitch="2.54mm" />, <hole diameter="3.2mm" pcbX={..} pcbY={..} /> for mounting holes
   <trace from=".R1 > .pin2" to=".LED1 > .anode" /> connects ports; <trace from=".U1 > .VCC" to="net.VCC" /> joins a named net; <net name="GND" /> declares one
   pcbX/pcbY place a part in mm, pcbRotation turns it, layer="bottom" puts it underneath. A <board> also takes outline={[{x,y},...]} for a custom shape, layers={4} and thickness="1.6mm".
+  Ground and RF: <copperpour connectsTo="net.GND" layer="bottom" /> pours a ground plane (one per layer); <keepout pcbX={..} pcbY={..} width="10mm" height="6mm" shape="rect" /> keeps copper out; <trace ... thickness="0.35mm" /> sets a trace width (use rf_calc for a 50 ohm width); <differentialpair positiveConnection=".U1 > .DP" negativeConnection=".U1 > .DN" targetDifferentialImpedance="90ohm" /> pairs USB/Ethernet lines.
+  Antennas: <antenna name="ANT1" antennaShape="2.4ghz_inverted_f" /> generates a printed 2.4 GHz antenna with its own keepout (shapes: 2.4ghz_quarter_wave_monopole, 2.4ghz_meandered_monopole, 2.4ghz_inverted_f, 2.4ghz_meandered_inverted_f, 2.4ghz_folded_dipole); .pin1 is the feed; .pin2 is the ground return, a plated hole that joins a bottom ground pour (connect it to net.GND). Place it on a board edge with no ground copper under or beside it, and feed it through a pi matching network (three 0402 footprints) so it can be tuned after measurement. For a first product prefer a pre-certified radio module (e.g. ESP32-C3-MINI) whose antenna and certification are already done.
 Other .tsx files in the same folder can be imported for reusable blocks. The tool reports the board size, parts, traces, vias and every error (unroutable traces, overlapping parts, bad connections): fix errors and rebuild before calling the board done.
 Outputs: pcb/<name>-pcb.svg, pcb/<name>-schematic.svg, pcb/<name>.glb (3D), pcb/<name>.circuit.json, pcb/<name>.board.json (part boxes for design_assemble) and fab/<name>/ with Gerbers, PTH/NPTH drill files, pick-and-place and a BOM in the format JLCPCB accepts.`,
     input_schema: {
@@ -114,6 +116,8 @@ Outputs: pcb/<name>-pcb.svg, pcb/<name>-schematic.svg, pcb/<name>.glb (3D), pcb/
         `${parts.length} part(s): ${parts.slice(0, 60).join(", ")}${parts.length > 60 ? " …" : ""}`,
         `${res.connections} connection(s) and ${res.nets} named net(s), routed as ${res.traces} trace(s) with ${res.vias} via(s); ${res.holes} hole(s).`,
       ];
+      const pours = (res.pours as string[] | undefined) ?? [];
+      if (pours.length || res.keepouts) lines.push(`Copper pours: ${pours.length ? pours.join(", ") : "none"}; ${res.keepouts ?? 0} keepout area(s).`);
       if (errors.length) lines.push(`${errors.length} ERROR(S), fix them and rebuild:`, ...errors.slice(0, 30).map((e) => `  ${e}`));
       else lines.push("No errors: every connection is routed.");
       if (warnings.length) lines.push("Warnings:", ...warnings.slice(0, 20).map((w) => `  ${w}`));

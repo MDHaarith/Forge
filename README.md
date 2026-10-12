@@ -102,6 +102,7 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | | `openscad_render` | [OpenSCAD](https://openscad.org) |
 | PCB | `pcb_build`: board from tscircuit code → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM | built in (`npm run pcb-engine`) |
 | | `design_assemble`: boards and enclosure parts in one 3D assembly, with a fit check | – |
+| RF | `rf_calc`: impedance and trace width (microstrip, coplanar, stripline, differential) on fab stackups, antenna matching networks, link budget and range | – |
 | | `pcb_drc`, `pcb_export_fab` for KiCad projects (Gerbers + drill for JLCPCB/PCBWay) | [KiCad 8+](https://www.kicad.org) `kicad-cli` |
 | Chip | `chip_simulate` | Icarus Verilog |
 | | `chip_synthesize` | Yosys |
@@ -178,6 +179,7 @@ server/
   tools/runners/*.py        scripts that run inside Blender / FreeCAD; forge_cad.py is the helper library
   tools/board.ts            pcb_build: runs the PCB engine in a sandboxed Node
   tools/design.ts, fit.ts   design_assemble and the board-in-enclosure fit check
+  tools/rf.ts, rfmath.ts    rf_calc: transmission lines, matching, link budget
   tools/          one file per domain; registry.ts lists them all
 desktop/          Tauri desktop app (Rust): starts the server, shows the UI, builds the RPM
 engines/pcb/      the PCB engine: tscircuit, its exporters and runner.mjs, bundled to dist/pcb-engine.mjs

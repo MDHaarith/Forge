@@ -169,6 +169,16 @@ test("pcb_build routes a board and writes its views, 3D model and fab files", { 
   assert.equal((await fs.readFile(path.join(dir, "pcb/led.glb"))).subarray(0, 4).toString(), "glTF");
 });
 
+test("pcb_build pours a ground plane", { skip: noEngine, timeout: 120_000 }, async () => {
+  const dir = await project({
+    "pcb/gnd.tsx": LED_BOARD.replace("</board>", `  <trace from=".J1 > .pin2" to="net.GND" />\n    <copperpour connectsTo="net.GND" layer="bottom" />\n  </board>`),
+  });
+  const out = await build.run({ source: "pcb/gnd.tsx" }, { projectDir: dir });
+  assert.match(out.text, /Copper pours: GND on bottom/);
+  assert.doesNotMatch(out.text, /engine_step_error/);
+  assert.match(await fs.readFile(path.join(dir, "fab/gnd/gnd-B_Cu.gbr"), "utf8"), /G36/);
+});
+
 test("pcb_build reports board errors and keeps the board code sandboxed", { skip: noEngine, timeout: 120_000 }, async () => {
   const outside = await fs.mkdtemp(path.join(os.tmpdir(), "forge-outside-"));
   process.env.FORGE_TEST_SECRET = "s3cret";

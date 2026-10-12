@@ -30,6 +30,16 @@ if (!args.lookup_parts) {
 const warn = console.warn;
 console.warn = (...a) => String(a[0]).startsWith("Failed to create temporary font file") || warn(...a);
 
+// tscircuit only logs a failed background step (copper pours, part lookups); keep them so the board is not reported clean.
+const engineErrors = [];
+const error = console.error;
+console.error = (...a) => {
+  const text = String(a[0]);
+  const m = text.match(/^Async effect error in \S+ "([^"]+)":\n(?:\w*Error: )?(.*)/);
+  if (m) engineErrors.push(`engine_step_error: ${m[1]} failed: ${m[2]}`);
+  else error(...a);
+};
+
 const { runTscircuitCode } = await import("tscircuit");
 const { convertCircuitJsonToPcbSvg, convertCircuitJsonToSchematicSvg } = await import("circuit-to-svg");
 const gerber = await import("circuit-json-to-gerber");
@@ -158,7 +168,7 @@ async function main() {
   const fsMap = sourceFiles(source);
   const json = await runTscircuitCode(fsMap, { mainComponentPath: source.split(path.sep).join("/") });
 
-  const errors = json.filter((e) => /_error$/.test(e.type)).map((e) => `${e.type}: ${e.message ?? e.error_type ?? ""}`.trim());
+  const errors = [...json.filter((e) => /_error$/.test(e.type)).map((e) => `${e.type}: ${e.message ?? e.error_type ?? ""}`.trim()), ...engineErrors];
   const warnings = json.filter((e) => /_warning$/.test(e.type)).map((e) => `${e.type}: ${e.message ?? ""}`.trim());
   const board = json.find((e) => e.type === "pcb_board");
   if (!board) {
@@ -219,6 +229,8 @@ async function main() {
   write(path.join(fab, `${name}-bom.csv`), bom(json));
 
   const count = (type) => json.filter((e) => e.type === type).length;
+  const netName = new Map(json.filter((e) => e.type === "source_net").map((n) => [n.source_net_id, n.name]));
+  const pours = [...new Set(json.filter((e) => e.type === "pcb_copper_pour").map((p) => `${netName.get(p.source_net_id) ?? "no net"} on ${p.layer}`))];
   const copper = new Set(json.filter((e) => e.type === "pcb_trace").flatMap((t) => t.route.map((p) => p.layer).filter(Boolean)));
   finish("FORGE_RESULT", {
     files,
@@ -229,6 +241,8 @@ async function main() {
     traces: count("pcb_trace"),
     vias: count("pcb_via"),
     holes: count("pcb_plated_hole") + count("pcb_hole"),
+    pours,
+    keepouts: count("pcb_keepout"),
     errors,
     warnings,
     schematicNote,
