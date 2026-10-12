@@ -32,6 +32,9 @@ const DOMAINS: Record<string, string> = {
   chip: "Chip",
 };
 
+const BINARY = new Set(["step", "stp", "fcstd", "blend", "obj", "zip", "vvp"]);
+const PREVIEW_ORDER = ["png", "glb", "stl"];
+
 let project: string | null = localStorage.getItem("forge.project");
 let closeViewer: (() => void) | null = null;
 const toolCards = new Map<string, HTMLElement>();
@@ -117,10 +120,20 @@ async function preview(file: string) {
   const host = $("preview");
   const res = await fetch(`/api/projects/${project}/file?path=${encodeURIComponent(file)}`);
   if (!res.ok) return host.replaceChildren(el("div", "empty", "Could not open this file."));
-  if (file.toLowerCase().endsWith(".stl")) {
+  const ext = file.toLowerCase().split(".").pop() ?? "";
+  if (ext === "stl" || ext === "glb") {
     // three.js is large, so the viewer loads the first time a model is opened.
-    const { showStl } = await import("./viewer.ts");
-    closeViewer = showStl(host, await res.arrayBuffer());
+    const { showModel } = await import("./viewer.ts");
+    closeViewer = await showModel(host, await res.arrayBuffer(), ext);
+  } else if (["png", "jpg", "jpeg", "webp"].includes(ext)) {
+    const url = URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: `image/${ext === "jpg" ? "jpeg" : ext}` }));
+    const img = el("img", "render") as HTMLImageElement;
+    img.src = url;
+    img.alt = file;
+    host.replaceChildren(img);
+    closeViewer = () => URL.revokeObjectURL(url);
+  } else if (BINARY.has(ext)) {
+    host.replaceChildren(el("div", "empty", `${file} is a binary file. Open it in its own program; Forge previews STL, GLB and images.`));
   } else {
     const text = await res.text();
     host.replaceChildren(el("pre", "code", text.length > 100_000 ? text.slice(0, 100_000) + "\n…" : text));
@@ -171,7 +184,7 @@ async function send(message: string) {
   const button = $<HTMLButtonElement>("send");
   button.disabled = true;
   button.textContent = "Working…";
-  let lastStl: string | undefined;
+  let toPreview: string | undefined;
   try {
     const res = await fetch(`/api/projects/${project}/chat`, post({ message }));
     if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.error ?? res.statusText);
@@ -187,7 +200,14 @@ async function send(message: string) {
         const event = JSON.parse(line) as AgentEvent;
         render(event);
         if (event.type === "tool_result" && event.files.length) {
-          lastStl = event.files.find((f) => f.endsWith(".stl")) ?? lastStl;
+          // Prefer a render, then a model with materials, then a plain mesh.
+          for (const ext of PREVIEW_ORDER) {
+            const hit = event.files.find((f) => f.toLowerCase().endsWith(`.${ext}`));
+            if (hit) {
+              toPreview = hit;
+              break;
+            }
+          }
           await loadFiles();
         }
       }
@@ -198,7 +218,7 @@ async function send(message: string) {
     button.disabled = false;
     button.textContent = "Send";
   }
-  if (lastStl) await preview(lastStl);
+  if (toPreview) await preview(toPreview);
 }
 
 $("composer").addEventListener("submit", (ev) => {

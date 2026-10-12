@@ -31,6 +31,7 @@ the server on changes. `npm test` runs the test suite, `npm run typecheck` the t
 | `FORGE_OFFLINE=1` | Force the offline demo even with credentials. |
 | `FORGE_ALLOW_COMMANDS=1` | Let the agent run programs in the project folder (`run_command`). Off by default. |
 | `FORGE_HOME` | Where projects are stored. |
+| `FORGE_BLENDER`, `FORGE_FREECAD` | Path to `blender` / `freecadcmd` when they are not on `PATH` (e.g. an AppImage). |
 | `PORT` | Server port (default 4317). |
 
 ## Capabilities
@@ -43,11 +44,35 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | Workspace | `list_files`, `read_file`, `write_file` | – |
 | Version control | `git_status`, `git_commit`, `git_log` | git |
 | Code | `run_command` | `FORGE_ALLOW_COMMANDS=1` |
-| 3D / mechanical | `cad_model` (STL + OpenSCAD + JSON from primitives) | – |
+| 3D: engineering | `freecad_build`: exact-dimension parts → STEP, STL, FCStd, with a validity, volume and size report | [FreeCAD](https://www.freecad.org) 0.21+ (`freecadcmd`) |
+| 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+ |
+| 3D: quick | `cad_model` (STL + OpenSCAD + JSON from primitives) | – |
 | | `openscad_render` | [OpenSCAD](https://openscad.org) |
 | PCB | `pcb_drc`, `pcb_export_fab` (Gerbers + drill for JLCPCB/PCBWay) | [KiCad 8+](https://www.kicad.org) `kicad-cli` |
 | Chip | `chip_simulate` | Icarus Verilog |
 | | `chip_synthesize` | Yosys |
+
+## Blender and FreeCAD
+
+The agent picks the 3D tool by purpose. **FreeCAD** is for engineering parts that need exact
+dimensions, holes, fits and fillets, and a STEP file a machine shop or other CAD program can
+open. **Blender** is for visual work: organic shapes, materials, scenes and rendered images.
+
+Both work the same way. The agent writes a Python script into the project (`cad/*.py` for
+FreeCAD, `art/*.py` for Blender), Forge runs it in the real program with no window
+(`server/tools/runners/`), and the exported files appear in the project and the viewer. The
+script stays in git, so a design is reproducible and can be edited and re-run.
+
+- FreeCAD scripts get `App`, `Part` and a new document `doc`, and set `result = <shape>` or add
+  objects to `doc`. Forge reports whether the solid is valid, its volume and its bounding box,
+  so the agent can check its work against the requirements.
+- Blender scripts start from an empty scene. With `render: true`, Forge adds a camera framed on
+  the subject and lights if the script did not, and renders with Cycles on the CPU so it works
+  on machines without a GPU.
+
+Linux distribution packages of Blender sometimes lack numpy (needed for GLB export) or the
+denoiser; Forge renders without denoising when that library is missing. The official
+downloads include both.
 
 ## Layout
 
@@ -58,8 +83,10 @@ server/
   model.ts        Claude (streaming, adaptive thinking, refusal fallback) and the offline demo model
   projects.ts     project folders, git init, saved conversations (.state/)
   cad/mesh.ts     mesh kernel: box/cylinder/sphere → STL and OpenSCAD
+  tools/script3d.ts         Blender and FreeCAD tools
+  tools/runners/*.py        scripts that run inside Blender / FreeCAD and export the result
   tools/          one file per domain; registry.ts lists them all
-web/              UI: projects, chat with tool timeline, file preview, three.js STL viewer
+web/              UI: projects, chat with tool timeline, file preview, three.js STL/GLB viewer, render images
 tests/            node:test suites (no network, no API key needed)
 ```
 
@@ -73,7 +100,7 @@ The agent, the capabilities panel and input validation pick it up automatically.
 
 1. Desktop shell: wrap the server and UI in Tauri.
 2. Approvals: confirm before tools that write outside `models/`, run commands, or export for manufacture.
-3. Real CAD kernel: CadQuery/OpenCascade for booleans, fillets and STEP export.
+3. FreeCAD sketches and PartDesign bodies, drawings (PDF) from the 3D part, and assemblies.
 4. PCB authoring: generate KiCad schematics and boards from a netlist the agent writes; render previews.
 5. Chip flow: OpenLane on the SkyWater 130 PDK through to GDS; Tiny Tapeout submission template.
 6. Cross-domain links: enclosure sized from the board outline, firmware pin map from the schematic.

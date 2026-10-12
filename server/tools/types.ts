@@ -24,7 +24,8 @@ export interface ForgeTool {
   name: string;
   description: string;
   input_schema: Anthropic.Tool.InputSchema;
-  requires?: string;
+  /** Program(s) the tool runs; the first one found is used. Unset for built-in tools. */
+  requires?: string | string[];
   install?: string;
   run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;
 }
