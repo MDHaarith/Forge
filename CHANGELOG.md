@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3 — 2026-10-12
+
+- The enlarged image view fits the window instead of overflowing it.
+
 ## 0.5.2 — 2026-10-12
 
 - Rebuilding a FreeCAD part no longer leaves a timestamped .FCBak backup in the project.
