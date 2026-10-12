@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Forge",
+  "mainBinaryName": "forge-desktop",
+  "version": "../package.json",
+  "identifier": "io.github.mdhaarith.forge",
+  "build": {
+    "frontendDist": "splash",
+    "beforeBuildCommand": "sh scripts/stage-app.sh"
+  },
+  "app": {
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["rpm"],
+    "category": "DeveloperTool",
+    "shortDescription": "AI workshop for code, 3D, PCB and chip design",
+    "longDescription": "Forge drives code, Blender, FreeCAD, OpenSCAD, KiCad, Icarus Verilog and Yosys from one conversation, and keeps every project in git.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"],
+    "resources": { "../build/app/": "app/" },
+    "linux": {
+      "rpm": {
+        "depends": ["nodejs(engine) >= 22.18", "git-core"],
+        "recommends": ["blender", "python3-numpy", "openscad", "kicad", "iverilog", "yosys", "flatpak"]
+      }
+    }
+  }
+}

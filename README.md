@@ -38,6 +38,21 @@ Then put your key in `~/.config/forge/env` and start Forge from the app menu or 
 Programs installed later (with `dnf` or Flatpak) are picked up after `forge restart`, and the
 capabilities panel shows the exact install command for anything missing.
 
+### Desktop app
+
+```sh
+scripts/setup-fedora.sh --desktop    # adds the Rust and WebKitGTK build packages, builds and installs Forge-<version>.rpm
+```
+
+The desktop app (Tauri, `forge-desktop`, "Forge" in the app menu) opens Forge in its own window
+instead of the browser. It starts a private Forge server on a free local port, so it never clashes
+with the `forge` service, and stops that server when the window closes. It reads the same
+`~/.config/forge/env`. The RPM requires `nodejs(engine) >= 22.18`, git and WebKitGTK, and
+recommends Blender, OpenSCAD, KiCad, Icarus Verilog and Yosys.
+
+To build the RPM yourself: `npm ci && npm run desktop:build` (output in
+`desktop/target/release/bundle/rpm/`). `npm run desktop` runs a development build from the repository.
+
 ## Run it anywhere else
 
 Requires Node.js 22.18 or newer and git.
@@ -123,8 +138,10 @@ server/
   tools/launch.ts           runs a program natively or as a Flatpak with only the folders it needs
   tools/runners/*.py        scripts that run inside Blender / FreeCAD and export the result
   tools/          one file per domain; registry.ts lists them all
+desktop/          Tauri desktop app (Rust): starts the server, shows the UI, builds the RPM
 web/              UI: projects, chat with tool timeline, file preview, three.js STL/GLB viewer, render images
 scripts/setup-fedora.sh   Fedora installer: dnf packages, FreeCAD Flatpak, build, forge command, service, launcher
+scripts/stage-app.sh      gathers the server, built UI and runtime packages the desktop app bundles
 tests/            node:test suites (no network, no API key needed)
 ```
 
@@ -136,7 +153,8 @@ The agent, the capabilities panel and input validation pick it up automatically.
 
 ## Roadmap
 
-1. Desktop shell: wrap the server and UI in Tauri, packaged as an RPM and a Flatpak.
+1. Desktop shell as a Flatpak (the RPM is done). Needs host access through `flatpak-spawn --host`
+   so the sandboxed app can still run Blender, KiCad and the other tools installed on the system.
 2. Approvals: confirm before tools that write outside `models/`, run commands, or export for manufacture.
 3. FreeCAD sketches and PartDesign bodies, drawings (PDF) from the 3D part, and assemblies.
 4. PCB authoring: generate KiCad schematics and boards from a netlist the agent writes; render previews.

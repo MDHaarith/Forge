@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Forge</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; height: 100vh; display: grid; place-items: center; background: #14151a; color: #e6e6eb; font: 15px system-ui, sans-serif; }
+      main { max-width: 36rem; padding: 2rem; text-align: center; }
+      .mark { width: 56px; height: 56px; margin: 0 auto 1.25rem; animation: pulse 1.4s ease-in-out infinite; }
+      @keyframes pulse { 50% { opacity: 0.45; } }
+      h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 0.5rem; }
+      p { color: #9a9aa8; margin: 0; }
+      pre { text-align: left; white-space: pre-wrap; background: #1d1e25; border: 1px solid #2c2d36; border-radius: 8px; padding: 0.75rem; color: #f0a0a0; font-size: 12px; max-height: 50vh; overflow: auto; }
+      body.failed .mark { animation: none; opacity: 0.4; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#8b7cf6" /><path d="M18 46V18h28v8H27v6h15v8H27v6z" fill="#fff" /></svg>
+      <h1 id="title">Starting Forge…</h1>
+      <p id="detail">Launching the workshop server.</p>
+    </main>
+    <script>
+      // Called by the app when the server cannot start.
+      window.showError = (title, detail) => {
+        document.body.classList.add("failed");
+        document.getElementById("title").textContent = title;
+        const pre = document.createElement("pre");
+        pre.textContent = detail;
+        document.getElementById("detail").replaceWith(pre);
+      };
+    </script>
+  </body>
+</html>

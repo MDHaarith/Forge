@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-10-12
+
+- Desktop app (Tauri): Forge in its own window, with a private server on a free port that stops when the window closes.
+- RPM package for Fedora (`npm run desktop:build`), requiring Node.js 22.18+, git and WebKitGTK, and recommending the CAD, PCB and chip tools.
+- `scripts/setup-fedora.sh --desktop` installs the build packages, builds the RPM and installs it.
+- The server exits when its stdin closes if FORGE_EXIT_WITH_STDIN=1, so it never outlives the desktop app.
+- Fixed `setup-fedora.sh --help` printing a line of the script.
+
 ## 0.3.0 — 2026-10-12
 
 - Fedora first: scripts/setup-fedora.sh installs dnf packages, FreeCAD from Flathub, builds Forge, and adds a forge command, systemd user service and desktop launcher.

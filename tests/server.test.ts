@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { createServer } from "../server/index.ts";
 import { OfflineModel } from "../server/model.ts";
 import { Projects } from "../server/projects.ts";
@@ -67,4 +69,20 @@ test("rejects foreign hosts, non-JSON posts and path escapes", async () => {
   const escape = await fetch(`${base}/projects/rover/file?path=../../etc/passwd`);
   assert.equal(escape.status, 400);
   assert.equal((await fetch(`${base}/projects/nope/files`)).status, 404);
+});
+
+test("under the desktop app, the server stops when its stdin closes", { timeout: 20_000 }, async () => {
+  const entry = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "index.ts");
+  const env = { ...process.env, PORT: "0", FORGE_HOME: home, FORGE_OFFLINE: "1", FORGE_ENV_FILE: path.join(home, "no-env"), FORGE_EXIT_WITH_STDIN: "1" };
+  const child = spawn(process.execPath, [entry], { env, stdio: ["pipe", "pipe", "inherit"] });
+  const exited = new Promise<number | null>((resolve) => child.on("exit", resolve));
+  let out = "";
+  await new Promise<void>((resolve) =>
+    child.stdout.on("data", (d) => {
+      out += d;
+      if (out.includes("Forge is running")) resolve();
+    }),
+  );
+  child.stdin.end();
+  assert.equal(await exited, 0);
 });

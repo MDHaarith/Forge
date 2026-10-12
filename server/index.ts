@@ -130,6 +130,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const model = defaultModel();
   const projects = new Projects(Projects.defaultHome(), model);
   const port = Number(process.env.PORT ?? 4317);
+  // The desktop app holds our stdin open; when it closes (the app quit or crashed), stop too.
+  if (process.env.FORGE_EXIT_WITH_STDIN === "1") process.stdin.on("end", () => process.exit(0)).resume();
   createServer(projects, model).listen(port, "127.0.0.1", () => {
     console.log(`Forge is running at http://127.0.0.1:${port}`);
     console.log(`Model: ${model.name}${model.name === "offline demo" ? " (set ANTHROPIC_API_KEY to use Claude)" : ""}`);

@@ -1,0 +1,19 @@
+[package]
+name = "forge-desktop"
+# The app's version comes from package.json, through tauri.conf.json.
+version = "0.0.0"
+description = "Forge desktop app: runs the Forge server and shows it in a native window"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde_json = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

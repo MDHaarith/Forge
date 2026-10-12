@@ -70,6 +70,19 @@ test("a dry run lists the dnf packages per domain and changes nothing", { skip: 
   assert.equal(setup("--only", "cnc").status, 2);
 });
 
+test("--desktop adds the Tauri build packages, builds the RPM, installs it, and skips the browser launcher", { skip: !hasBash }, async () => {
+  const { setup } = await sandbox(FEDORA);
+  const r = setup("--dry-run", "--desktop", "--only", "chip");
+  assert.equal(r.status, 0, r.stderr);
+  const dnf = r.stdout.split("\n").find((l) => l.includes("dnf install"))!.split(" ");
+  for (const pkg of ["gcc", "rust", "cargo", "webkit2gtk4.1-devel", "openssl-devel", "librsvg2-devel", "libxdo-devel"]) assert.ok(dnf.includes(pkg), pkg);
+  assert.match(r.stdout, /npm --prefix \S+ run desktop:build/);
+  const { version } = JSON.parse(await fs.readFile(path.join(path.dirname(SCRIPT), "..", "package.json"), "utf8"));
+  assert.match(r.stdout, new RegExp(`dnf install -y \\S+/desktop/target/release/bundle/rpm/Forge-${version.replaceAll(".", "\\.")}-1\\.\\w+\\.rpm`));
+  assert.doesNotMatch(r.stdout, /applications\/forge\.desktop/);
+  assert.doesNotMatch(setup("--dry-run").stdout, /webkit2gtk|desktop:build/);
+});
+
 test("a real run installs packages, FreeCAD, the service and a working forge command", { skip: !hasBash, timeout: 60_000 }, async () => {
   const { setup, home, env, calls, root } = await sandbox(FEDORA);
   const r = setup();

@@ -5,12 +5,14 @@
 #
 #   scripts/setup-fedora.sh                 everything (3D, PCB, chip tools)
 #   scripts/setup-fedora.sh --only "3d"     just some domains: any of 3d, pcb, chip
+#   scripts/setup-fedora.sh --desktop       also build and install the Forge desktop app (RPM)
 #   scripts/setup-fedora.sh --dry-run       print what would happen, change nothing
 set -euo pipefail
 
 DOMAINS="3d pcb chip"
 DRY_RUN=0
 LAUNCHER=1
+DESKTOP=0
 FORCE=0
 OS_RELEASE="${OS_RELEASE:-/etc/os-release}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,13 +20,14 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 usage() {
   sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
   echo
-  echo "Options: --only \"3d pcb chip\"  --no-launcher  --dry-run  --force (run on a non-Fedora system)"
+  echo "Options: --only \"3d pcb chip\"  --desktop  --no-launcher  --dry-run  --force (run on a non-Fedora system)"
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --only) DOMAINS="${2:?--only needs a list, e.g. \"3d chip\"}"; shift ;;
     --no-launcher) LAUNCHER=0 ;;
+    --desktop) DESKTOP=1 ;;
     --dry-run) DRY_RUN=1 ;;
     --force) FORCE=1 ;;
     -h|--help) usage; exit 0 ;;
@@ -72,6 +75,8 @@ PACKAGES=(git nodejs nodejs-npm curl xdg-utils)
 want 3d && PACKAGES+=(blender python3-numpy openscad flatpak)
 want pcb && PACKAGES+=(kicad)
 want chip && PACKAGES+=(iverilog yosys)
+# What building the desktop app (Tauri) needs.
+[ "$DESKTOP" = 1 ] && PACKAGES+=(gcc rust cargo webkit2gtk4.1-devel openssl-devel librsvg2-devel libxdo-devel)
 
 say "Installing packages with dnf"
 want pcb && echo "(KiCad with its libraries is a large download, about 1-2 GB.)"
@@ -103,6 +108,13 @@ fi
 say "Installing Forge's dependencies and building the interface"
 run "$NPM" --prefix "$REPO" ci --no-audit --no-fund
 run "$NPM" --prefix "$REPO" run build
+
+if [ "$DESKTOP" = 1 ]; then
+  say "Building the Forge desktop app (the first build compiles for several minutes)"
+  run "$NPM" --prefix "$REPO" run desktop:build
+  VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$REPO/package.json")"
+  run $SUDO dnf install -y "$REPO/desktop/target/release/bundle/rpm/Forge-$VERSION-1.$(uname -m).rpm"
+fi
 
 # --- 5. Settings, service, command and launcher --------------------------------------
 
@@ -176,6 +188,10 @@ EOF
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#8b7cf6"/><path d="M18 46V18h28v8H27v6h15v8H27v6z" fill="#fff"/></svg>
 EOF
 
+  # The desktop app brings its own menu entry; otherwise add one that opens the browser.
+  if [ "$DESKTOP" = 1 ]; then
+    if [ -e "$HOME/.local/share/applications/forge.desktop" ]; then run rm "$HOME/.local/share/applications/forge.desktop"; fi
+  else
   write "$HOME/.local/share/applications/forge.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -187,6 +203,7 @@ Terminal=false
 Categories=Development;Engineering;
 Keywords=CAD;3D;PCB;FPGA;AI;
 EOF
+  fi
 
   run systemctl --user daemon-reload
   if command -v update-desktop-database >/dev/null; then
@@ -198,7 +215,7 @@ say "Done"
 cat <<EOF
 1. Add your Anthropic API key to $ENV_FILE
    (without one, Forge runs an offline demo).
-2. Start Forge from the app menu, or run: forge
+2. Start Forge from the app menu, or run: forge (opens it in your browser)
    (if 'forge' is not found, log out and back in so ~/.local/bin is on your PATH).
 3. Optional: start Forge at login with: forge autostart on
 EOF
