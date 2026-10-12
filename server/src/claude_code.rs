@@ -124,6 +124,9 @@ pub(crate) async fn send(
                 .env_remove("CLAUDECODE")
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
                 .kill_on_drop(true);
+            if let Some(effort) = projects.effort.lock().unwrap().clone() {
+                command.arg("--effort").arg(effort);
+            }
             if let Some(id) = &resume {
                 command.arg("--resume").arg(id);
             }

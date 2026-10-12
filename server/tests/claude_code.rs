@@ -408,10 +408,37 @@ async fn provider_models_defaults_picker_and_cli_model_boundary() {
         .unwrap();
     assert_eq!(
         switched,
-        json!({"provider":"claude","model":"claude-sonnet-5-5"})
+        json!({"provider":"claude","model":"claude-sonnet-5-5","effort":null})
     );
     events(server.chat("selected model").await).await;
     assert!(std::fs::read_to_string(server.dir().join("args"))
         .unwrap()
         .contains("--model\nclaude-sonnet-5-5\n"));
+}
+
+#[tokio::test]
+async fn stop_ends_the_turn_and_effort_reaches_the_cli() {
+    let server = FakeServer::start(WAIT).await;
+    let set = server
+        .post("/api/model", json!({"provider":"claude","effort":"high"}))
+        .await;
+    assert_eq!(set.json::<Value>().await.unwrap()["effort"], "high");
+    assert_eq!(
+        server
+            .post("/api/model", json!({"provider":"claude","effort":"huge"}))
+            .await
+            .status(),
+        400
+    );
+    let response = server.chat("long job").await;
+    server.wait_started().await;
+    let stop = server.post("/api/projects/test/stop", json!({})).await;
+    assert_eq!(stop.json::<Value>().await.unwrap()["stopped"], true);
+    let events = events(response).await;
+    let kinds: Vec<_> = events.iter().map(|e| e["type"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["user", "error", "done"]);
+    assert_eq!(events[1]["message"], "Stopped by the user.");
+    assert_eq!(server.history().await["running"], false);
+    let args = std::fs::read_to_string(server.dir().join("args")).unwrap();
+    assert!(args.contains("--effort\nhigh\n"));
 }

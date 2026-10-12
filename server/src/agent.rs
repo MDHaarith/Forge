@@ -12,6 +12,9 @@ use std::{
         Arc, Mutex,
     },
 };
+use tokio::sync::Notify;
+
+pub(crate) const STOPPED: &str = "Stopped by the user.";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -78,6 +81,8 @@ How to work:
 pub struct Agent {
     pub messages: Mutex<Vec<Value>>,
     busy: AtomicBool,
+    /// Wakes the running turn so it can end early (the Stop button).
+    pub(crate) stop: Notify,
     model: Arc<dyn Model>,
     project_name: String,
     context: ToolContext,
@@ -94,6 +99,7 @@ impl Agent {
         Self {
             messages: Mutex::new(vec![]),
             busy: AtomicBool::new(false),
+            stop: Notify::new(),
             model,
             project_name: project_name.into(),
             context,
@@ -105,6 +111,11 @@ impl Agent {
     }
     pub(crate) fn turn_guard(&self) -> BusyGuard<'_> {
         BusyGuard(&self.busy)
+    }
+    /// Ends the running turn; returns false when nothing is running.
+    pub fn stop(&self) -> bool {
+        self.stop.notify_waiters();
+        self.running()
     }
     pub fn try_start(&self) -> Result<(), String> {
         self.busy
@@ -127,11 +138,31 @@ impl Agent {
             .lock()
             .unwrap()
             .push(json!({"role":"user","content":user_text}));
-        if let Err(message) = self.run_loop(emit).await {
-            emit(AgentEvent::Error { message });
+        tokio::select! {
+            result = self.run_loop(emit) => {
+                if let Err(message) = result {
+                    emit(AgentEvent::Error { message });
+                }
+            }
+            _ = self.stop.notified() => {
+                self.answer_open_calls();
+                emit(AgentEvent::Error { message: STOPPED.into() });
+            }
         }
         drop(guard);
         emit(AgentEvent::Done);
+    }
+    /// A stopped turn can end after a tool_use; the API needs a result for every call.
+    fn answer_open_calls(&self) {
+        let mut messages = self.messages.lock().unwrap();
+        let Some(last) = messages.last().filter(|m| m["role"] == "assistant") else { return };
+        let results = last["content"].as_array().into_iter().flatten()
+            .filter(|b| b["type"] == "tool_use")
+            .map(|b| json!({"type":"tool_result","tool_use_id":b["id"],"content":"Not run: stopped by the user.","is_error":true}))
+            .collect::<Vec<_>>();
+        if !results.is_empty() {
+            messages.push(json!({"role":"user","content":results}));
+        }
     }
     async fn run_loop(&self, emit: &Emit<'_>) -> Result<(), String> {
         let source = self.tools.clone();

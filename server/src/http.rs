@@ -230,7 +230,7 @@ async fn route(state: AppState, request: Request<Body>) -> Result<Response<Body>
         })).await;
         return Ok(json_response(
             200,
-            json!({"provider":state.model.provider(),"model":state.model.name(),"providers":providers}),
+            json!({"provider":state.model.provider(),"model":state.model.name(),"effort":state.projects.effort.lock().unwrap().clone(),"efforts":crate::projects::EFFORTS,"providers":providers}),
         ));
     }
     if method == "POST" && parts.get(1).map(String::as_str) == Some("model") && parts.len() == 2 {
@@ -242,6 +242,14 @@ async fn route(state: AppState, request: Request<Body>) -> Result<Response<Body>
         if body.get("model").is_some_and(|v| !v.is_string()) {
             return Err(error(400, "model must be a string"));
         }
+        // Absent keeps the level; "" or null returns to the default.
+        let effort = match body.get("effort") {
+            None => None,
+            Some(Value::Null) => Some(None),
+            Some(Value::String(s)) if s.is_empty() => Some(None),
+            Some(Value::String(s)) if crate::projects::EFFORTS.contains(&s.as_str()) => Some(Some(s.clone())),
+            Some(_) => return Err(error(400, "effort must be one of low, medium, high, xhigh, max")),
+        };
         if state.projects.running() {
             return Err(error(
                 409,
@@ -252,9 +260,12 @@ async fn route(state: AppState, request: Request<Body>) -> Result<Response<Body>
             provider,
             make_model(provider, body["model"].as_str().map(trim), &state.settings),
         );
+        if let Some(effort) = effort {
+            *state.projects.effort.lock().unwrap() = effort;
+        }
         return Ok(json_response(
             200,
-            json!({"provider":provider,"model":state.model.name()}),
+            json!({"provider":provider,"model":state.model.name(),"effort":state.projects.effort.lock().unwrap().clone()}),
         ));
     }
     if parts.get(1).map(String::as_str) == Some("projects") && parts.len() == 2 {
@@ -317,6 +328,10 @@ async fn route(state: AppState, request: Request<Body>) -> Result<Response<Body>
                 .await
                 .map_err(|e| error(e.status, e.message))?;
             return Ok(json_response(200, json!({"app":app})));
+        }
+        if method == "POST" && action == "stop" {
+            let session = state.projects.session(name).await.map_err(|e| error(500, e))?;
+            return Ok(json_response(200, json!({"stopped":session.agent.stop()})));
         }
         if method == "POST" && action == "chat" {
             let body = read_json(request, "message").await?;

@@ -57,7 +57,8 @@ server/runners/*.py        scripts that run inside FreeCAD / Blender / openEMS; 
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
 desktop/src/main.rs        Tauri app: binds a free port, runs forge_server::serve in-process
 engines/pcb/               tscircuit PCB engine (JavaScript), bundled to dist/pcb-engine.mjs, run by Node
-web/                       UI (TypeScript + Vite + three.js): main.ts app, design.ts PCB/3D view, viewer.ts
+web/                       UI (TypeScript + Vite + three.js): main.ts app, design.ts PCB/3D view, viewer.ts,
+                           markdown.ts (Markdown + KaTeX, sanitized with DOMPurify)
 scripts/                   setup-fedora.sh installer, stage-app.sh bundles files for the desktop app
 docs/                      this map, ROADMAP.md, reference/ (feature lists of FreeCAD, KiCad, Blender)
 ```
@@ -68,11 +69,12 @@ docs/                      this map, ROADMAP.md, reference/ (feature lists of Fr
 |---|---|---|
 | GET | /api/status | tools with availability, current model |
 | GET | /api/models | providers and their models |
-| POST | /api/model | switch provider/model (409 while a chat runs) |
+| POST | /api/model | switch provider/model and Claude thinking level `effort` (409 while a chat runs) |
 | GET, POST | /api/projects | list, create |
 | GET | /api/projects/<name>/files, /file?path=, /history | file tree, file contents, saved events |
 | POST | /api/projects/<name>/open | open a file in its desktop app |
 | POST | /api/projects/<name>/chat | run a turn; streams NDJSON events |
+| POST | /api/projects/<name>/stop | end the running turn (`{"stopped":bool}`) |
 | POST | /mcp/<name> | MCP JSON-RPC for Claude Code (only during a Claude turn) |
 
 ## Adding a tool

@@ -1,4 +1,5 @@
 import type { AssemblyPart, BoardBoxes, FitIssue } from "./design.ts";
+import { renderMarkdown } from "./markdown.ts";
 
 type AgentEvent =
   | { type: "user"; text: string }
@@ -106,7 +107,7 @@ interface ProviderInfo {
 let providers: ProviderInfo[] = [];
 
 async function loadModels() {
-  const state = await api<{ provider: string; model: string; providers: ProviderInfo[] }>("/models");
+  const state = await api<{ provider: string; model: string; effort: string | null; efforts: string[]; providers: ProviderInfo[] }>("/models");
   providers = state.providers;
   const pick = $<HTMLSelectElement>("provider-pick");
   pick.replaceChildren(...providers.map((p) => new Option(p.label, p.id, false, p.id === state.provider)));
@@ -119,12 +120,19 @@ async function loadModels() {
     ...names.map((m) => new Option(m, m, false, m === state.model)),
     new Option("Custom model…", ""),
   );
+  // Only Claude Code takes a thinking level today.
+  const effort = $<HTMLSelectElement>("effort-pick");
+  effort.hidden = state.provider !== "claude";
+  effort.replaceChildren(
+    new Option("Thinking: default", "", false, !state.effort),
+    ...state.efforts.map((e) => new Option(`Thinking: ${e}`, e, false, e === state.effort)),
+  );
 }
 
-async function switchModel(model?: string) {
+async function switchModel(model?: string, effort?: string) {
   const provider = $<HTMLSelectElement>("provider-pick").value;
   try {
-    await api("/model", post({ provider, model }));
+    await api("/model", post({ provider, model: model ?? $<HTMLSelectElement>("model-name").value, effort }));
   } catch (e) {
     alert((e as Error).message);
   }
@@ -142,6 +150,7 @@ $("model-name").addEventListener("change", () => {
   if (model) void switchModel(model);
   else void loadModels();
 });
+$("effort-pick").addEventListener("change", () => void switchModel(undefined, $<HTMLSelectElement>("effort-pick").value));
 $("model-pick").addEventListener("submit", (e) => e.preventDefault());
 
 async function loadProjects() {
@@ -286,6 +295,10 @@ async function preview(file: string) {
       dxf: "a 2D outline for laser cutting or CNC; open it in your CAM program",
     };
     host.replaceChildren(el("div", "empty", `${file} is ${why[kind] ?? "a binary file, for its own program"}.`));
+  } else if (kind === "md" || kind === "markdown") {
+    const doc = el("article", "md doc");
+    doc.innerHTML = renderMarkdown(await res.text());
+    host.replaceChildren(doc);
   } else {
     const text = await res.text();
     host.replaceChildren(el("pre", "code", text.length > 100_000 ? text.slice(0, 100_000) + "\n…" : text));
@@ -299,13 +312,19 @@ function render(e: AgentEvent) {
     case "user":
       log.append(el("div", "msg user", e.text));
       break;
-    case "text":
-      log.append(el("div", "msg assistant", e.text));
+    case "text": {
+      const msg = el("div", "msg assistant md");
+      msg.innerHTML = renderMarkdown(e.text);
+      log.append(msg);
       break;
+    }
     case "tool_call": {
       const card = el("details", "tool running");
       const summary = el("summary");
-      summary.append(el("span", "dot"), el("span", "tool-name", e.name));
+      const input = (e.input ?? {}) as Record<string, unknown>;
+      const hint = [input.path, input.source, input.name, input.message].find((v) => typeof v === "string") as string | undefined;
+      summary.append(el("span", "dot"), el("span", "tool-name", e.name.replaceAll("_", " ")));
+      if (hint) summary.append(el("span", "tool-hint", hint));
       card.append(summary, el("pre", "code", JSON.stringify(e.input, null, 2)));
       toolCards.set(e.id, card);
       log.append(card);
@@ -327,6 +346,10 @@ function render(e: AgentEvent) {
     case "error":
       log.append(el("div", "msg error", e.message));
       break;
+    case "done":
+      // A stopped turn leaves calls without results.
+      for (const card of log.querySelectorAll(".tool.running")) card.classList.replace("running", "failed");
+      break;
   }
   log.scrollTop = log.scrollHeight;
 }
@@ -334,8 +357,13 @@ function render(e: AgentEvent) {
 async function send(message: string) {
   if (!project) return;
   const button = $<HTMLButtonElement>("send");
-  button.disabled = true;
-  button.textContent = "Working…";
+  button.textContent = "Stop";
+  button.classList.add("stop");
+  button.type = "button";
+  button.onclick = () => {
+    button.disabled = true;
+    void api(`/projects/${project}/stop`, post({})).catch(() => {});
+  };
   let toPreview: string | undefined;
   let toDesign: string | undefined;
   try {
@@ -372,6 +400,9 @@ async function send(message: string) {
   } finally {
     button.disabled = false;
     button.textContent = "Send";
+    button.classList.remove("stop");
+    button.type = "submit";
+    button.onclick = null;
   }
   if (toDesign) {
     fillDesignPicker(toDesign);
@@ -390,7 +421,10 @@ $("composer").addEventListener("submit", (ev) => {
 });
 
 $("prompt").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) $<HTMLFormElement>("composer").requestSubmit();
+  if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+    ev.preventDefault();
+    if ($<HTMLButtonElement>("send").type === "submit") $<HTMLFormElement>("composer").requestSubmit();
+  }
 });
 
 $("new-project").addEventListener("submit", async (ev) => {

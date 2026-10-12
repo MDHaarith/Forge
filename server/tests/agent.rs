@@ -302,3 +302,32 @@ async fn step_limit_and_unexpected_tool_errors() {
         |e| matches!(e,AgentEvent::ToolResult{ok:false,text,..}if text=="fail failed: disk error")
     ));
 }
+
+#[tokio::test]
+async fn stop_ends_a_turn_and_answers_its_open_tool_calls() {
+    fn hang(_: Value, _: ToolContext) -> ToolFuture {
+        Box::pin(std::future::pending())
+    }
+    let (dir, model, _agent, events) = setup(vec![reply("tool_use", vec![call("a", "hang", json!({}))])]);
+    let tool = Tool::new("workspace", "hang", "Never ends", json!({"type":"object"}), hang);
+    let agent = Agent::new(
+        model,
+        "test",
+        ToolContext::new(dir.path.clone(), dir.path.clone()),
+        Arc::new(move || vec![tool.clone()]),
+    );
+    let emit = |e| events.lock().unwrap().push(e);
+    let turn = agent.send("go", &emit);
+    let stop = async {
+        while !kinds(&events.lock().unwrap()).contains(&"tool_call".to_owned()) {
+            tokio::task::yield_now().await;
+        }
+        assert!(agent.stop());
+    };
+    let (result, ()) = tokio::join!(turn, stop);
+    result.unwrap();
+    assert_eq!(kinds(&events.lock().unwrap()), ["user", "tool_call", "error", "done"]);
+    let messages = agent.messages.lock().unwrap();
+    assert_eq!(messages.last().unwrap()["content"][0]["tool_use_id"], "a");
+    assert!(!agent.running());
+}

@@ -20,6 +20,7 @@
       <form id="model-pick" class="model-pick">
         <select id="provider-pick" aria-label="Model provider"></select>
         <select id="model-name" aria-label="Model"></select>
+        <select id="effort-pick" aria-label="Thinking level" title="How long Claude thinks before answering" hidden></select>
       </form>
     </header>
     <main class="layout">
@@ -79,10 +80,12 @@
           <div class="empty">Create or pick a project, then describe what you want to build.</div>
         </div>
         <form id="composer" class="composer">
-          <textarea id="prompt" rows="3" placeholder="e.g. Design a 60 × 40 mm enclosure with M3 standoffs" disabled aria-label="Message"></textarea>
-          <div class="composer-row">
-            <span class="muted">Ctrl+Enter to send</span>
-            <button id="send" type="submit" disabled>Send</button>
+          <div class="composer-box">
+            <textarea id="prompt" rows="3" placeholder="e.g. Design a 60 × 40 mm enclosure with M3 standoffs" disabled aria-label="Message"></textarea>
+            <div class="composer-row">
+              <span class="muted">Enter to send · Shift+Enter for a new line</span>
+              <button id="send" type="submit" disabled>Send</button>
+            </div>
           </div>
         </form>
       </aside>

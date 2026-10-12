@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0 — 2026-10-13
+
+- Chat replies and .md files render as Markdown with LaTeX math ($…$, $$…$$, \(…\), \[…\]).
+- Stop button ends a running turn (POST /api/projects/<name>/stop); the claude process is killed.
+- Thinking level picker for Claude (passes --effort low…max to Claude Code).
+- Restyled chat: bubbles, compact tool rows with the file they touch, Enter to send.
+
 ## 0.10.1 — 2026-10-13
 
 - Assistant replies in the chat are no longer cut off.

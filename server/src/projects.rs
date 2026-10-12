@@ -30,7 +30,11 @@ pub struct Projects {
     pub(crate) settings: Settings,
     /// The listener's actual loopback URL, including its dynamically allocated port.
     pub server_url: OnceLock<String>,
+    /// Claude Code's --effort level; None uses its default.
+    pub effort: Mutex<Option<String>>,
 }
+
+pub const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 pub fn valid_name(name: &str) -> bool {
     !name.is_empty()
@@ -48,6 +52,7 @@ impl Projects {
             model,
             settings,
             server_url: OnceLock::new(),
+            effort: Mutex::new(None),
         }
     }
     pub async fn list(&self) -> Result<Vec<String>, String> {
@@ -183,16 +188,23 @@ impl Projects {
             let _busy = session.agent.turn_guard();
             // shortcut: switching providers does not carry history between Claude Code and Forge; add a summary hand-off if users switch often.
             record(AgentEvent::User { text: text.into() });
-            let result = std::panic::AssertUnwindSafe(crate::claude_code::send(
+            let turn = std::panic::AssertUnwindSafe(crate::claude_code::send(
                 self, name, &session, text, &record,
             ))
-            .catch_unwind()
-            .await;
+            .catch_unwind();
+            // Dropping the turn kills the claude process (kill_on_drop).
+            let result = tokio::select! {
+                result = turn => Some(result),
+                _ = session.agent.stop.notified() => None,
+            };
             match result {
-                Ok(Ok(())) => {}
-                Ok(Err(message)) => record(AgentEvent::Error { message }),
-                Err(_) => record(AgentEvent::Error {
+                Some(Ok(Ok(()))) => {}
+                Some(Ok(Err(message))) => record(AgentEvent::Error { message }),
+                Some(Err(_)) => record(AgentEvent::Error {
                     message: "Claude Code turn panicked".into(),
+                }),
+                None => record(AgentEvent::Error {
+                    message: crate::agent::STOPPED.into(),
                 }),
             }
             record(AgentEvent::Done);
