@@ -1,15 +1,36 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { clip, findProgram, run, type ExecResult } from "./exec.ts";
+import { clip, run, type ExecResult } from "./exec.ts";
+import { launchArgs, resolveApp, type AppSpec } from "./launch.ts";
 import { projectPath } from "./paths.ts";
 import { ToolError, type ForgeTool } from "./types.ts";
 
 const RUNNERS = path.join(path.dirname(fileURLToPath(import.meta.url)), "runners");
 const NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
-const BLENDER = [process.env.FORGE_BLENDER, "blender"].filter((p): p is string => !!p);
-const FREECAD = [process.env.FORGE_FREECAD, "freecadcmd", "FreeCADCmd", "freecad.cmd"].filter((p): p is string => !!p);
+const defined = (list: (string | undefined)[]) => list.filter((p): p is string => !!p);
+
+export const BLENDER: AppSpec = {
+  label: "blender",
+  native: defined([process.env.FORGE_BLENDER, "blender"]),
+  flatpak: { id: "org.blender.Blender", commands: ["blender"] },
+};
+
+// FreeCAD 1.x names the console program freecadcmd; 0.x used FreeCADCmd.
+export const FREECAD: AppSpec = {
+  label: "freecadcmd",
+  native: defined([process.env.FORGE_FREECAD, "freecadcmd", "FreeCADCmd", "freecad.cmd"]),
+  flatpak: { id: "org.freecad.FreeCAD", commands: ["freecadcmd", "FreeCADCmd"] },
+};
+
+/** Runs a runner script in `spec`'s program. A Flatpak only gets the project (read-write) and the runners (read-only). */
+function runApp(spec: AppSpec, args: string[], projectDir: string, timeoutMs: number, env: Record<string, string>) {
+  const app = resolveApp(spec);
+  if (!app) throw new ToolError(`${spec.label} is not installed`);
+  const launch = launchArgs(app, args, { rw: [projectDir], ro: [RUNNERS], env });
+  return run(launch.cmd, launch.args, projectDir, timeoutMs, launch.env);
+}
 
 /** Reads the runner's FORGE_RESULT / FORGE_ERROR line out of the program's log. */
 export function parseRunnerOutput(r: ExecResult): { result?: Record<string, unknown>; error?: string } {
@@ -57,13 +78,13 @@ Write the script with write_file first. It runs in an empty scene with the proje
       },
       required: ["script", "name"],
     },
-    requires: BLENDER,
-    install: "https://www.blender.org/download/ (or set FORGE_BLENDER to the blender executable)",
+    app: BLENDER,
+    install: { dnf: "blender python3-numpy", apt: "blender python3-numpy", brew: "--cask blender", flatpak: "org.blender.Blender", url: "https://www.blender.org/download/" },
     async run(input, ctx) {
       const { name, script, formats } = await checkInputs(input, ctx.projectDir, ["glb", "stl", "obj", "blend"]);
       const chosen = (input.formats as string[] | undefined) ? formats : ["glb"];
-      const r = await run(
-        findProgram(BLENDER)!,
+      const r = await runApp(
+        BLENDER,
         ["--background", "--factory-startup", "--python-exit-code", "1", "--python", path.join(RUNNERS, "blender_runner.py")],
         ctx.projectDir,
         input.render ? 15 * 60_000 : 5 * 60_000,
@@ -96,11 +117,12 @@ Write the script with write_file first. It receives App (FreeCAD), Part and a ne
       },
       required: ["script", "name"],
     },
-    requires: FREECAD,
-    install: "https://www.freecad.org/downloads.php (or set FORGE_FREECAD to freecadcmd)",
+    app: FREECAD,
+    // Fedora's repositories have no FreeCAD package; Flathub carries the official build.
+    install: { flatpak: "org.freecad.FreeCAD", apt: "freecad", brew: "--cask freecad", url: "https://www.freecad.org/downloads.php" },
     async run(input, ctx) {
       const { name, script, formats } = await checkInputs(input, ctx.projectDir, ["step", "stl", "fcstd"]);
-      const r = await run(findProgram(FREECAD)!, [path.join(RUNNERS, "freecad_runner.py")], ctx.projectDir, 5 * 60_000, {
+      const r = await runApp(FREECAD, [path.join(RUNNERS, "freecad_runner.py")], ctx.projectDir, 5 * 60_000, {
         PYTHONDONTWRITEBYTECODE: "1",
         FORGE_PROJECT: ctx.projectDir,
         FORGE_SCRIPT: script,

@@ -75,7 +75,7 @@ export const cadTools: ForgeTool[] = [
       required: ["path"],
     },
     requires: "openscad",
-    install: "https://openscad.org/downloads.html",
+    install: { dnf: "openscad", apt: "openscad", brew: "--cask openscad", url: "https://openscad.org/downloads.html" },
     async run(input, ctx) {
       const src = input.path as string;
       const out = (input.output as string | undefined) ?? src.replace(/\.scad$/i, "") + ".stl";

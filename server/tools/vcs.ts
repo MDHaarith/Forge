@@ -7,6 +7,8 @@ async function identity(cwd: string): Promise<string[]> {
   return email.code === 0 && email.stdout.trim() ? [] : ["-c", "user.name=Forge", "-c", "user.email=forge@localhost"];
 }
 
+const GIT = { dnf: "git", apt: "git", brew: "git" };
+
 export const vcsTools: ForgeTool[] = [
   {
     domain: "vcs",
@@ -14,6 +16,7 @@ export const vcsTools: ForgeTool[] = [
     description: "Show which project files changed since the last commit.",
     input_schema: { type: "object", properties: {} },
     requires: "git",
+    install: GIT,
     async run(_input, ctx) {
       const r = await run("git", ["status", "--short"], ctx.projectDir);
       return { text: r.code === 0 ? r.stdout.trim() || "working tree clean" : report(r) };
@@ -30,6 +33,7 @@ export const vcsTools: ForgeTool[] = [
       required: ["message"],
     },
     requires: "git",
+    install: GIT,
     async run(input, ctx) {
       const cwd = ctx.projectDir;
       await run("git", ["add", "-A"], cwd);
@@ -50,6 +54,7 @@ export const vcsTools: ForgeTool[] = [
       properties: { limit: { type: "integer", description: "How many commits (default 20)" } },
     },
     requires: "git",
+    install: GIT,
     async run(input, ctx) {
       const limit = Math.min(Math.max(Number(input.limit ?? 20), 1), 200);
       const r = await run("git", ["log", `-${limit}`, "--format=%h %ad %s", "--date=short"], ctx.projectDir);

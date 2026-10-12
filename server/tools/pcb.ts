@@ -8,6 +8,8 @@ const board = {
   required: ["board"],
 };
 
+const KICAD = { dnf: "kicad", apt: "kicad", brew: "--cask kicad", url: "https://www.kicad.org/download/" };
+
 export const pcbTools: ForgeTool[] = [
   {
     domain: "pcb",
@@ -15,7 +17,7 @@ export const pcbTools: ForgeTool[] = [
     description: "Run KiCad's design rule check on a board and write the report to fab/drc.rpt.",
     input_schema: board,
     requires: "kicad-cli",
-    install: "https://www.kicad.org/download/ (KiCad 8 or newer)",
+    install: KICAD,
     async run(input, ctx) {
       projectPath(ctx.projectDir, input.board as string);
       const r = await run("kicad-cli", ["pcb", "drc", "--output", "fab/drc.rpt", input.board as string], ctx.projectDir);
@@ -29,7 +31,7 @@ export const pcbTools: ForgeTool[] = [
       "Export manufacturing files for a board: Gerbers and drill files into fab/, ready to zip and upload to a PCB fab such as JLCPCB or PCBWay.",
     input_schema: board,
     requires: "kicad-cli",
-    install: "https://www.kicad.org/download/ (KiCad 8 or newer)",
+    install: KICAD,
     async run(input, ctx) {
       projectPath(ctx.projectDir, input.board as string);
       const gerbers = await run("kicad-cli", ["pcb", "export", "gerbers", "--output", "fab/", input.board as string], ctx.projectDir);

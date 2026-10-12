@@ -19,7 +19,7 @@ export const chipTools: ForgeTool[] = [
       required: ["sources"],
     },
     requires: "iverilog",
-    install: "apt install iverilog / brew install icarus-verilog",
+    install: { dnf: "iverilog", apt: "iverilog", brew: "icarus-verilog" },
     async run(input, ctx) {
       const sources = input.sources as string[];
       sources.forEach((s) => projectPath(ctx.projectDir, s));
@@ -43,7 +43,7 @@ export const chipTools: ForgeTool[] = [
       required: ["sources", "top"],
     },
     requires: "yosys",
-    install: "apt install yosys / brew install yosys",
+    install: { dnf: "yosys", apt: "yosys", brew: "yosys" },
     async run(input, ctx) {
       const top = input.top as string;
       if (!MODULE.test(top)) throw new ToolError("top must be a Verilog identifier");

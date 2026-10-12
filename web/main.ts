@@ -60,6 +60,7 @@ async function loadStatus() {
 
   const host = $("capabilities");
   host.replaceChildren();
+  const shown = new Set<string>();
   for (const [domain, label] of Object.entries(DOMAINS)) {
     const tools = status.tools.filter((t) => t.domain === domain);
     const group = el("div", "cap-group");
@@ -70,6 +71,11 @@ async function loadStatus() {
       row.append(el("span", "dot"), el("span", "cap-name", t.name));
       if (!t.available) row.append(el("span", "cap-need", `needs ${t.requires}`));
       group.append(row);
+      // One install line per missing program, not one per tool that needs it.
+      if (!t.available && t.install && !shown.has(t.install)) {
+        shown.add(t.install);
+        group.append(el("code", "cap-install", t.install));
+      }
     }
     host.append(group);
   }

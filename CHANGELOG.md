@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-10-12
+
+- Fedora first: scripts/setup-fedora.sh installs dnf packages, FreeCAD from Flathub, builds Forge, and adds a forge command, systemd user service and desktop launcher.
+- Blender and FreeCAD also run from Flatpak installs, sandboxed to the project folder.
+- The capabilities panel shows the install command for this system: dnf or Flathub on Fedora, apt on Debian/Ubuntu, Homebrew on macOS.
+- Settings and the API key load from ~/.config/forge/env.
+
 ## 0.2.0 — 2026-10-12
 
 - FreeCAD tool for engineering parts: runs a script headless, exports STEP, STL and FCStd, reports validity, volume and size.

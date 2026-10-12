@@ -3,12 +3,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { findProgram } from "../server/tools/exec.ts";
+import { resolveApp } from "../server/tools/launch.ts";
 import { parseRunnerOutput, script3dTools } from "../server/tools/script3d.ts";
 
 const tool = (name: string) => script3dTools.find((t) => t.name === name)!;
-const hasBlender = !!findProgram(tool("blender_build").requires);
-const hasFreecad = !!findProgram(tool("freecad_build").requires);
+const hasBlender = !!resolveApp(tool("blender_build").app!);
+const hasFreecad = !!resolveApp(tool("freecad_build").app!);
 
 async function project(files: Record<string, string>) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "forge-3d-"));

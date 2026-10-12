@@ -8,7 +8,37 @@ Forge does not reimplement CAD or EDA. It is an orchestrator. Claude plans the w
 open-source program (OpenSCAD, KiCad, Icarus Verilog, Yosys). Every project is a git
 repository, and designs are kept as text so they can be diffed, reviewed and rebuilt.
 
-## Run it
+## Install on Fedora
+
+Fedora is Forge's primary platform (Fedora Workstation 42+; relatives such as Nobara work too).
+
+```sh
+git clone -b forge https://github.com/MDHaarith/GitGUI.git forge && cd forge
+scripts/setup-fedora.sh            # or: --only "3d chip", --dry-run to preview
+```
+
+The script:
+
+- installs Node.js, git, Blender, OpenSCAD, KiCad, Icarus Verilog and Yosys with `dnf`
+  (KiCad is a large download; leave it out with `--only "3d chip"`);
+- installs **FreeCAD from Flathub** for your user, because Fedora's repositories have no FreeCAD
+  package. Forge runs it inside its Flatpak sandbox and gives it access to the project folder only;
+- builds Forge and adds a `forge` command, an app-menu launcher, and a systemd user service;
+- creates `~/.config/forge/env` (private, mode 600) for your API key and settings.
+
+Then put your key in `~/.config/forge/env` and start Forge from the app menu or with `forge`.
+
+| Command | Does |
+|---|---|
+| `forge` | start Forge in the background and open it in the browser |
+| `forge stop` / `forge restart` | stop or restart the service |
+| `forge logs` | follow the log (`journalctl --user -u forge`) |
+| `forge autostart on` | start Forge when you log in |
+
+Programs installed later (with `dnf` or Flatpak) are picked up after `forge restart`, and the
+capabilities panel shows the exact install command for anything missing.
+
+## Run it anywhere else
 
 Requires Node.js 22.18 or newer and git.
 
@@ -17,6 +47,9 @@ npm install
 export ANTHROPIC_API_KEY=...   # optional: without it Forge runs an offline demo
 npm start                      # builds the UI and serves http://127.0.0.1:4317
 ```
+
+Settings can also go in `~/.config/forge/env` (or the file named by `FORGE_ENV_FILE`); variables
+already set in the environment take precedence.
 
 Projects live in `~/Forge/<name>` (override with `FORGE_HOME`). Try a project with
 "Design a 60 × 40 mm enclosure with M3 standoffs", then click the STL to orbit it.
@@ -31,7 +64,8 @@ the server on changes. `npm test` runs the test suite, `npm run typecheck` the t
 | `FORGE_OFFLINE=1` | Force the offline demo even with credentials. |
 | `FORGE_ALLOW_COMMANDS=1` | Let the agent run programs in the project folder (`run_command`). Off by default. |
 | `FORGE_HOME` | Where projects are stored. |
-| `FORGE_BLENDER`, `FORGE_FREECAD` | Path to `blender` / `freecadcmd` when they are not on `PATH` (e.g. an AppImage). |
+| `FORGE_BLENDER`, `FORGE_FREECAD` | Path to `blender` / `freecadcmd` when they are not on `PATH` (e.g. an AppImage). A native install is preferred over a Flatpak. |
+| `FORGE_NO_FLATPAK=1` | Ignore Flatpak installs of Blender and FreeCAD. |
 | `PORT` | Server port (default 4317). |
 
 ## Capabilities
@@ -44,8 +78,8 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | Workspace | `list_files`, `read_file`, `write_file` | – |
 | Version control | `git_status`, `git_commit`, `git_log` | git |
 | Code | `run_command` | `FORGE_ALLOW_COMMANDS=1` |
-| 3D: engineering | `freecad_build`: exact-dimension parts → STEP, STL, FCStd, with a validity, volume and size report | [FreeCAD](https://www.freecad.org) 0.21+ (`freecadcmd`) |
-| 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+ |
+| 3D: engineering | `freecad_build`: exact-dimension parts → STEP, STL, FCStd, with a validity, volume and size report | [FreeCAD](https://www.freecad.org) 0.21+ (`freecadcmd`), native or Flatpak `org.freecad.FreeCAD` |
+| 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+, native or Flatpak `org.blender.Blender` |
 | 3D: quick | `cad_model` (STL + OpenSCAD + JSON from primitives) | – |
 | | `openscad_render` | [OpenSCAD](https://openscad.org) |
 | PCB | `pcb_drc`, `pcb_export_fab` (Gerbers + drill for JLCPCB/PCBWay) | [KiCad 8+](https://www.kicad.org) `kicad-cli` |
@@ -70,7 +104,7 @@ script stays in git, so a design is reproducible and can be edited and re-run.
   the subject and lights if the script did not, and renders with Cycles on the CPU so it works
   on machines without a GPU.
 
-Linux distribution packages of Blender sometimes lack numpy (needed for GLB export) or the
+Some distribution packages of Blender lack numpy (needed for GLB export) or the
 denoiser; Forge renders without denoising when that library is missing. The official
 downloads include both.
 
@@ -79,14 +113,18 @@ downloads include both.
 ```
 server/
   index.ts        HTTP API (localhost only) and static UI
+  env.ts          loads ~/.config/forge/env before anything reads settings
+  platform.ts     distro detection and per-distro install commands (dnf first)
   agent.ts        agent loop: model ⇄ tools, append-only history, input validation
   model.ts        Claude (streaming, adaptive thinking, refusal fallback) and the offline demo model
   projects.ts     project folders, git init, saved conversations (.state/)
   cad/mesh.ts     mesh kernel: box/cylinder/sphere → STL and OpenSCAD
   tools/script3d.ts         Blender and FreeCAD tools
+  tools/launch.ts           runs a program natively or as a Flatpak with only the folders it needs
   tools/runners/*.py        scripts that run inside Blender / FreeCAD and export the result
   tools/          one file per domain; registry.ts lists them all
 web/              UI: projects, chat with tool timeline, file preview, three.js STL/GLB viewer, render images
+scripts/setup-fedora.sh   Fedora installer: dnf packages, FreeCAD Flatpak, build, forge command, service, launcher
 tests/            node:test suites (no network, no API key needed)
 ```
 
@@ -98,7 +136,7 @@ The agent, the capabilities panel and input validation pick it up automatically.
 
 ## Roadmap
 
-1. Desktop shell: wrap the server and UI in Tauri.
+1. Desktop shell: wrap the server and UI in Tauri, packaged as an RPM and a Flatpak.
 2. Approvals: confirm before tools that write outside `models/`, run commands, or export for manufacture.
 3. FreeCAD sketches and PartDesign bodies, drawings (PDF) from the 3D part, and assemblies.
 4. PCB authoring: generate KiCad schematics and boards from a netlist the agent writes; render previews.

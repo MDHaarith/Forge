@@ -1,4 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import type { InstallHint } from "../platform.ts";
+import type { AppSpec } from "./launch.ts";
 
 /** The workshop areas a tool belongs to. The UI groups capabilities by these. */
 export type Domain = "workspace" | "vcs" | "code" | "3d" | "pcb" | "chip";
@@ -26,7 +28,9 @@ export interface ForgeTool {
   input_schema: Anthropic.Tool.InputSchema;
   /** Program(s) the tool runs; the first one found is used. Unset for built-in tools. */
   requires?: string | string[];
-  install?: string;
+  /** A desktop program that may also be installed as a Flatpak; replaces `requires`. */
+  app?: AppSpec;
+  install?: InstallHint;
   run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;
 }
 
