@@ -1,8 +1,9 @@
 """Runs an agent-written FreeCAD script headless and exports the resulting solid.
 
 Forge launches: freecadcmd freecad_runner.py with FORGE_* environment variables.
-The script gets App/FreeCAD, Part and a fresh document `doc`. It either assigns
-`result = <Part.Shape>`, or adds objects to `doc`; then every top-level object is exported.
+The script gets App/FreeCAD, Part, Vector, `forge` (engineering helpers, forge_cad.py) and a
+fresh document `doc`. It either assigns `result = <Part.Shape>`, or adds objects to `doc`
+(Part features or PartDesign bodies); then every top-level solid is exported.
 Lines starting with FORGE_RESULT or FORGE_ERROR are read back by server/tools/freecad.ts.
 """
 
@@ -12,8 +13,12 @@ import runpy
 import sys
 import traceback
 
-import FreeCAD as App
-import Part
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import FreeCAD as App  # noqa: E402
+import Part  # noqa: E402
+
+import forge_cad  # noqa: E402
 
 
 def done(code, line):
@@ -36,7 +41,7 @@ try:
 
     doc = App.newDocument(name.replace("-", "_"))
     try:
-        scope = runpy.run_path(script, init_globals={"App": App, "FreeCAD": App, "Part": Part, "doc": doc}, run_name="__main__")
+        scope = runpy.run_path(script, init_globals={"App": App, "FreeCAD": App, "Part": Part, "Vector": App.Vector, "forge": forge_cad, "doc": doc}, run_name="__main__")
     except BaseException:
         fail("the script raised an error:\n" + traceback.format_exc(limit=6))
     doc.recompute()
@@ -45,6 +50,8 @@ try:
     if shape is None:
         # Top-level objects: those no other object consumes (e.g. a Cut's inputs are skipped).
         tops = [o for o in doc.Objects if hasattr(o, "Shape") and not o.InList and not o.Shape.isNull()]
+        # Prefer solids, so leftover sketches or construction geometry are not exported.
+        tops = [o for o in tops if o.Shape.Solids] or tops
         if not tops:
             fail("the script produced no shape: set `result = <shape>` or add objects to `doc`")
         shape = tops[0].Shape if len(tops) == 1 else Part.makeCompound([o.Shape for o in tops])

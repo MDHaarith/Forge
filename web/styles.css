@@ -133,6 +133,25 @@ textarea { resize: vertical; }
 .preview .render { display: block; width: 100%; height: 100%; object-fit: contain; }
 .preview .empty { padding: 16px; }
 .preview .code { border-top: 0; }
+.preview .render { cursor: zoom-in; }
+.preview .drawing { background: #fff; }
+.preview .note { padding: 6px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.preview-head { display: flex; align-items: center; gap: 6px; }
+.preview-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-head button { padding: 3px 8px; font-size: 11px; margin-bottom: 8px; }
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 0.82);
+  cursor: zoom-out;
+}
+.lightbox[hidden] { display: none; }
+.lightbox img { max-width: 100%; max-height: 100%; border-radius: 6px; }
+.lightbox img.drawing { background: #fff; }
 
 .cap-group { margin-bottom: 12px; }
 .cap-title { font-weight: 600; margin-bottom: 4px; }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — 2026-10-12
+
+- `forge` helper library for FreeCAD scripts: ISO clearance, counterbore, countersink, tapped and heat-set insert holes, rounded boxes, enclosures, lids, standoffs, edge fillets and chamfers, loading parts for assemblies.
+- `freecad_inspect`: mass in a chosen material, every hole with the screw it fits, 3D-print overhangs, and interference or clearance between parts.
+- `freecad_drawing`: technical drawings with front/top/side and isometric views, hidden lines, dimensions, hole table and title block, in first or third angle projection, as SVG, PDF and DXF.
+- PartDesign bodies and constrained Sketcher sketches export as the part.
+- "Open in FreeCAD / Blender / KiCad" button on the file preview; a Flatpak gets only the project folder.
+- The preview shows SVG drawings, enlarges images on click, and shows the STL beside a STEP or FCStd file.
+- setup-fedora.sh and the RPM add librsvg2-tools for PDF drawings.
+
 ## 0.4.0 — 2026-10-12
 
 - Desktop app (Tauri): Forge in its own window, with a private server on a free port that stops when the window closes.

@@ -2,6 +2,7 @@ import { cadTools } from "./cad.ts";
 import { chipTools } from "./chip.ts";
 import { codeTools, commandsAllowed } from "./code.ts";
 import { findProgram } from "./exec.ts";
+import { freecadTools } from "./freecad.ts";
 import { pcbTools } from "./pcb.ts";
 import { script3dTools } from "./script3d.ts";
 import { installText } from "../platform.ts";
@@ -11,7 +12,7 @@ import { vcsTools } from "./vcs.ts";
 import { workspaceTools } from "./workspace.ts";
 
 /** Every capability Forge knows about. Add a domain by appending its tool list here. */
-export const allTools: ForgeTool[] = [...workspaceTools, ...vcsTools, ...codeTools, ...script3dTools, ...cadTools, ...pcbTools, ...chipTools];
+export const allTools: ForgeTool[] = [...workspaceTools, ...vcsTools, ...codeTools, ...script3dTools, ...freecadTools, ...cadTools, ...pcbTools, ...chipTools];
 
 export function isAvailable(tool: ForgeTool): boolean {
   if (tool.name === "run_command") return commandsAllowed();

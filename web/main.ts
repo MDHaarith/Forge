@@ -32,11 +32,16 @@ const DOMAINS: Record<string, string> = {
   chip: "Chip",
 };
 
-const BINARY = new Set(["step", "stp", "fcstd", "blend", "obj", "zip", "vvp"]);
-const PREVIEW_ORDER = ["png", "glb", "stl"];
+const BINARY = new Set(["step", "stp", "fcstd", "iges", "igs", "brep", "blend", "obj", "zip", "vvp", "pdf", "dxf", "kicad_pcb"]);
+const IMAGES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml" };
+// After a tool runs, show its most telling output: a drawing, then a render, then a model.
+const PREVIEW_ORDER = ["svg", "png", "glb", "stl"];
 
 let project: string | null = localStorage.getItem("forge.project");
 let closeViewer: (() => void) | null = null;
+let files: string[] = [];
+/** File extension (with dot) -> desktop program that opens it, for installed programs only. */
+let openers: Record<string, string> = {};
 const toolCards = new Map<string, HTMLElement>();
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -52,7 +57,8 @@ const post = (body: unknown): RequestInit => ({
 });
 
 async function loadStatus() {
-  const status = await api<{ model: string; offline: boolean; tools: ToolInfo[] }>("/status");
+  const status = await api<{ model: string; offline: boolean; tools: ToolInfo[]; open: Record<string, string> }>("/status");
+  openers = status.open ?? {};
   const badge = $("model-badge");
   badge.textContent = status.offline ? "Offline demo" : status.model;
   badge.classList.toggle("warn", status.offline);
@@ -97,7 +103,8 @@ async function loadFiles() {
   const list = $("files");
   list.replaceChildren();
   if (!project) return;
-  for (const file of await api<string[]>(`/projects/${project}/files`)) {
+  files = await api<string[]>(`/projects/${project}/files`);
+  for (const file of files) {
     const item = el("li", "", file);
     item.onclick = () => preview(file);
     list.append(item);
@@ -118,28 +125,82 @@ async function openProject(name: string) {
   if (!events.length) $("log").append(el("div", "empty", "Describe what you want to build in this project."));
 }
 
+function showOpenButton(file: string) {
+  const button = $<HTMLButtonElement>("open-app");
+  const ext = "." + (file.toLowerCase().split(".").pop() ?? "");
+  const app = openers[ext];
+  button.hidden = !app;
+  if (!app) return;
+  button.textContent = `Open in ${app}`;
+  button.onclick = async () => {
+    button.disabled = true;
+    try {
+      await api(`/projects/${project}/open`, post({ path: file }));
+      button.textContent = `Opened in ${app}`;
+    } catch (error) {
+      alert(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTimeout(() => {
+        button.disabled = false;
+        button.textContent = `Open in ${app}`;
+      }, 2500);
+    }
+  };
+}
+
+function showImage(host: HTMLElement, url: string, alt: string, drawing: boolean) {
+  const img = el("img", `render${drawing ? " drawing" : ""}`) as HTMLImageElement;
+  img.src = url;
+  img.alt = alt;
+  const expand = () => {
+    const big = el("img", drawing ? "drawing" : "") as HTMLImageElement;
+    big.src = url;
+    big.alt = alt;
+    const box = $("lightbox");
+    box.replaceChildren(big);
+    box.hidden = false;
+  };
+  img.onclick = expand;
+  const button = $<HTMLButtonElement>("expand");
+  button.hidden = false;
+  button.onclick = expand;
+  host.replaceChildren(img);
+}
+
 async function preview(file: string) {
   if (!project) return;
   closeViewer?.();
   closeViewer = null;
   $("preview-title").textContent = file;
+  $("expand").hidden = true;
+  showOpenButton(file);
   const host = $("preview");
-  const res = await fetch(`/api/projects/${project}/file?path=${encodeURIComponent(file)}`);
-  if (!res.ok) return host.replaceChildren(el("div", "empty", "Could not open this file."));
   const ext = file.toLowerCase().split(".").pop() ?? "";
-  if (ext === "stl" || ext === "glb") {
+  // An exact CAD file has no browser preview; show the mesh FreeCAD exported next to it.
+  let shown = file;
+  if (["step", "stp", "fcstd"].includes(ext)) {
+    const mesh = file.replace(/\.[^.]+$/, ".stl");
+    if (files.includes(mesh)) shown = mesh;
+  }
+  const res = await fetch(`/api/projects/${project}/file?path=${encodeURIComponent(shown)}`);
+  if (!res.ok) return host.replaceChildren(el("div", "empty", "Could not open this file."));
+  const kind = shown.toLowerCase().split(".").pop() ?? "";
+  if (kind === "stl" || kind === "glb") {
     // three.js is large, so the viewer loads the first time a model is opened.
     const { showModel } = await import("./viewer.ts");
-    closeViewer = await showModel(host, await res.arrayBuffer(), ext);
-  } else if (["png", "jpg", "jpeg", "webp"].includes(ext)) {
-    const url = URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: `image/${ext === "jpg" ? "jpeg" : ext}` }));
-    const img = el("img", "render") as HTMLImageElement;
-    img.src = url;
-    img.alt = file;
-    host.replaceChildren(img);
+    host.replaceChildren();
+    closeViewer = await showModel(host, await res.arrayBuffer(), kind);
+    if (shown !== file) host.prepend(el("div", "note", `Showing the mesh ${shown}. The exact model is ${file}.`));
+  } else if (IMAGES[kind]) {
+    const url = URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: IMAGES[kind] }));
+    showImage(host, url, file, kind === "svg");
     closeViewer = () => URL.revokeObjectURL(url);
-  } else if (BINARY.has(ext)) {
-    host.replaceChildren(el("div", "empty", `${file} is a binary file. Open it in its own program; Forge previews STL, GLB and images.`));
+  } else if (BINARY.has(kind)) {
+    const why: Record<string, string> = {
+      pdf: "the printable drawing; the .svg next to it shows the same sheet here",
+      dxf: "a 2D outline for laser cutting or CNC; open it in your CAM program",
+    };
+    host.replaceChildren(el("div", "empty", `${file} is ${why[kind] ?? "a binary file, for its own program"}.`));
   } else {
     const text = await res.text();
     host.replaceChildren(el("pre", "code", text.length > 100_000 ? text.slice(0, 100_000) + "\n…" : text));
@@ -251,6 +312,13 @@ $("new-project").addEventListener("submit", async (ev) => {
   } catch (error) {
     alert(error instanceof Error ? error.message : String(error));
   }
+});
+
+$("lightbox").addEventListener("click", () => {
+  $("lightbox").hidden = true;
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") $("lightbox").hidden = true;
 });
 
 await loadStatus();

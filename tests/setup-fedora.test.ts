@@ -55,7 +55,7 @@ test("a dry run lists the dnf packages per domain and changes nothing", { skip: 
   const all = setup("--dry-run");
   assert.equal(all.status, 0, all.stderr);
   const dnf = all.stdout.split("\n").find((l) => l.includes("dnf install"))!;
-  for (const pkg of ["git", "nodejs", "nodejs-npm", "blender", "python3-numpy", "openscad", "flatpak", "kicad", "iverilog", "yosys"]) {
+  for (const pkg of ["git", "nodejs", "nodejs-npm", "blender", "python3-numpy", "openscad", "librsvg2-tools", "flatpak", "kicad", "iverilog", "yosys"]) {
     assert.ok(dnf.split(" ").includes(pkg), `${pkg} missing from: ${dnf}`);
   }
   assert.match(all.stdout, /flatpak install --user -y --noninteractive flathub org\.freecad\.FreeCAD/);

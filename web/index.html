@@ -40,8 +40,12 @@
       </section>
       <aside class="inspector">
         <section class="preview-section">
-          <h2 id="preview-title">Preview</h2>
-          <div id="preview" class="preview"><div class="empty">Select a file to preview it. STL files open in 3D.</div></div>
+          <div class="preview-head">
+            <h2 id="preview-title">Preview</h2>
+            <button id="expand" type="button" hidden title="Show the preview full window">Expand</button>
+            <button id="open-app" type="button" hidden></button>
+          </div>
+          <div id="preview" class="preview"><div class="empty">Select a file to preview it. Models open in 3D; drawings and renders show as images.</div></div>
         </section>
         <section>
           <h2>Capabilities</h2>
@@ -49,6 +53,7 @@
         </section>
       </aside>
     </main>
+    <div id="lightbox" class="lightbox" hidden></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

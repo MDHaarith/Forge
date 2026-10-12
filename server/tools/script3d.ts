@@ -6,7 +6,7 @@ import { launchArgs, resolveApp, type AppSpec } from "./launch.ts";
 import { projectPath } from "./paths.ts";
 import { ToolError, type ForgeTool } from "./types.ts";
 
-const RUNNERS = path.join(path.dirname(fileURLToPath(import.meta.url)), "runners");
+export const RUNNERS = path.join(path.dirname(fileURLToPath(import.meta.url)), "runners");
 const NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
 const defined = (list: (string | undefined)[]) => list.filter((p): p is string => !!p);
@@ -25,7 +25,7 @@ export const FREECAD: AppSpec = {
 };
 
 /** Runs a runner script in `spec`'s program. A Flatpak only gets the project (read-write) and the runners (read-only). */
-function runApp(spec: AppSpec, args: string[], projectDir: string, timeoutMs: number, env: Record<string, string>) {
+export function runApp(spec: AppSpec, args: string[], projectDir: string, timeoutMs: number, env: Record<string, string>) {
   const app = resolveApp(spec);
   if (!app) throw new ToolError(`${spec.label} is not installed`);
   const launch = launchArgs(app, args, { rw: [projectDir], ro: [RUNNERS], env });
@@ -104,7 +104,13 @@ Write the script with write_file first. It runs in an empty scene with the proje
     domain: "3d",
     name: "freecad_build",
     description: `Run a FreeCAD Python script headless to build an engineering part with exact dimensions: brackets, enclosures, mounts, shafts, anything with holes, fits, fillets or chamfers that will be machined or printed. Units are millimetres.
-Write the script with write_file first. It receives App (FreeCAD), Part and a new document doc. Build solids with Part (makeBox, makeCylinder, cut, fuse, makeFillet, extrude ...) and either assign result = <shape> or add objects to doc. Forge exports models/<name>.step (for CNC shops and other CAD), models/<name>.stl (3D viewer and printing) and models/<name>.FCStd (editable in FreeCAD), and reports whether the solid is valid, its volume and bounding box: check them against the requirements.`,
+Write the script with write_file first. It receives App (FreeCAD), Part, Vector, a new document doc, and forge, Forge's engineering helpers:
+  forge.rounded_box(l, w, h, radius) · forge.enclosure(l, w, h, wall, floor, radius) · forge.lid(l, w, thickness, wall, lip, clearance_gap, radius)
+  forge.hole(shape, x, y, "M3", kind="clearance"|"tap"|"counterbore"|"countersink"|"insert"|<diameter>, depth=None (through), fit="close"|"normal"|"loose", top=None) and forge.holes(shape, points, "M3", ...); holes go down -Z from the top
+  forge.corners(l, w, inset) · forge.grid(x0, y0, dx, dy, nx, ny) · forge.standoffs(shape, points, "M3", height, base, outer, kind="insert"|"tap"|"clearance")
+  forge.fillet(shape, r, edges) · forge.chamfer(shape, size, edges) · forge.vertical_edges(shape) · forge.edges_at(shape, z)
+  forge.place(shape, x, y, z, rx, ry, rz) · forge.load("models/other.step") to build assemblies from earlier parts · forge.clearance("M4") · forge.tap_drill("M4")
+Sizes follow ISO 273, ISO 4762 and ISO 10642. Plain Part (makeBox, makeCylinder, cut, fuse, extrude, makeLoft ...), Sketcher and PartDesign bodies (doc.addObject("PartDesign::Body")) work too; assign result = <shape> or leave the solids in doc. Forge exports models/<name>.step (for CNC shops and other CAD), models/<name>.stl (3D viewer and printing) and models/<name>.FCStd (opens in FreeCAD with its history), and reports whether the solid is valid, its volume and bounding box: check them against the requirements, then verify details with freecad_inspect and make a freecad_drawing for manufacturing.`,
     input_schema: {
       type: "object",
       properties: {

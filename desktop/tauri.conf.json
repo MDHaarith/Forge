@@ -23,7 +23,7 @@
     "linux": {
       "rpm": {
         "depends": ["nodejs(engine) >= 22.18", "git-core"],
-        "recommends": ["blender", "python3-numpy", "openscad", "kicad", "iverilog", "yosys", "flatpak"]
+        "recommends": ["blender", "python3-numpy", "openscad", "librsvg2-tools", "kicad", "iverilog", "yosys", "flatpak"]
       }
     }
   }

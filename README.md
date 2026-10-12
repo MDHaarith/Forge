@@ -19,7 +19,7 @@ scripts/setup-fedora.sh            # or: --only "3d chip", --dry-run to preview
 
 The script:
 
-- installs Node.js, git, Blender, OpenSCAD, KiCad, Icarus Verilog and Yosys with `dnf`
+- installs Node.js, git, Blender, OpenSCAD, rsvg-convert (PDF drawings), KiCad, Icarus Verilog and Yosys with `dnf`
   (KiCad is a large download; leave it out with `--only "3d chip"`);
 - installs **FreeCAD from Flathub** for your user, because Fedora's repositories have no FreeCAD
   package. Forge runs it inside its Flatpak sandbox and gives it access to the project folder only;
@@ -93,7 +93,9 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | Workspace | `list_files`, `read_file`, `write_file` | – |
 | Version control | `git_status`, `git_commit`, `git_log` | git |
 | Code | `run_command` | `FORGE_ALLOW_COMMANDS=1` |
-| 3D: engineering | `freecad_build`: exact-dimension parts → STEP, STL, FCStd, with a validity, volume and size report | [FreeCAD](https://www.freecad.org) 0.21+ (`freecadcmd`), native or Flatpak `org.freecad.FreeCAD` |
+| 3D: engineering | `freecad_build`: exact-dimension parts (Part or PartDesign/Sketcher, ISO holes from the `forge` helpers) → STEP, STL, FCStd | [FreeCAD](https://www.freecad.org) 0.21+ (`freecadcmd`), native or Flatpak `org.freecad.FreeCAD` |
+| | `freecad_inspect`: mass in a material, holes and the screws they fit, print overhangs, interference and clearance between parts | FreeCAD |
+| | `freecad_drawing`: technical drawing (views, hidden lines, dimensions, hole table, title block) → SVG, PDF, DXF | FreeCAD; `rsvg-convert` for the PDF |
 | 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+, native or Flatpak `org.blender.Blender` |
 | 3D: quick | `cad_model` (STL + OpenSCAD + JSON from primitives) | – |
 | | `openscad_render` | [OpenSCAD](https://openscad.org) |
@@ -112,9 +114,21 @@ FreeCAD, `art/*.py` for Blender), Forge runs it in the real program with no wind
 (`server/tools/runners/`), and the exported files appear in the project and the viewer. The
 script stays in git, so a design is reproducible and can be edited and re-run.
 
-- FreeCAD scripts get `App`, `Part` and a new document `doc`, and set `result = <shape>` or add
-  objects to `doc`. Forge reports whether the solid is valid, its volume and its bounding box,
-  so the agent can check its work against the requirements.
+- FreeCAD scripts get `App`, `Part`, `Vector`, a new document `doc` and the `forge` helpers, and
+  set `result = <shape>` or add objects to `doc` (PartDesign bodies and constrained sketches
+  work too). Forge reports whether the solid is valid, its volume and its bounding box.
+- The `forge` helpers (`server/tools/runners/forge_cad.py`) know ISO metric hardware:
+  `forge.hole(part, x, y, "M3", kind="counterbore")` cuts a clearance hole with the right
+  counterbore for an ISO 4762 screw; `kind` can also be `"countersink"`, `"tap"` (tap drill)
+  or `"insert"` (heat-set insert). There are also `rounded_box`, `enclosure`, `lid`,
+  `standoffs`, `fillet`/`chamfer` by edge selection, and `load` for STEP/FCStd parts to assemble.
+- `freecad_inspect` measures the result: mass in a chosen material, every hole with the screw
+  it fits, overhang area for 3D printing, and interference or clearance between the parts of
+  an assembly. `freecad_drawing` makes a manufacturing drawing in first or third angle
+  projection on an A4–A2 sheet, with a hole table and title block, as SVG and PDF, plus the
+  top outline as DXF for laser cutting.
+- **Open in FreeCAD / Blender / KiCad**: the preview has a button that opens the file in the
+  installed desktop program (a Flatpak gets only the project folder), to refine it by hand.
 - Blender scripts start from an empty scene. With `render: true`, Forge adds a camera framed on
   the subject and lights if the script did not, and renders with Cycles on the CPU so it works
   on machines without a GPU.
@@ -134,9 +148,11 @@ server/
   model.ts        Claude (streaming, adaptive thinking, refusal fallback) and the offline demo model
   projects.ts     project folders, git init, saved conversations (.state/)
   cad/mesh.ts     mesh kernel: box/cylinder/sphere → STL and OpenSCAD
-  tools/script3d.ts         Blender and FreeCAD tools
+  tools/script3d.ts         Blender and FreeCAD build tools
+  tools/freecad.ts          FreeCAD inspection and technical drawings
+  open.ts                   "Open in FreeCAD/Blender/KiCad" for project files
   tools/launch.ts           runs a program natively or as a Flatpak with only the folders it needs
-  tools/runners/*.py        scripts that run inside Blender / FreeCAD and export the result
+  tools/runners/*.py        scripts that run inside Blender / FreeCAD; forge_cad.py is the helper library
   tools/          one file per domain; registry.ts lists them all
 desktop/          Tauri desktop app (Rust): starts the server, shows the UI, builds the RPM
 web/              UI: projects, chat with tool timeline, file preview, three.js STL/GLB viewer, render images
@@ -156,7 +172,8 @@ The agent, the capabilities panel and input validation pick it up automatically.
 1. Desktop shell as a Flatpak (the RPM is done). Needs host access through `flatpak-spawn --host`
    so the sandboxed app can still run Blender, KiCad and the other tools installed on the system.
 2. Approvals: confirm before tools that write outside `models/`, run commands, or export for manufacture.
-3. FreeCAD sketches and PartDesign bodies, drawings (PDF) from the 3D part, and assemblies.
+3. FreeCAD assemblies with joints (parts can already be loaded, placed and checked for
+   interference), GD&T tolerances on drawings, and CAM toolpaths.
 4. PCB authoring: generate KiCad schematics and boards from a netlist the agent writes; render previews.
 5. Chip flow: OpenLane on the SkyWater 130 PDK through to GDS; Tiny Tapeout submission template.
 6. Cross-domain links: enclosure sized from the board outline, firmware pin map from the schematic.

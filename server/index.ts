@@ -4,6 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultModel, type Model } from "./model.ts";
+import { OpenError, openerTypes, openInApp } from "./open.ts";
 import { Projects } from "./projects.ts";
 import { describeTools } from "./tools/registry.ts";
 import { projectPath } from "./tools/paths.ts";
@@ -58,7 +59,7 @@ export function createServer(projects: Projects, model: Model): http.Server {
       if (parts[0] !== "api") return await serveStatic(url.pathname, res);
 
       if (req.method === "GET" && parts[1] === "status" && parts.length === 2) {
-        return json(res, 200, { model: model.name, offline: model.name === "offline demo", home: projects.home, tools: describeTools() });
+        return json(res, 200, { model: model.name, offline: model.name === "offline demo", home: projects.home, tools: describeTools(), open: openerTypes() });
       }
       if (parts[1] === "projects" && parts.length === 2) {
         if (req.method === "GET") return json(res, 200, await projects.list());
@@ -93,6 +94,14 @@ export function createServer(projects: Projects, model: Model): http.Server {
         if (req.method === "GET" && action === "history") {
           const s = await projects.session(name);
           return json(res, 200, { events: s.events, running: s.agent.running });
+        }
+        if (req.method === "POST" && action === "open") {
+          const { path: rel } = await readJson(req);
+          if (typeof rel !== "string") throw new HttpError(400, "path is required");
+          const app = await openInApp(dir, rel).catch((e) => {
+            throw e instanceof OpenError ? new HttpError(e.status, e.message) : e;
+          });
+          return json(res, 200, { app });
         }
         if (req.method === "POST" && action === "chat") {
           const { message } = await readJson(req);
