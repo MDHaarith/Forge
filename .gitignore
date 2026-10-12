@@ -4,6 +4,7 @@ dist/
 __pycache__/
 build/
 desktop/target/
+target/
 desktop/gen/
 
 # Agent/IDE rule files (caveman), not part of the project

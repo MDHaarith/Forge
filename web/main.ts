@@ -38,6 +38,12 @@ const BINARY = new Set(["step", "stp", "fcstd", "iges", "igs", "brep", "blend", 
 const IMAGES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml" };
 // After a tool runs, show its most telling output: a drawing, then a render, then a model.
 const PREVIEW_ORDER = ["svg", "png", "glb", "stl"];
+/** Icon colour group for the file tree. */
+const KINDS: Record<string, string> = {
+  stl: "model", glb: "model", step: "model", stp: "model", fcstd: "model", blend: "model", obj: "model", scad: "model",
+  svg: "drawing", pdf: "drawing", dxf: "drawing", png: "drawing", jpg: "drawing", jpeg: "drawing", webp: "drawing",
+  kicad_pcb: "board",
+};
 
 let project: string | null = localStorage.getItem("forge.project");
 let closeViewer: (() => void) | null = null;
@@ -66,6 +72,7 @@ const post = (body: unknown): RequestInit => ({
 async function loadStatus() {
   const status = await api<{ model: string; offline: boolean; tools: ToolInfo[]; open: Record<string, string> }>("/status");
   openers = status.open ?? {};
+  $("caps-summary").textContent = `Tools ${status.tools.filter((t) => t.available).length}/${status.tools.length}`;
   await loadModels();
 
   const host = $("capabilities");
@@ -146,9 +153,28 @@ async function loadFiles() {
   list.replaceChildren();
   if (!project) return;
   files = await api<string[]>(`/projects/${project}/files`);
+  $("status-project").textContent = `${project} · ${files.length} files`;
+  // An outliner-style tree: each folder once, before its first file.
+  const folders = new Set<string>();
+  const indent = (depth: number) => `${10 + depth * 14}px`;
   for (const file of files) {
-    const item = el("li", "", file);
-    item.onclick = () => preview(file);
+    const parts = file.split("/");
+    for (let d = 1; d < parts.length; d++) {
+      const dir = parts.slice(0, d).join("/");
+      if (folders.has(dir)) continue;
+      folders.add(dir);
+      const row = el("li", "folder", parts[d - 1]);
+      row.style.paddingLeft = indent(d - 1);
+      list.append(row);
+    }
+    const item = el("li", "", parts.at(-1));
+    const ext = file.toLowerCase().split(".").pop() ?? "";
+    item.dataset.kind = KINDS[ext] ?? (file.endsWith(".board.json") ? "board" : "code");
+    item.dataset.file = file;
+    item.title = file;
+    item.style.paddingLeft = indent(parts.length - 1);
+    item.classList.toggle("active", file === $("preview-title").textContent);
+    item.onclick = () => openFile(file);
     list.append(item);
   }
   fillDesignPicker();
@@ -167,6 +193,12 @@ async function openProject(name: string) {
   events.forEach(render);
   if (!events.length) $("log").append(el("div", "empty", "Describe what you want to build in this project."));
   if (mode === "design") await loadDesign();
+}
+
+/** A file picked by the user shows in the viewport, so leave the Design workspace for it. */
+function openFile(file: string) {
+  if (mode === "design") setMode("chat");
+  void preview(file);
 }
 
 function showOpenButton(file: string) {
@@ -216,6 +248,7 @@ async function preview(file: string) {
   closeViewer?.();
   closeViewer = null;
   $("preview-title").textContent = file;
+  for (const row of $("files").querySelectorAll<HTMLElement>("li[data-file]")) row.classList.toggle("active", row.dataset.file === file);
   $("expand").hidden = true;
   showOpenButton(file);
   const host = $("preview");
@@ -278,7 +311,7 @@ function render(e: AgentEvent) {
       card.append(el("pre", "code result", e.text));
       for (const file of e.files.filter((f) => !f.endsWith("/"))) {
         const link = el("button", "file-link", file);
-        link.onclick = () => preview(file);
+        link.onclick = () => openFile(file);
         card.querySelector("summary")!.append(link);
       }
       break;
@@ -370,6 +403,11 @@ $("lightbox").addEventListener("click", () => {
 });
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") $("lightbox").hidden = true;
+});
+// The status bar's tools list is a <details>; close it on any click outside, like a menu.
+document.addEventListener("click", (ev) => {
+  const caps = document.querySelector(".caps");
+  if (caps && !caps.contains(ev.target as Node)) caps.removeAttribute("open");
 });
 
 // ---- Design view: the PCB beside the 3D assembly ----------------------------------------------

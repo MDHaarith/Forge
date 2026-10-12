@@ -3,7 +3,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
-/** Parses a model file into a scene object. GLB keeps its own materials; STL gets the accent colour. */
+/** Parses a model file into a scene object. GLB keeps its own materials; STL gets the model colour. */
 async function load(data: ArrayBuffer, format: "stl" | "glb"): Promise<THREE.Object3D> {
   if (format === "glb") {
     const gltf = await new GLTFLoader().parseAsync(data, "");
@@ -14,8 +14,8 @@ async function load(data: ArrayBuffer, format: "stl" | "glb"): Promise<THREE.Obj
   }
   const geometry = new STLLoader().parse(data);
   geometry.computeVertexNormals();
-  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#8b7cf6";
-  return new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: accent, metalness: 0.1, roughness: 0.6 }));
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--model").trim() || "#b8bcc6";
+  return new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color, metalness: 0.15, roughness: 0.55 }));
 }
 
 /** Renders an STL or GLB into `host` with orbit controls. Returns a function that tears the view down. */
@@ -53,6 +53,16 @@ export async function showModel(host: HTMLElement, data: ArrayBuffer, format: "s
   controls.target.copy(center);
   controls.update();
 
+  // The viewport fills the window now, so follow its size like the Design view does.
+  const resize = new ResizeObserver(() => {
+    const w = host.clientWidth, h = host.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  });
+  resize.observe(host);
+
   let frame = 0;
   const tick = () => {
     controls.update();
@@ -63,6 +73,7 @@ export async function showModel(host: HTMLElement, data: ArrayBuffer, format: "s
 
   return () => {
     cancelAnimationFrame(frame);
+    resize.disconnect();
     controls.dispose();
     model.traverse((o) => {
       if (o instanceof THREE.Mesh) o.geometry.dispose();

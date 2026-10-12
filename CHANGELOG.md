@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1 — 2026-10-12
+
+- New layout modelled on FreeCAD, Blender and KiCad: project and file tree on the left, the selected file in a full-size viewport in the middle, the assistant on the right, and a status bar with the project, mouse hints and the tools list.
+- Files show as a folder tree with type colours (models, drawings, boards, code), and the open file is highlighted.
+- Neutral grey theme with blue selection; models render in a CAD grey on a gradient viewport, and boards on KiCad's dark canvas.
+- The workspaces are now Viewer and Design; picking a file switches to the Viewer.
+- The 3D viewer follows the window size.
+
 ## 0.9.0 — 2026-10-12
 
 - Model picker in the top bar: switch between Claude, OpenAI, OpenRouter, DeepSeek, Qwen, GLM and OpenCode Zen while Forge runs, with each provider's model list.

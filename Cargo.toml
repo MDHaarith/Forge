@@ -1,0 +1,8 @@
+[workspace]
+members = ["server", "desktop"]
+resolver = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

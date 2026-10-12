@@ -4,18 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Forge</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%274%27 fill=%27%238b7cf6%27/%3E%3C/svg%3E" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%23e8873c%27/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <span class="brand">Forge</span>
-      <span id="project-title" class="muted"></span>
-      <span class="spacer"></span>
-      <nav class="modes" aria-label="Workspace">
-        <button id="mode-chat" type="button" class="active" aria-pressed="true">Chat</button>
+    <!-- Laid out like FreeCAD, Blender and KiCad: tree on the left, viewport in the middle, panels on the right, status bar below. -->
+    <header class="menubar">
+      <span class="brand"><span class="logo" aria-hidden="true"></span>Forge</span>
+      <span id="project-title" class="crumb"></span>
+      <nav class="workspaces" aria-label="Workspace">
+        <button id="mode-chat" type="button" class="active" aria-pressed="true" title="The selected file in the viewport">Viewer</button>
         <button id="mode-design" type="button" aria-pressed="false" title="The PCB and the 3D assembly side by side">Design</button>
       </nav>
+      <span class="spacer"></span>
       <form id="model-pick" class="model-pick">
         <select id="provider-pick" aria-label="Model provider"></select>
         <input id="model-name" list="model-list" aria-label="Model" spellcheck="false" />
@@ -23,67 +24,79 @@
       </form>
     </header>
     <main class="layout">
-      <aside class="sidebar">
-        <section>
-          <h2>Projects</h2>
-          <ul id="projects" class="list"></ul>
+      <aside class="outliner">
+        <section class="panel">
+          <h2 class="panel-head">Projects</h2>
+          <ul id="projects" class="tree"></ul>
           <form id="new-project" class="inline-form">
-            <input id="new-project-name" placeholder="new-project-name" pattern="[a-z0-9][a-z0-9\-_]*" required />
-            <button type="submit">Create</button>
+            <input id="new-project-name" placeholder="new-project-name" pattern="[a-z0-9][a-z0-9\-_]*" required aria-label="New project name" />
+            <button type="submit">New</button>
           </form>
         </section>
-        <section class="grow">
-          <h2>Files</h2>
-          <ul id="files" class="list files"></ul>
+        <section class="panel grow">
+          <h2 class="panel-head">Files</h2>
+          <ul id="files" class="tree files"></ul>
         </section>
       </aside>
-      <section id="design" class="design" hidden>
-        <div class="design-bar">
-          <select id="design-pick" aria-label="Assembly or board"></select>
-          <div class="seg" role="group" aria-label="2D view">
-            <button id="show-pcb" type="button" class="active">PCB</button>
-            <button id="show-schematic" type="button">Schematic</button>
+      <section class="center">
+        <section class="viewport">
+          <div class="view-head">
+            <span id="preview-title" class="view-title">Viewport</span>
+            <span class="spacer"></span>
+            <button id="expand" type="button" hidden title="Show the preview full window">Expand</button>
+            <button id="open-app" type="button" hidden></button>
           </div>
-          <label class="check"><input id="xray" type="checkbox" checked /> See-through case</label>
-          <span class="spacer"></span>
-          <span id="fit-status" class="badge"></span>
-        </div>
-        <div class="design-split">
-          <div class="pane">
-            <div class="pane-title" id="pane-2d-title">PCB</div>
-            <div id="design-2d" class="board-view"></div>
+          <div id="preview" class="preview">
+            <div class="empty">Select a file in the tree. Models open in 3D; drawings and renders show as images.</div>
           </div>
-          <div class="pane">
-            <div class="pane-title">3D assembly <span class="muted">· drag to orbit, right-drag to pan, scroll to zoom</span></div>
-            <div id="design-3d" class="model-view"></div>
+        </section>
+        <section id="design" class="design" hidden>
+          <div class="view-head">
+            <select id="design-pick" aria-label="Assembly or board"></select>
+            <div class="seg" role="group" aria-label="2D view">
+              <button id="show-pcb" type="button" class="active">PCB</button>
+              <button id="show-schematic" type="button">Schematic</button>
+            </div>
+            <label class="check"><input id="xray" type="checkbox" checked /> See-through case</label>
+            <span class="spacer"></span>
+            <span id="fit-status" class="badge"></span>
           </div>
-        </div>
-        <div id="design-parts" class="design-parts"></div>
+          <div class="design-split">
+            <div class="pane">
+              <div class="pane-title" id="pane-2d-title">PCB</div>
+              <div id="design-2d" class="board-view"></div>
+            </div>
+            <div class="pane">
+              <div class="pane-title">3D assembly</div>
+              <div id="design-3d" class="model-view"></div>
+            </div>
+          </div>
+          <div id="design-parts" class="design-parts"></div>
+        </section>
       </section>
-      <section class="chat">
+      <aside class="assistant panel">
+        <h2 class="panel-head">Assistant</h2>
         <div id="log" class="log">
           <div class="empty">Create or pick a project, then describe what you want to build.</div>
         </div>
         <form id="composer" class="composer">
-          <textarea id="prompt" rows="3" placeholder="e.g. Design a 60 × 40 mm enclosure with M3 standoffs" disabled></textarea>
-          <button id="send" type="submit" disabled>Send</button>
-        </form>
-      </section>
-      <aside class="inspector">
-        <section class="preview-section">
-          <div class="preview-head">
-            <h2 id="preview-title">Preview</h2>
-            <button id="expand" type="button" hidden title="Show the preview full window">Expand</button>
-            <button id="open-app" type="button" hidden></button>
+          <textarea id="prompt" rows="3" placeholder="e.g. Design a 60 × 40 mm enclosure with M3 standoffs" disabled aria-label="Message"></textarea>
+          <div class="composer-row">
+            <span class="muted">Ctrl+Enter to send</span>
+            <button id="send" type="submit" disabled>Send</button>
           </div>
-          <div id="preview" class="preview"><div class="empty">Select a file to preview it. Models open in 3D; drawings and renders show as images.</div></div>
-        </section>
-        <section>
-          <h2>Capabilities</h2>
-          <div id="capabilities"></div>
-        </section>
+        </form>
       </aside>
     </main>
+    <footer class="statusbar">
+      <span id="status-project">No project</span>
+      <span class="hint">Drag: orbit · Right-drag: pan · Scroll: zoom</span>
+      <span class="spacer"></span>
+      <details class="caps">
+        <summary id="caps-summary">Tools</summary>
+        <div id="capabilities" class="caps-panel"></div>
+      </details>
+    </footer>
     <div id="lightbox" class="lightbox" hidden></div>
     <script type="module" src="./main.ts"></script>
   </body>
