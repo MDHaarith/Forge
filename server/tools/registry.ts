@@ -1,0 +1,32 @@
+import { cadTools } from "./cad.ts";
+import { chipTools } from "./chip.ts";
+import { codeTools, commandsAllowed } from "./code.ts";
+import { onPath } from "./exec.ts";
+import { pcbTools } from "./pcb.ts";
+import type { ForgeTool } from "./types.ts";
+import { vcsTools } from "./vcs.ts";
+import { workspaceTools } from "./workspace.ts";
+
+/** Every capability Forge knows about. Add a domain by appending its tool list here. */
+export const allTools: ForgeTool[] = [...workspaceTools, ...vcsTools, ...codeTools, ...cadTools, ...pcbTools, ...chipTools];
+
+export function isAvailable(tool: ForgeTool): boolean {
+  if (tool.name === "run_command") return commandsAllowed();
+  return !tool.requires || onPath(tool.requires);
+}
+
+/** The tools the agent may call right now: those whose external programs are installed. */
+export function availableTools(): ForgeTool[] {
+  return allTools.filter(isAvailable);
+}
+
+export function describeTools() {
+  return allTools.map((t) => ({
+    name: t.name,
+    domain: t.domain,
+    description: t.description,
+    available: isAvailable(t),
+    requires: t.name === "run_command" ? "FORGE_ALLOW_COMMANDS=1" : t.requires,
+    install: t.install,
+  }));
+}
