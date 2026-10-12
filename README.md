@@ -5,7 +5,8 @@ printed circuit boards and chips, and records every step in git.
 
 Forge does not reimplement CAD or EDA. It is an orchestrator. Claude plans the work and calls
 **tools**; each tool either does the job itself (the built-in mesh kernel) or wraps a proven
-open-source program (OpenSCAD, KiCad, Icarus Verilog, Yosys). Every project is a git
+open-source program (FreeCAD, Blender, KiCad, Icarus Verilog, Yosys); circuit boards are built
+by a PCB engine that ships with Forge. Every project is a git
 repository, and designs are kept as text so they can be diffed, reviewed and rebuilt.
 
 ## Install on Fedora
@@ -23,7 +24,7 @@ The script:
   (KiCad is a large download; leave it out with `--only "3d chip"`);
 - installs **FreeCAD from Flathub** for your user, because Fedora's repositories have no FreeCAD
   package. Forge runs it inside its Flatpak sandbox and gives it access to the project folder only;
-- builds Forge and adds a `forge` command, an app-menu launcher, and a systemd user service;
+- builds Forge and its built-in PCB engine, and adds a `forge` command, an app-menu launcher, and a systemd user service;
 - creates `~/.config/forge/env` (private, mode 600) for your API key and settings.
 
 Then put your key in `~/.config/forge/env` and start Forge from the app menu or with `forge`.
@@ -99,7 +100,9 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+, native or Flatpak `org.blender.Blender` |
 | 3D: quick | `cad_model` (STL + OpenSCAD + JSON from primitives) | – |
 | | `openscad_render` | [OpenSCAD](https://openscad.org) |
-| PCB | `pcb_drc`, `pcb_export_fab` (Gerbers + drill for JLCPCB/PCBWay) | [KiCad 8+](https://www.kicad.org) `kicad-cli` |
+| PCB | `pcb_build`: board from tscircuit code → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM | built in (`npm run pcb-engine`) |
+| | `design_assemble`: boards and enclosure parts in one 3D assembly, with a fit check | – |
+| | `pcb_drc`, `pcb_export_fab` for KiCad projects (Gerbers + drill for JLCPCB/PCBWay) | [KiCad 8+](https://www.kicad.org) `kicad-cli` |
 | Chip | `chip_simulate` | Icarus Verilog |
 | | `chip_synthesize` | Yosys |
 
@@ -137,6 +140,26 @@ Some distribution packages of Blender lack numpy (needed for GLB export) or the
 denoiser; Forge renders without denoising when that library is missing. The official
 downloads include both.
 
+## Boards and enclosures in one view
+
+Like Fusion 360's electronics + mechanical workspace, Forge designs the board and its case
+together. The **Design** tab (top bar) shows the selected board's PCB layout (or schematic) beside
+the 3D assembly. Clicking a part in either view selects it in the other, collisions are outlined
+in red and tight spots in amber, and "See-through case" makes the enclosure transparent.
+
+- **The board** is tscircuit code (React-style `<board>`, `<resistor>`, `<chip>`, `<trace>`)
+  in `pcb/<name>.tsx`. `pcb_build` runs it in Forge's PCB engine (`engines/pcb`, bundled into
+  one file), which places parts, autoroutes and writes `pcb/` views and models and `fab/<name>/`
+  files ready for JLCPCB. The board code runs in a Node permission sandbox: it can read and
+  write only the project, start no programs and does not see Forge's settings or API key, and
+  it stays offline unless `lookup_parts` is set.
+- **The case** is a FreeCAD script, sized from the board's size, holes and tallest part.
+- **`design_assemble`** places both in `design/<name>.json` and checks every component's box
+  against the case's triangles, so the agent can move a connector or raise a lid until it fits.
+
+The engine has its own `engines/pcb/package.json` (tscircuit needs TypeScript 5, Forge uses 7);
+`npm run pcb-engine` installs and bundles it, and the setup script and desktop build do this for you.
+
 ## Layout
 
 ```
@@ -153,9 +176,13 @@ server/
   open.ts                   "Open in FreeCAD/Blender/KiCad" for project files
   tools/launch.ts           runs a program natively or as a Flatpak with only the folders it needs
   tools/runners/*.py        scripts that run inside Blender / FreeCAD; forge_cad.py is the helper library
+  tools/board.ts            pcb_build: runs the PCB engine in a sandboxed Node
+  tools/design.ts, fit.ts   design_assemble and the board-in-enclosure fit check
   tools/          one file per domain; registry.ts lists them all
 desktop/          Tauri desktop app (Rust): starts the server, shows the UI, builds the RPM
+engines/pcb/      the PCB engine: tscircuit, its exporters and runner.mjs, bundled to dist/pcb-engine.mjs
 web/              UI: projects, chat with tool timeline, file preview, three.js STL/GLB viewer, render images
+web/design.ts     Design view: PCB/schematic beside the 3D assembly, cross-selection, fit highlights
 scripts/setup-fedora.sh   Fedora installer: dnf packages, FreeCAD Flatpak, build, forge command, service, launcher
 scripts/stage-app.sh      gathers the server, built UI and runtime packages the desktop app bundles
 tests/            node:test suites (no network, no API key needed)
@@ -174,7 +201,7 @@ The agent, the capabilities panel and input validation pick it up automatically.
 2. Approvals: confirm before tools that write outside `models/`, run commands, or export for manufacture.
 3. FreeCAD assemblies with joints (parts can already be loaded, placed and checked for
    interference), GD&T tolerances on drawings, and CAM toolpaths.
-4. PCB authoring: generate KiCad schematics and boards from a netlist the agent writes; render previews.
+4. PCB: export the built-in engine's boards to KiCad; manual part moves in the Design view.
 5. Chip flow: OpenLane on the SkyWater 130 PDK through to GDS; Tiny Tapeout submission template.
-6. Cross-domain links: enclosure sized from the board outline, firmware pin map from the schematic.
+6. Cross-domain links: firmware pin map from the schematic; enclosure generated straight from the board data.
 7. MCP: expose Forge tools as an MCP server and load third-party MCP servers as capabilities.

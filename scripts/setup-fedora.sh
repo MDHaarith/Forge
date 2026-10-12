@@ -105,8 +105,9 @@ fi
 
 # --- 4. Forge itself -----------------------------------------------------------------
 
-say "Installing Forge's dependencies and building the interface"
+say "Installing Forge's dependencies, its built-in PCB engine, and building the interface"
 run "$NPM" --prefix "$REPO" ci --no-audit --no-fund
+run "$NPM" --prefix "$REPO" run pcb-engine
 run "$NPM" --prefix "$REPO" run build
 
 if [ "$DESKTOP" = 1 ]; then

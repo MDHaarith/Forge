@@ -12,6 +12,10 @@
       <span class="brand">Forge</span>
       <span id="project-title" class="muted"></span>
       <span class="spacer"></span>
+      <nav class="modes" aria-label="Workspace">
+        <button id="mode-chat" type="button" class="active" aria-pressed="true">Chat</button>
+        <button id="mode-design" type="button" aria-pressed="false" title="The PCB and the 3D assembly side by side">Design</button>
+      </nav>
       <span id="model-badge" class="badge"></span>
     </header>
     <main class="layout">
@@ -29,6 +33,29 @@
           <ul id="files" class="list files"></ul>
         </section>
       </aside>
+      <section id="design" class="design" hidden>
+        <div class="design-bar">
+          <select id="design-pick" aria-label="Assembly or board"></select>
+          <div class="seg" role="group" aria-label="2D view">
+            <button id="show-pcb" type="button" class="active">PCB</button>
+            <button id="show-schematic" type="button">Schematic</button>
+          </div>
+          <label class="check"><input id="xray" type="checkbox" checked /> See-through case</label>
+          <span class="spacer"></span>
+          <span id="fit-status" class="badge"></span>
+        </div>
+        <div class="design-split">
+          <div class="pane">
+            <div class="pane-title" id="pane-2d-title">PCB</div>
+            <div id="design-2d" class="board-view"></div>
+          </div>
+          <div class="pane">
+            <div class="pane-title">3D assembly <span class="muted">· drag to orbit, right-drag to pan, scroll to zoom</span></div>
+            <div id="design-3d" class="model-view"></div>
+          </div>
+        </div>
+        <div id="design-parts" class="design-parts"></div>
+      </section>
       <section class="chat">
         <div id="log" class="log">
           <div class="empty">Create or pick a project, then describe what you want to build.</div>

@@ -92,6 +92,7 @@ test("a real run installs packages, FreeCAD, the service and a working forge com
   assert.ok(log.some((l) => /^dnf install -y git nodejs nodejs-npm .*blender .*kicad .*yosys/.test(l)), log.join("\n"));
   assert.ok(log.includes("flatpak install --user -y --noninteractive flathub org.freecad.FreeCAD"));
   assert.ok(log.some((l) => l.startsWith("npm --prefix") && l.endsWith("ci --no-audit --no-fund")));
+  assert.ok(log.some((l) => l.startsWith("npm --prefix") && l.endsWith("run pcb-engine")));
   assert.ok(log.some((l) => l.startsWith("npm --prefix") && l.endsWith("run build")));
   assert.ok(log.includes("systemctl --user daemon-reload"));
 

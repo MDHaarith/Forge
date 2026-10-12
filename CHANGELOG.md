@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-10-12
+
+- Built-in PCB engine (tscircuit, `npm run pcb-engine`): `pcb_build` turns a board written as code into an autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place and a JLCPCB BOM, with no KiCad needed.
+- Board code runs sandboxed: it can only read and write the project, cannot start programs, does not see the API key and stays offline unless part lookup is asked for.
+- `design_assemble` puts boards and enclosure parts in one 3D assembly and checks that every component clears the enclosure, reporting collisions and tight spots.
+- Design view, like Fusion 360's electronics workspace: the PCB layout or schematic beside the 3D assembly, with cross-selection, collision highlights and a see-through case.
+- The agent designs boards and their enclosures together and fixes collisions before calling a design done.
+- The Fedora setup script and the desktop app build and ship the PCB engine.
+
 ## 0.5.3 — 2026-10-12
 
 - The enlarged image view fits the window instead of overflowing it.

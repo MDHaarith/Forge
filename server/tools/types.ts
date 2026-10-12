@@ -30,6 +30,8 @@ export interface ForgeTool {
   requires?: string | string[];
   /** A desktop program that may also be installed as a Flatpak; replaces `requires`. */
   app?: AppSpec;
+  /** What the UI says is missing when `requires` lists file paths rather than program names. */
+  needs?: string;
   install?: InstallHint;
   run(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;
 }

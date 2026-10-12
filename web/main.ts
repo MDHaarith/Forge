@@ -1,3 +1,5 @@
+import type { AssemblyPart, BoardBoxes, FitIssue } from "./design.ts";
+
 type AgentEvent =
   | { type: "user"; text: string }
   | { type: "text"; text: string }
@@ -43,6 +45,11 @@ let files: string[] = [];
 /** File extension (with dot) -> desktop program that opens it, for installed programs only. */
 let openers: Record<string, string> = {};
 const toolCards = new Map<string, HTMLElement>();
+let mode: "chat" | "design" = localStorage.getItem("forge.mode") === "design" ? "design" : "chat";
+let closeDesign: (() => void) | null = null;
+/** Bumped by each loadDesign, so a slower earlier load stops instead of drawing over a newer one. */
+let designRun = 0;
+let showSchematic = false;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init);
@@ -109,6 +116,7 @@ async function loadFiles() {
     item.onclick = () => preview(file);
     list.append(item);
   }
+  fillDesignPicker();
 }
 
 async function openProject(name: string) {
@@ -123,6 +131,7 @@ async function openProject(name: string) {
   toolCards.clear();
   events.forEach(render);
   if (!events.length) $("log").append(el("div", "empty", "Describe what you want to build in this project."));
+  if (mode === "design") await loadDesign();
 }
 
 function showOpenButton(file: string) {
@@ -252,6 +261,7 @@ async function send(message: string) {
   button.disabled = true;
   button.textContent = "Working…";
   let toPreview: string | undefined;
+  let toDesign: string | undefined;
   try {
     const res = await fetch(`/api/projects/${project}/chat`, post({ message }));
     if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.error ?? res.statusText);
@@ -275,6 +285,8 @@ async function send(message: string) {
               break;
             }
           }
+          // A new board or assembly opens in the Design view, like a Fusion 360 electronics design.
+          toDesign = event.files.find((f) => /^design\/[^/]+\.json$/.test(f)) ?? event.files.find((f) => /^pcb\/.+\.board\.json$/.test(f)) ?? toDesign;
           await loadFiles();
         }
       }
@@ -285,7 +297,11 @@ async function send(message: string) {
     button.disabled = false;
     button.textContent = "Send";
   }
-  if (toPreview) await preview(toPreview);
+  if (toDesign) {
+    fillDesignPicker(toDesign);
+    if (mode === "design") await loadDesign();
+    else setMode("design");
+  } else if (toPreview) await preview(toPreview);
 }
 
 $("composer").addEventListener("submit", (ev) => {
@@ -321,6 +337,179 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") $("lightbox").hidden = true;
 });
 
+// ---- Design view: the PCB beside the 3D assembly ----------------------------------------------
+
+interface DesignFile {
+  parts: { file: string; position: [number, number, number]; rotation: [number, number, number]; color?: string; opacity?: number }[];
+  clearance: number;
+  fit: FitIssue[];
+}
+
+/** Assemblies (design/*.json) first, then boards (pcb/*.board.json) that can be shown on their own. */
+function designChoices(): { value: string; label: string }[] {
+  const designs = files.filter((f) => /^design\/[^/]+\.json$/.test(f)).map((f) => ({ value: f, label: `Assembly · ${f.slice(7, -5)}` }));
+  const boards = files.filter((f) => /^pcb\/.+\.board\.json$/.test(f)).map((f) => ({ value: f, label: `Board · ${f.slice(4, -11)}` }));
+  return [...designs, ...boards];
+}
+
+function fillDesignPicker(prefer?: string) {
+  const pick = $<HTMLSelectElement>("design-pick");
+  const current = prefer ?? pick.value ?? localStorage.getItem(`forge.design.${project}`);
+  pick.replaceChildren();
+  const choices = designChoices();
+  for (const c of choices) {
+    const option = el("option", "", c.label) as HTMLOptionElement;
+    option.value = c.value;
+    pick.append(option);
+  }
+  if (!choices.length) pick.append(el("option", "", "No board or assembly yet"));
+  const saved = current || localStorage.getItem(`forge.design.${project}`);
+  if (saved && choices.some((c) => c.value === saved)) pick.value = saved;
+  pick.disabled = !choices.length;
+}
+
+async function fetchFile(file: string): Promise<ArrayBuffer> {
+  const res = await fetch(`/api/projects/${project}/file?path=${encodeURIComponent(file)}`);
+  if (!res.ok) throw new Error(`could not load ${file}`);
+  return res.arrayBuffer();
+}
+
+const fetchJson = async <T>(file: string): Promise<T> => JSON.parse(new TextDecoder().decode(await fetchFile(file)));
+
+async function loadDesign() {
+  const run = ++designRun;
+  closeDesign?.();
+  closeDesign = null;
+  const view2d = $("design-2d");
+  const view3d = $("design-3d");
+  const chips = $("design-parts");
+  const badge = $("fit-status");
+  chips.replaceChildren();
+  badge.textContent = "";
+  badge.className = "badge";
+  const choice = $<HTMLSelectElement>("design-pick").value;
+  if (!project || !designChoices().some((c) => c.value === choice)) {
+    view2d.replaceChildren(el("div", "empty", "No board yet. Ask Forge for a circuit board (it writes pcb/<name>.tsx and runs pcb_build); it shows here."));
+    view3d.replaceChildren(el("div", "empty", "Then ask for an enclosure and to assemble the board in it (design_assemble): the 3D assembly and its fit check show here."));
+    return;
+  }
+  localStorage.setItem(`forge.design.${project}`, choice);
+  view2d.replaceChildren(el("div", "empty", "Loading…"));
+  view3d.replaceChildren(el("div", "empty", "Loading…"));
+
+  try {
+    const design: DesignFile = choice.startsWith("design/")
+      ? await fetchJson<DesignFile>(choice)
+      : { parts: [{ file: choice.replace(/\.board\.json$/, ".glb"), position: [0, 0, 0], rotation: [0, 0, 0] }], clearance: 0, fit: [] };
+    const parts: AssemblyPart[] = [];
+    for (const p of design.parts) {
+      const boardData = p.file.endsWith(".glb") ? p.file.replace(/\.glb$/, ".board.json") : undefined;
+      const board = boardData && files.includes(boardData) ? await fetchJson<BoardBoxes>(boardData) : undefined;
+      parts.push({ ...p, data: await fetchFile(p.file), board });
+    }
+    const main = parts.find((p) => p.board);
+    const { showAssembly, showBoardSvg, partKey } = await import("./design.ts");
+    const base = main?.file.replace(/\.glb$/, "");
+    const svgFile = base && `${base}-${showSchematic ? "schematic" : "pcb"}.svg`;
+    const svgText = svgFile && files.includes(svgFile) ? new TextDecoder().decode(await fetchFile(svgFile)) : undefined;
+    if (run !== designRun) return;
+
+    // Fit status.
+    const collisions = design.fit.filter((f) => f.status === "collision").length;
+    const tight = design.fit.length - collisions;
+    const checked = choice.startsWith("design/") && parts.some((p) => p.board) && parts.some((p) => !p.board);
+    if (checked) {
+      badge.textContent = collisions ? `${collisions} collision${collisions > 1 ? "s" : ""}` : tight ? `Fits · ${tight} tight` : `Fits · ≥ ${design.clearance} mm clear`;
+      badge.classList.add(collisions ? "bad" : tight ? "warn" : "ok");
+      badge.title = design.fit.map((f) => `${f.item} ${f.status === "collision" ? "cuts into" : "is tight to"} ${f.part}`).join("\n");
+    }
+
+    // 2D: the main board's PCB or schematic.
+    $("pane-2d-title").textContent = showSchematic ? "Schematic" : "PCB";
+    const issuesByName = new Map<string, string>();
+    for (const f of design.fit) if (f.board === main?.file && f.item !== "board" && issuesByName.get(f.item) !== "collision") issuesByName.set(f.item, f.status);
+
+    let select: (key: string | null) => void = () => {};
+    let board2d: { select(name: string | null): void; dispose(): void } | undefined;
+    if (svgText) {
+      board2d = showBoardSvg(view2d, svgText, showSchematic ? undefined : main?.board, issuesByName, (name) => select(name && main ? partKey(main.file, name) : null));
+    } else {
+      view2d.replaceChildren(el("div", "empty", showSchematic ? "No schematic for this board." : "No PCB drawing for this board."));
+    }
+
+    view3d.replaceChildren();
+    const assembly = await showAssembly(view3d, parts, design.fit, (key) => select(key));
+    if (run !== designRun) {
+      assembly.dispose();
+      board2d?.dispose();
+      return;
+    }
+    assembly.setSeeThrough($<HTMLInputElement>("xray").checked);
+
+    // Part chips: every part on the main board, problems first.
+    const chipFor = new Map<string, HTMLElement>();
+    const order = (name: string) => (issuesByName.get(name) === "collision" ? 0 : issuesByName.get(name) === "tight" ? 1 : 2);
+    if (main?.board) {
+      if (design.fit.some((f) => f.board === main.file && f.item === "board")) {
+        const s = design.fit.find((f) => f.board === main.file && f.item === "board" && f.status === "collision") ? "collision" : "tight";
+        chips.append(el("span", `part-chip ${s}`, `board ${s}`));
+      }
+      for (const c of [...main.board.components].sort((a, b) => order(a.name) - order(b.name) || a.name.localeCompare(b.name, undefined, { numeric: true }))) {
+        const chip = el("button", `part-chip ${issuesByName.get(c.name) ?? ""}`, c.name);
+        const height = Math.round((c.max[2] - main.board.size[2] / 2) * 10) / 10;
+        chip.title = `${c.name}: ${issuesByName.get(c.name) ?? "clear"}, ${height} mm tall above the board`;
+        chip.onclick = () => select(partKey(main.file, c.name));
+        chipFor.set(partKey(main.file, c.name), chip);
+        chips.append(chip);
+      }
+    }
+    let selected: string | null = null;
+    select = (key) => {
+      selected = key === selected ? null : key;
+      assembly.select(selected);
+      board2d?.select(selected && main && selected.startsWith(`${main.file}|`) ? selected.slice(main.file.length + 1) : null);
+      for (const [k, chip] of chipFor) chip.classList.toggle("selected", k === selected);
+    };
+    $("xray").onchange = () => assembly.setSeeThrough($<HTMLInputElement>("xray").checked);
+    closeDesign = () => {
+      assembly.dispose();
+      board2d?.dispose();
+    };
+  } catch (error) {
+    if (run === designRun) view3d.replaceChildren(el("div", "empty", `Could not show the design: ${error instanceof Error ? error.message : String(error)}`));
+  }
+}
+
+function setMode(next: "chat" | "design") {
+  mode = next;
+  localStorage.setItem("forge.mode", next);
+  const design = next === "design";
+  document.querySelector(".layout")!.classList.toggle("design-mode", design);
+  $("design").hidden = !design;
+  for (const [id, on] of [["mode-chat", !design], ["mode-design", design]] as const) {
+    $(id).classList.toggle("active", on);
+    $(id).setAttribute("aria-pressed", String(on));
+  }
+  if (design) void loadDesign();
+  else {
+    closeDesign?.();
+    closeDesign = null;
+  }
+}
+
+$("mode-chat").addEventListener("click", () => setMode("chat"));
+$("mode-design").addEventListener("click", () => setMode("design"));
+$("design-pick").addEventListener("change", () => void loadDesign());
+for (const [id, schematic] of [["show-pcb", false], ["show-schematic", true]] as const) {
+  $(id).addEventListener("click", () => {
+    showSchematic = schematic;
+    $("show-pcb").classList.toggle("active", !schematic);
+    $("show-schematic").classList.toggle("active", schematic);
+    void loadDesign();
+  });
+}
+
 await loadStatus();
 await loadProjects();
+setMode(mode);
 if (project) await openProject(project);

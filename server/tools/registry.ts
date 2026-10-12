@@ -1,6 +1,8 @@
+import { boardTools } from "./board.ts";
 import { cadTools } from "./cad.ts";
 import { chipTools } from "./chip.ts";
 import { codeTools, commandsAllowed } from "./code.ts";
+import { designTools } from "./design.ts";
 import { findProgram } from "./exec.ts";
 import { freecadTools } from "./freecad.ts";
 import { pcbTools } from "./pcb.ts";
@@ -12,7 +14,7 @@ import { vcsTools } from "./vcs.ts";
 import { workspaceTools } from "./workspace.ts";
 
 /** Every capability Forge knows about. Add a domain by appending its tool list here. */
-export const allTools: ForgeTool[] = [...workspaceTools, ...vcsTools, ...codeTools, ...script3dTools, ...freecadTools, ...cadTools, ...pcbTools, ...chipTools];
+export const allTools: ForgeTool[] = [...workspaceTools, ...vcsTools, ...codeTools, ...script3dTools, ...freecadTools, ...cadTools, ...boardTools, ...designTools, ...pcbTools, ...chipTools];
 
 export function isAvailable(tool: ForgeTool): boolean {
   if (tool.name === "run_command") return commandsAllowed();
@@ -31,7 +33,7 @@ export function describeTools() {
     domain: t.domain,
     description: t.description,
     available: isAvailable(t),
-    requires: t.name === "run_command" ? "FORGE_ALLOW_COMMANDS=1" : (t.app?.label ?? [t.requires ?? []].flat().at(-1)),
+    requires: t.name === "run_command" ? "FORGE_ALLOW_COMMANDS=1" : (t.needs ?? t.app?.label ?? [t.requires ?? []].flat().at(-1)),
     install: installText(t.install),
   }));
 }

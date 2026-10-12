@@ -1,0 +1,22 @@
+{
+  "name": "forge-pcb-engine",
+  "private": true,
+  "description": "Forge's built-in PCB engine: tscircuit turns a .tsx board into circuit JSON, SVG, Gerbers and a 3D model",
+  "type": "module",
+  "scripts": {
+    "bundle": "node build.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-wasm": "2.6.2",
+    "circuit-json": "0.0.526",
+    "circuit-json-to-gerber": "0.0.112",
+    "circuit-json-to-gltf": "0.0.151",
+    "circuit-json-to-pnp-csv": "0.0.20",
+    "circuit-to-svg": "0.0.445",
+    "react": "19.3.0",
+    "tscircuit": "0.0.2839"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}
