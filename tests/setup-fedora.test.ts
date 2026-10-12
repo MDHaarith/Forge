@@ -70,6 +70,19 @@ test("a dry run lists the dnf packages per domain and changes nothing", { skip: 
   assert.equal(setup("--only", "cnc").status, 2);
 });
 
+test("--with-rf adds openEMS's build packages and builds it into the home folder", { skip: !hasBash }, async () => {
+  const { setup, home, calls } = await sandbox(FEDORA);
+  const r = setup("--dry-run", "--with-rf", "--only", "pcb");
+  assert.equal(r.status, 0, r.stderr);
+  const dnf = r.stdout.split("\n").find((l) => l.includes("dnf install"))!;
+  for (const pkg of ["kicad", "gcc-c++", "cmake", "boost-devel", "hdf5-devel", "CGAL-devel", "vtk-devel", "python3-Cython", "python3-h5py"]) assert.ok(dnf.split(" ").includes(pkg), pkg);
+  assert.match(r.stdout, /git clone --recursive --shallow-submodules --depth 1 --branch v\d+\.\d+\.\d+ https:\/\/github\.com\/thliebig\/openEMS-Project\.git \S+\/\.cache\/forge\/openEMS-Project/);
+  assert.match(r.stdout, new RegExp(`update_openEMS\\.sh ${home}/opt/openEMS --disable-GUI --python --python-venv-mode site`));
+  assert.doesNotMatch(setup("--dry-run").stdout, /openEMS|vtk-devel/);
+  assert.equal(setup("--dry-run", "--only", "rf").status, 0);
+  assert.deepEqual(await calls(), [""]);
+});
+
 test("--desktop adds the Tauri build packages, builds the RPM, installs it, and skips the browser launcher", { skip: !hasBash }, async () => {
   const { setup } = await sandbox(FEDORA);
   const r = setup("--dry-run", "--desktop", "--only", "chip");

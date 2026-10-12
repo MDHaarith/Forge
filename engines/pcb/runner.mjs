@@ -168,7 +168,10 @@ async function main() {
   const fsMap = sourceFiles(source);
   const json = await runTscircuitCode(fsMap, { mainComponentPath: source.split(path.sep).join("/") });
 
-  const errors = [...json.filter((e) => /_error$/.test(e.type)).map((e) => `${e.type}: ${e.message ?? e.error_type ?? ""}`.trim()), ...engineErrors];
+  // A printed antenna's arm ends in open copper by design; tscircuit's DRC flags that tip as a disconnected trace end.
+  const antennaTraces = new Set(json.filter((e) => e.type === "pcb_trace" && e.is_antenna_trace).map((e) => e.pcb_trace_id));
+  const antennaTip = (e) => e.type === "pcb_trace_error" && antennaTraces.has(e.pcb_trace_id) && /disconnected endpoint/.test(e.message ?? "");
+  const errors = [...json.filter((e) => /_error$/.test(e.type) && !antennaTip(e)).map((e) => `${e.type}: ${e.message ?? e.error_type ?? ""}`.trim()), ...engineErrors];
   const warnings = json.filter((e) => /_warning$/.test(e.type)).map((e) => `${e.type}: ${e.message ?? ""}`.trim());
   const board = json.find((e) => e.type === "pcb_board");
   if (!board) {

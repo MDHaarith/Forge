@@ -179,6 +179,25 @@ test("pcb_build pours a ground plane", { skip: noEngine, timeout: 120_000 }, asy
   assert.match(await fs.readFile(path.join(dir, "fab/gnd/gnd-B_Cu.gbr"), "utf8"), /G36/);
 });
 
+test("pcb_build accepts a printed antenna's open arm and clears ground under a keepout", { skip: noEngine, timeout: 120_000 }, async () => {
+  const dir = await project({
+    "pcb/ant.tsx": `export default () => (
+  <board width="50mm" height="40mm">
+    <antenna name="ANT1" antennaShape="2.4ghz_quarter_wave_monopole" pcbX={-20} pcbY={18.4} />
+    <keepout pcbX={-3} pcbY={16} width="32mm" height="8mm" shape="rect" layers={["bottom"]} />
+    <copperpour connectsTo="net.GND" layer="bottom" />
+  </board>
+)`,
+  });
+  const out = await build.run({ source: "pcb/ant.tsx" }, { projectDir: dir });
+  assert.match(out.text, /No errors/);
+  assert.doesNotMatch(out.text, /disconnected endpoint/);
+  const circuit = JSON.parse(await fs.readFile(path.join(dir, "pcb/ant.circuit.json"), "utf8"));
+  const pour = circuit.find((e: { type: string }) => e.type === "pcb_copper_pour");
+  const ys = pour.brep_shape.outer_ring.vertices.filter((v: { x: number }) => v.x > -15 && v.x < 10).map((v: { y: number }) => v.y);
+  assert.ok(Math.max(...ys) <= 12.1, `ground reaches y ${Math.max(...ys)} under the antenna`);
+});
+
 test("pcb_build reports board errors and keeps the board code sandboxed", { skip: noEngine, timeout: 120_000 }, async () => {
   const outside = await fs.mkdtemp(path.join(os.tmpdir(), "forge-outside-"));
   process.env.FORGE_TEST_SECRET = "s3cret";

@@ -24,6 +24,8 @@ The script:
   (KiCad is a large download; leave it out with `--only "3d chip"`);
 - installs **FreeCAD from Flathub** for your user, because Fedora's repositories have no FreeCAD
   package. Forge runs it inside its Flatpak sandbox and gives it access to the project folder only;
+- with `--with-rf` (or `--only rf` later), builds the openEMS field solver from source into
+  `~/opt/openEMS` for antenna simulation (about 20 minutes);
 - builds Forge and its built-in PCB engine, and adds a `forge` command, an app-menu launcher, and a systemd user service;
 - creates `~/.config/forge/env` (private, mode 600) for your API key and settings.
 
@@ -103,6 +105,7 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | PCB | `pcb_build`: board from tscircuit code → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM | built in (`npm run pcb-engine`) |
 | | `design_assemble`: boards and enclosure parts in one 3D assembly, with a fit check | – |
 | RF | `rf_calc`: impedance and trace width (microstrip, coplanar, stripline, differential) on fab stackups, antenna matching networks, link budget and range | – |
+| | `rf_antenna_sim`: full-wave simulation of the board's antenna → S11, bandwidth, impedance, efficiency, gain pattern, Touchstone file | openEMS (`--with-rf`) |
 | | `pcb_drc`, `pcb_export_fab` for KiCad projects (Gerbers + drill for JLCPCB/PCBWay) | [KiCad 8+](https://www.kicad.org) `kicad-cli` |
 | Chip | `chip_simulate` | Icarus Verilog |
 | | `chip_synthesize` | Yosys |
@@ -126,6 +129,20 @@ script stays in git, so a design is reproducible and can be edited and re-run.
   counterbore for an ISO 4762 screw; `kind` can also be `"countersink"`, `"tap"` (tap drill)
   or `"insert"` (heat-set insert). There are also `rounded_box`, `enclosure`, `lid`,
   `standoffs`, `fillet`/`chamfer` by edge selection, and `load` for STEP/FCStd parts to assemble.
+- They also cover the feature set of a parametric CAD program: profiles with rounded corners and
+  arcs; extrude (symmetric, two-sided, tapered, twisted), revolve, loft, sweep and pipe; shell,
+  draft, offset, thicken and press-pull; fillets (variable too) and chamfers on edges chosen with
+  CadQuery-style selectors such as `forge.edges(part, "|Z")` or `forge.faces(part, ">Z")`;
+  linear, polar and path patterns, mirror, scale and split; ribs, slots, coil springs, embossed
+  and engraved text; modelled ISO metric threads (`thread`, `threaded_hole`); and sheet-metal
+  parts bent from a profile with their flat pattern.
+- Blender scripts get their own `forge` helpers (`server/tools/runners/forge_art.py`): bevel,
+  solidify, subdivision, array, mirror, exact booleans, screw/lathe, decimate, remesh,
+  shrinkwrap, displace, twist/bend deforms and more as modifiers; face extrude, inset and bisect
+  as mesh edits; `apply_all` to bake them; and metal, plastic, rubber, glass, ceramic and
+  emissive material presets. Objects the script hides (boolean cutters) are left out of the
+  exports. [docs/3d-operations.md](docs/3d-operations.md) maps Fusion 360, FreeCAD and Blender
+  operations to these helpers and lists what is left out and why.
 - `freecad_inspect` measures the result: mass in a chosen material, every hole with the screw
   it fits, overhang area for 3D printing, and interference or clearance between the parts of
   an assembly. `freecad_drawing` makes a manufacturing drawing in first or third angle
@@ -161,6 +178,33 @@ in red and tight spots in amber, and "See-through case" makes the enclosure tran
 The engine has its own `engines/pcb/package.json` (tscircuit needs TypeScript 5, Forge uses 7);
 `npm run pcb-engine` installs and bundles it, and the setup script and desktop build do this for you.
 
+## Radios and antennas
+
+Boards with Wi-Fi, Bluetooth, Zigbee, LoRa or other radios get an RF workflow:
+
+1. **Trace widths.** `rf_calc` (calc `line`) gives the width for a 50 ohm feed or a 90/100 ohm
+   differential pair on JLCPCB's stackups (or any height and permittivity): microstrip with
+   frequency dispersion (Hammerstad-Jensen, Kirschning-Jansen), grounded coplanar waveguide
+   (conformal mapping), stripline (Wheeler/Cohn) and coupled microstrip.
+2. **The antenna.** tscircuit's `<antenna>` draws 2.4 GHz monopoles, inverted-F antennas and a
+   folded dipole; a `<copperpour>` on the other layer is their ground. Their built-in keepout
+   clears only about 1 mm, so add a `<keepout>` that clears the radiating arm by 5 mm or more out
+   to the board edge, leaving ground under the feed pad.
+3. **Simulation.** `rf_antenna_sim` meshes the antenna's copper, the substrate and the ground
+   pours for openEMS (an FDTD field solver), excites the feed and reports where it resonates,
+   its -10 dB bandwidth, input impedance, efficiency and gain, with S11 and pattern plots and a
+   Touchstone `.s1p`. It is checked against a half-wave dipole (resonance, ~70 ohm, ~2.1 dBi),
+   and warns when ground copper under or within 2 mm of the arm will detune the antenna.
+4. **Matching.** `rf_calc` (calc `match`) turns the simulated impedance into L networks with
+   E24 part values for a pi footprint; tune the final values on a VNA.
+5. **Range.** `rf_calc` (calc `link`) estimates range from transmit power, antenna gains and the
+   receiver's sensitivity for free space, outdoor and indoor paths.
+
+openEMS is not packaged for Fedora; `scripts/setup-fedora.sh --with-rf` builds it into
+`~/opt/openEMS` (about 20 minutes). Elsewhere, build it per the
+[openEMS install guide](https://docs.openems.de/en/latest/install/requirements.html) and set
+`FORGE_OPENEMS_PYTHON` to its venv's `python3`.
+
 ## Layout
 
 ```
@@ -179,7 +223,8 @@ server/
   tools/runners/*.py        scripts that run inside Blender / FreeCAD; forge_cad.py is the helper library
   tools/board.ts            pcb_build: runs the PCB engine in a sandboxed Node
   tools/design.ts, fit.ts   design_assemble and the board-in-enclosure fit check
-  tools/rf.ts, rfmath.ts    rf_calc: transmission lines, matching, link budget
+  tools/rf.ts, rfmath.ts    rf_calc (transmission lines, matching, link budget) and rf_antenna_sim
+  tools/runners/openems_antenna.py   circuit.json → openEMS model, S11, far field, plots
   tools/          one file per domain; registry.ts lists them all
 desktop/          Tauri desktop app (Rust): starts the server, shows the UI, builds the RPM
 engines/pcb/      the PCB engine: tscircuit, its exporters and runner.mjs, bundled to dist/pcb-engine.mjs

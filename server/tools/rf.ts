@@ -1,4 +1,10 @@
 import { coupledMicrostrip, cpwg, E24, lMatch, linkBudget, microstrip, nearestStandard, networkInput, reflection, solveFor, stripline, wavelengthMm, type Line, type Part } from "./rfmath.ts";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { clip, findProgram, run } from "./exec.ts";
+import { projectPath } from "./paths.ts";
+import { parseRunnerOutput, RUNNERS } from "./script3d.ts";
 import { ToolError, type ForgeTool } from "./types.ts";
 
 /** Dielectric between an outer layer and its reference plane, from the fab's published stackups. */
@@ -70,7 +76,11 @@ function calcLine(input: Record<string, unknown>): string {
   );
   const wNarrow = 0.1;
   if (w < wNarrow) lines.push(`  ${r(w, 3)} mm is below the 0.1 mm (4 mil) most fabs make reliably; use a thinner dielectric or a wider gap.`);
-  lines.push(`  Closed-form model (${kind === "cpwg" ? "conformal mapping, copper thickness ignored" : kind === "stripline" ? "Wheeler/Cohn" : "Hammerstad-Jensen"}), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width.`);
+  lines.push(
+    kind === "cpwg"
+      ? "  Closed-form model (conformal mapping) that ignores copper thickness: when the gap is under about 5 times the copper thickness the real line reads a few ohms lower. Order impedance control and check the fab's own calculator for the final width."
+      : `  Closed-form model (${kind === "stripline" ? "Wheeler/Cohn" : "Hammerstad-Jensen"}), typically within 1–2 %; order impedance control and check the fab's own calculator for the final width.`,
+  );
   return lines.join("\n");
 }
 
@@ -121,6 +131,72 @@ function calcLink(input: Record<string, unknown>): string {
   return lines.join("\n");
 }
 
+/** Python environments with openEMS, from the Fedora setup script's build or a manual one. */
+export const OPENEMS_PYTHON = [process.env.FORGE_OPENEMS_PYTHON, path.join(os.homedir(), "opt", "openEMS", "venv", "bin", "python3"), "/opt/openEMS/venv/bin/python3"].filter(
+  (p): p is string => !!p,
+);
+const NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
+interface SimResult {
+  antenna: string;
+  port: string;
+  cells: number;
+  seconds: number;
+  f0: number;
+  span: [number, number];
+  resonance: number;
+  s11_min_db: number;
+  band: [number, number, boolean] | null;
+  s11_f0_db: number;
+  zin_f0: [number, number];
+  zin_res: [number, number];
+  directivity_dbi: number | null;
+  peak_gain_dbi: number;
+  peak_dir: [number, number];
+  radiation_efficiency: number;
+  total_efficiency: number;
+  ground_under: number;
+  files: string[];
+}
+
+const mhz = (hz: number) => `${r(hz / 1e6, 4)} MHz`;
+const ohms = ([re, im]: [number, number]) => `${r(re, 3)} ${im < 0 ? "-" : "+"} j${r(Math.abs(im), 3)} ohm`;
+const pct = (x: number) => `${Math.round(x * 100)} %`;
+
+export function describeSim(board: string, res: SimResult, quality: string): string {
+  const lines = [
+    `Simulated ${res.antenna} on pcb/${board} with openEMS (${quality} mesh, ${res.cells.toLocaleString("en")} cells, ${Math.round(res.seconds)} s), fed ${res.port}; swept ${mhz(res.span[0])} to ${mhz(res.span[1])}.`,
+  ];
+  if (res.band) {
+    const [lo, hi, edge] = res.band;
+    lines.push(`  Best match ${r(res.s11_min_db, 3)} dB at ${mhz(res.resonance)}; S11 below -10 dB from ${mhz(lo)} to ${mhz(hi)} (${r((hi - lo) / 1e6, 3)} MHz${edge ? ", runs past the sweep" : ""}).`);
+  } else {
+    lines.push(`  Best match only ${r(res.s11_min_db, 3)} dB, at ${mhz(res.resonance)}: S11 never reaches -10 dB in the sweep.`);
+  }
+  lines.push(`  At ${mhz(res.f0)}: S11 ${r(res.s11_f0_db, 3)} dB, input impedance ${ohms(res.zin_f0)}.`);
+  lines.push(
+    `  Radiation efficiency ${pct(res.radiation_efficiency)}; with the mismatch ${pct(res.total_efficiency)} of the radio's power is radiated. Peak gain ${r(res.peak_gain_dbi, 3)} dBi toward theta ${res.peak_dir[0]}°, phi ${res.peak_dir[1]}°${res.directivity_dbi === null ? "" : ` (directivity ${r(res.directivity_dbi, 3)} dBi)`}.`,
+  );
+  if (res.ground_under > 0.1) {
+    lines.push(
+      `  Warning: ${pct(res.ground_under)} of the antenna's trace has ground copper under it or within 2 mm beside it, which turns it into a transmission line rather than an antenna (low, lossy resonance, poor match). Keep every layer's pour out from under and around the radiating arm: put a <keepout> over the antenna area, or place the antenna at a board edge beyond the ground plane, then rebuild and simulate again.`,
+    );
+  }
+  const inBand = res.band && res.band[0] <= res.f0 && res.f0 <= res.band[1];
+  if (!inBand) {
+    const off = res.resonance / res.f0;
+    // A -3 dB dip is already a real resonance for low-profile antennas (inverted-L, IFA) whose radiation resistance is far from 50 ohm.
+    if (res.s11_min_db < -3 && res.ground_under <= 0.1 && Math.abs(off - 1) > 0.03) {
+      lines.push(`  The antenna resonates ${off > 1 ? "above" : "below"} the target: ${off > 1 ? "lengthen" : "shorten"} its radiating arm by about ${Math.round(Math.abs(off - 1) * 100)} % and simulate again.`);
+    }
+    lines.push(`  To match it at ${mhz(res.f0)}: rf_calc with calc "match", load_re ${r(res.zin_f0[0], 4)}, load_im ${r(res.zin_f0[1], 4)}, frequency_mhz ${res.f0 / 1e6}.`);
+  }
+  lines.push(
+    "  The model is the antenna's copper, the board substrate, the copper pours and vias; other parts, the enclosure and a hand nearby are not in it and usually pull the resonance down a few percent. Tune the matching network on a VNA before certification.",
+  );
+  return lines.join("\n");
+}
+
 export const rfTools: ForgeTool[] = [
   {
     domain: "pcb",
@@ -163,6 +239,60 @@ Use the trace width it gives in pcb_build (<trace thickness="...mm" />) and keep
       const text = calc === "line" ? calcLine(input) : calc === "match" ? calcMatch(input) : calc === "link" ? calcLink(input) : undefined;
       if (text === undefined) throw new ToolError('calc must be "line", "match" or "link"');
       return { text };
+    },
+  },
+  {
+    domain: "pcb",
+    name: "rf_antenna_sim",
+    requires: OPENEMS_PYTHON,
+    needs: "openEMS",
+    install: { url: "scripts/setup-fedora.sh --only rf (builds openEMS from source)" },
+    description: `Simulates a board's antenna with openEMS (a full-wave FDTD field solver), from the board pcb_build made. Reports the resonance, S11 and -10 dB bandwidth, the input impedance at the target frequency, radiation efficiency and peak gain, and writes rf/<board>/<antenna>-s11.svg, <antenna>-pattern.svg (gain in three planes), <antenna>.s1p (Touchstone, for a VNA comparison or a circuit simulator) and <antenna>.json.
+The board needs ground copper (a copperpour) under the antenna's feed pad. Use it to check an antenna before ordering boards: fix the length if the resonance is off, then feed the impedance to rf_calc match for the matching network. "fast" takes about a minute, "accurate" several.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        board: { type: "string", description: "Name of the board built with pcb_build (reads pcb/<board>.circuit.json)" },
+        antenna: { type: "string", description: "Antenna's component name, e.g. ANT1 (needed only when the board has several)" },
+        frequency_mhz: { type: "number", description: "Target frequency (default 2450)" },
+        span_mhz: { type: "number", description: "Width of the sweep around the target (default 80 % of the target)" },
+        quality: { type: "string", enum: ["fast", "accurate"], description: "Mesh density (default fast)" },
+        er: { type: "number", description: "Substrate permittivity (default 4.5, FR-4)" },
+        loss_tangent: { type: "number", description: "Substrate loss tangent (default 0.02, FR-4 at 2.4 GHz)" },
+      },
+      required: ["board"],
+    },
+    async run(input, ctx) {
+      const board = String(input.board ?? "");
+      if (!NAME.test(board)) throw new ToolError("board is the name pcb_build used: letters, digits, - and _");
+      const circuit = projectPath(ctx.projectDir, `pcb/${board}.circuit.json`);
+      if (!(await fs.stat(circuit).catch(() => null))?.isFile()) throw new ToolError(`pcb/${board}.circuit.json does not exist; build the board with pcb_build first`);
+      const antenna = input.antenna === undefined ? "" : String(input.antenna);
+      if (antenna && !/^[A-Za-z0-9_]{1,32}$/.test(antenna)) throw new ToolError("antenna is a component name such as ANT1");
+      const f0 = (opt(input.frequency_mhz, "frequency_mhz", 50, 30_000) ?? 2450) * 1e6;
+      const span = (opt(input.span_mhz, "span_mhz", 1, 30_000) ?? (0.8 * f0) / 1e6) * 1e6;
+      if (span >= 2 * f0) throw new ToolError("span_mhz must be less than twice the frequency");
+      const quality = String(input.quality ?? "fast");
+      if (quality !== "fast" && quality !== "accurate") throw new ToolError('quality must be "fast" or "accurate"');
+      const er = opt(input.er, "er", 1, 20) ?? 4.5;
+      const tand = opt(input.loss_tangent, "loss_tangent", 0, 0.2) ?? 0.02;
+      const python = findProgram(OPENEMS_PYTHON);
+      if (!python) throw new ToolError("openEMS is not installed; run scripts/setup-fedora.sh --only rf");
+
+      const outRel = `rf/${board}`;
+      const out = projectPath(ctx.projectDir, outRel);
+      const sim = await fs.mkdtemp(path.join(os.tmpdir(), "forge-openems-"));
+      const args = { circuit, out, antenna, f0_hz: f0, span_hz: span, quality, er, tand, threads: 0, sim_dir: path.join(sim, "run") };
+      const started = Date.now();
+      try {
+        const res = await run(python, [path.join(RUNNERS, "openems_antenna.py"), JSON.stringify(args)], ctx.projectDir, (quality === "accurate" ? 60 : 20) * 60_000);
+        const parsed = parseRunnerOutput(res);
+        if (parsed.error) throw new ToolError(clip(parsed.error, 4000));
+        const result = { ...(parsed.result as unknown as SimResult), seconds: (Date.now() - started) / 1000 };
+        return { text: describeSim(board, result, quality), files: result.files.map((f) => `${outRel}/${f}`) };
+      } finally {
+        await fs.rm(sim, { recursive: true, force: true });
+      }
     },
   },
 ];

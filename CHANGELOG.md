@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 — 2026-10-12
+
+- `rf_antenna_sim`: simulates a board's printed antenna with the openEMS field solver and reports resonance, -10 dB bandwidth, input impedance, efficiency, gain and radiation pattern, with S11 and pattern plots and a Touchstone file; checked against a half-wave dipole.
+- `rf_antenna_sim` warns when ground copper under or beside the antenna will detune it, and suggests the arm length change and the matching network to use.
+- `scripts/setup-fedora.sh --with-rf` (or `--only rf`) builds openEMS from source.
+- `pcb_build` no longer reports a printed antenna's open arm as a disconnected trace.
+- Antenna guidance corrected: inverted-F ground short, monopole and folded-dipole feeds, and a keepout that clears the arm by 5 mm.
+- `rf_calc` notes that its grounded coplanar waveguide ignores copper thickness.
+
 ## 0.7.0 — 2026-10-12
 
 - `rf_calc` line: impedance or trace width for microstrip, grounded coplanar waveguide, stripline and differential pairs, on JLCPCB stackups or any height and permittivity, with the wavelength on the line.

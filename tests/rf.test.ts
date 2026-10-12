@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { test } from "node:test";
-import { rfTools } from "../server/tools/rf.ts";
+import { findProgram } from "../server/tools/exec.ts";
+import { describeSim, OPENEMS_PYTHON, rfTools } from "../server/tools/rf.ts";
 import { coupledMicrostrip, cpwg, ellipK, fsplDb, linkBudget, lMatch, microstrip, nearestStandard, networkInput, reflection, solveFor, stripline, wavelengthMm } from "../server/tools/rfmath.ts";
 import { ToolError } from "../server/tools/types.ts";
 
 const calc = rfTools.find((t) => t.name === "rf_calc")!;
+const sim = rfTools.find((t) => t.name === "rf_antenna_sim")!;
+const hasOpenEMS = findProgram(OPENEMS_PYTHON) !== undefined;
 const run = async (input: Record<string, unknown>) => (await calc.run(input, { projectDir: "/nonexistent" })).text;
 const near = (actual: number, expected: number, tol: number, what = "") => assert.ok(Math.abs(actual - expected) <= tol, `${what} ${actual} not within ${tol} of ${expected}`);
 
@@ -128,4 +134,76 @@ test("rf_calc rejects incomplete or impossible requests", async () => {
     { calc: "link", tx_dbm: 20, sensitivity_dbm: -90, frequency_mhz: 2450, environment: "space" },
   ];
   for (const input of bad) await assert.rejects(run(input), ToolError, JSON.stringify(input));
+});
+
+/** A board holding a strip dipole in air: two 1 mm pads 0.5 mm apart, arms to ±29 mm. */
+function dipoleBoard(arm = 29) {
+  const wire = (x: number) => ({ route_type: "wire", x, y: 0, width: 1, layer: "top" });
+  return [
+    { type: "pcb_board", pcb_board_id: "b", center: { x: 0, y: 0 }, width: 70, height: 10, thickness: 0.5, num_layers: 2 },
+    { type: "source_component", source_component_id: "s1", name: "ANT1" },
+    { type: "pcb_component", pcb_component_id: "c1", source_component_id: "s1", center: { x: 0, y: 0 }, width: 2 * arm + 1, height: 1 },
+    { type: "pcb_smtpad", pcb_component_id: "c1", shape: "rect", x: -0.75, y: 0, width: 1, height: 1, layer: "top", port_hints: ["pin1"] },
+    { type: "pcb_smtpad", pcb_component_id: "c1", shape: "rect", x: 0.75, y: 0, width: 1, height: 1, layer: "top", port_hints: ["pin2"] },
+    { type: "pcb_trace", pcb_component_id: "c1", route: [wire(-0.75), wire(-arm)] },
+    { type: "pcb_trace", pcb_component_id: "c1", route: [wire(0.75), wire(arm)] },
+  ];
+}
+
+async function boardProject(circuit: unknown[]) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "forge-rf-"));
+  await fs.mkdir(path.join(dir, "pcb"));
+  await fs.writeFile(path.join(dir, "pcb", "ant.circuit.json"), JSON.stringify(circuit));
+  return dir;
+}
+
+test("rf_antenna_sim checks its inputs before simulating", async () => {
+  const dir = await boardProject(dipoleBoard());
+  const go = (input: Record<string, unknown>) => sim.run(input, { projectDir: dir });
+  await assert.rejects(go({ board: "../ant" }), /letters, digits/);
+  await assert.rejects(go({ board: "missing" }), /build the board with pcb_build first/);
+  await assert.rejects(go({ board: "ant", antenna: "ANT 1" }), /component name/);
+  await assert.rejects(go({ board: "ant", frequency_mhz: 2450, span_mhz: 5000 }), /less than twice/);
+  await assert.rejects(go({ board: "ant", quality: "best" }), /fast/);
+});
+
+test("describeSim points to the matching network and the length fix", () => {
+  const base = {
+    antenna: "ANT1", port: "from the ground plane up to the pin1 pad (1.6 mm probe)", cells: 200_000, seconds: 61, f0: 2.45e9, span: [1.47e9, 3.43e9] as [number, number],
+    zin_res: [48, 2] as [number, number], directivity_dbi: 2.5, peak_gain_dbi: 1.8, peak_dir: [90, 0] as [number, number], radiation_efficiency: 0.81, total_efficiency: 0.5, ground_under: 0, files: [],
+  };
+  const low = describeSim("rf", { ...base, resonance: 2.2e9, s11_min_db: -18, band: [2.15e9, 2.26e9, false], s11_f0_db: -3, zin_f0: [20, 35] }, "fast");
+  assert.match(low, /resonates below the target: shorten its radiating arm by about 10 %/);
+  assert.match(low, /load_re 20, load_im 35, frequency_mhz 2450/);
+  assert.match(low, /from 2150 MHz to 2260 MHz \(110 MHz\)/);
+  const good = describeSim("rf", { ...base, resonance: 2.45e9, s11_min_db: -22, band: [2.38e9, 2.52e9, false], s11_f0_db: -22, zin_f0: [52, -3] }, "accurate");
+  assert.doesNotMatch(good, /rf_calc|shorten|lengthen/);
+  assert.match(good, /Radiation efficiency 81 %/);
+  assert.doesNotMatch(good, /Warning/);
+  const crowded = describeSim("rf", { ...base, resonance: 1.43e9, s11_min_db: -1.6, band: null, s11_f0_db: -0.6, zin_f0: [169, 477], ground_under: 1 }, "fast");
+  assert.match(crowded, /Warning: 100 % of the antenna's trace has ground copper under it or within 2 mm beside it/);
+  assert.match(crowded, /never reaches -10 dB/);
+  assert.doesNotMatch(crowded, /shorten|lengthen/);
+});
+
+test("rf_antenna_sim reproduces a half-wave dipole", { skip: !hasOpenEMS && "openEMS is not installed", timeout: 600_000 }, async () => {
+  const dir = await boardProject(dipoleBoard());
+  const out = await sim.run({ board: "ant", frequency_mhz: 2450, span_mhz: 1600, er: 1, loss_tangent: 0 }, { projectDir: dir });
+  assert.deepEqual(out.files, ["rf/ant/ANT1-s11.svg", "rf/ant/ANT1-pattern.svg", "rf/ant/ANT1.s1p", "rf/ant/ANT1.json"]);
+  const res = JSON.parse(await fs.readFile(path.join(dir, "rf/ant/ANT1.json"), "utf8"));
+  // A 59 mm strip dipole resonates near 0.47 wavelengths with about 70 ohm and 2.15 dBi.
+  assert.ok(res.resonance > 2.2e9 && res.resonance < 2.5e9, `resonance ${res.resonance}`);
+  assert.ok(res.zin_res[0] > 55 && res.zin_res[0] < 85, `R ${res.zin_res[0]}`);
+  assert.ok(res.directivity_dbi > 1.6 && res.directivity_dbi < 2.6, `D ${res.directivity_dbi}`);
+  assert.ok(res.radiation_efficiency > 0.9 && res.radiation_efficiency < 1.1);
+  assert.match(out.text, /across the gap between pin1 and pin2/);
+  assert.match(await fs.readFile(path.join(dir, "rf/ant/ANT1-s11.svg"), "utf8"), /^<svg[^]*polyline[^]*<\/svg>$/);
+  assert.match(await fs.readFile(path.join(dir, "rf/ant/ANT1.s1p"), "utf8"), /^! Forge[^\n]*\n# Hz S RI R 50\n\d+ -?\d/);
+  assert.equal((await fs.readdir(dir)).sort().join(","), "pcb,rf");
+});
+
+test("rf_antenna_sim needs ground under a single-ended feed", { skip: !hasOpenEMS && "openEMS is not installed" }, async () => {
+  const board = dipoleBoard().filter((e) => !(e.type === "pcb_smtpad" && (e as { port_hints?: string[] }).port_hints?.[0] === "pin2"));
+  const dir = await boardProject(board);
+  await assert.rejects(sim.run({ board: "ant" }, { projectDir: dir }), /no ground copper under the antenna feed/);
 });
