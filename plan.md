@@ -212,6 +212,11 @@ experiment. Do NOT edit any file outside spikes/occt/. Do NOT add anything to th
    - write the cut part to out.step, read it back, print the volume again (must match)
    - write the cut part to out.stl (binary)
    - list the faces of the cut part and print which are cylinders with their radius
+   - classify points against the cut part: (2,2,10) must be inside, (10,10,10) (in the hole) outside
+   - on the cylindrical face, print the outward normal at its parameter midpoint; it must point
+     towards the axis (the hole's centre), not away from it
+   - tessellate the cut part (deflection 0.1) and print the triangle count and the summed downward
+     area of triangles whose normal z < -0.7071 (expected 0: the part has no overhang above its base)
 4. Measure: time of a clean release build (`cargo clean && time cargo build --release`), and the size
    of target/release/<binary>.
 5. If a feature is not exposed by the crate, say exactly which, and whether the crate offers a way
