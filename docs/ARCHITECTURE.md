@@ -68,7 +68,7 @@ server/src/
     pcb/footprint.rs                        pure nominal footprint generator, pads, courtyard, silk and body geometry
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
     pcb/drc.rs                              saved-copper geometry, net connectivity and sorted native DRC reports
-    pcb/route.rs                            deterministic grid A*, 2/4 layers, SMD fanout, through vias, net-class gaps and rip-up
+    pcb/route.rs                            deterministic grid A* with PathFinder negotiation, 2/4 layers, SMD fanout, vias, net-class gaps, rip-up
     pcb/pour.rs                             i_overlay planar copper fills, thermals, clearance cuts and hole contours
     pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
     pcb/gerber.rs                           all Gerber X2 layers, 4-layer copper order and split PTH/NPTH Excellon

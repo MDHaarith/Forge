@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.18.0 — 2026-10-13
+
+- Connector footprints: `usb_c_16` (HRO TYPE-C-31-M-12), `usb_micro_b` (Molex 105017-0001),
+  `jst_ph_2` to `jst_ph_16` and `barrel_jack` (CUI PJ-102AH), checked against the KiCad libraries.
+- Pads can be slotted or non-plated: Excellon writes routed slots (`G85`) and NPTH holes go to the
+  NPTH drill file. Oval pads flash as obround Gerber apertures on the 90° grid and stay regions otherwise.
+- The autorouter adds PathFinder negotiated congestion when sequential A* leaves nets unrouted.
+  Stress boards route 15/15, 19/25 and 29/40 nets (was 15, 13 and 13).
+
 ## 0.17.0 — 2026-10-13
 
 - Forge's own PCB engine (stage 3): `pcb_build` reads `pcb/<name>.pcb.json` and generates IPC-7351

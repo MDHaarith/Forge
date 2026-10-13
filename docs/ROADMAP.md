@@ -20,7 +20,8 @@ the phases, and keep the external version working until its native replacement p
 | git_status, git_commit, git_log | git | built-in git library (gitoxide) |
 
 Stage 3 is complete (v0.17.0): PCB builds and DRC are native; neither Node nor KiCad is needed.
-Next: renderer (Blender replacement) or USB/connector footprints and a real schematic layout.
+Done in v0.18.0: USB-C, Micro-B, JST-PH and barrel-jack footprints; slots and NPTH; PathFinder autorouter.
+Next: renderer (Blender replacement) or a real schematic layout with wires.
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
 pcb_build (including manufacturing exports) and pcb_drc. `pcb_export_fab` is removed because
