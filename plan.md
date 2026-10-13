@@ -188,7 +188,7 @@ the findings and the agent's previous report.
 ## 5. Work order
 
 - [x] Step 0: spike (GPT)
-- [ ] Step 1: reference tests (Gemini)
+- [x] Step 1: reference tests (Gemini)
 - [ ] Step 2: spec parser, footprints, netlist check, placement (GPT)
 - [ ] Step 3: autorouter, pours, keepouts, antennas (GPT)
 - [ ] Step 4: outputs: Gerber, drill, pnp, BOM, SVGs, circuit.json, board.json, GLB, STEP (GPT)
