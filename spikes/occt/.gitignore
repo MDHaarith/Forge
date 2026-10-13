@@ -1,0 +1,9 @@
+/.cargo-home/
+/.pip-cache/
+/build-tools/
+/target/
+/tmp/
+/out.step
+/out.stl
+/*.log
+!/results.log

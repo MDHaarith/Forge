@@ -1,0 +1,21 @@
+cut: volume=6429.203673 mm^3, expected=6429.204, tolerance=0.01
+fillet: selected 4 vertical edges, radius=2 mm
+fillet: volume=7931.327412 mm^3, expected=7931.327, tolerance=0.01
+chamfer: selected 4 vertical edges, distance=2 mm
+chamfer: volume=7840.000000 mm^3, expected=7840.000, tolerance=0.01
+revolve: volume=785.398163 mm^3, expected=785.398, tolerance=0.01
+STEP roundtrip: volume=6429.203673 mm^3, expected=6429.204, tolerance=0.01
+STEP roundtrip: volume difference=0.000000000055 mm^3
+face 0: Plane, area=400.000000 mm^2
+face 1: Plane, area=400.000000 mm^2
+face 2: Plane, area=321.460184 mm^2
+face 3: Plane, area=400.000000 mm^2
+face 4: Plane, area=321.460184 mm^2
+face 5: Plane, area=400.000000 mm^2
+face 6: Cylinder { radius: 5.0 }, area=628.318531 mm^2
+cylinder radius=5.000000 mm: parameter midpoint=DVec3(5.0, 10.000000000000004, 10.0), outward normal=DVec3(1.0, -5.66553889764798e-16, -0.0), dot(towards axis)=1.000000000
+classify DVec3(2.0, 2.0, 10.0): inside
+classify DVec3(10.0, 10.0, 10.0): outside
+binary STL: 26084 bytes, 520 triangles, binary length verified
+tessellation: deflection=0.1 mm, angular=0.1 rad, triangles=520, downward triangles=130, downward area=321.492730 mm^2
+all required checks passed

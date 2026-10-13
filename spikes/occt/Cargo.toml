@@ -1,0 +1,9 @@
+[package]
+name = "forge-occt-spike"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+cadrum = "0.9"

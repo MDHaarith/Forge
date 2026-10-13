@@ -180,7 +180,7 @@ After every step, the orchestrator does all of these:
 3. Update `docs/ARCHITECTURE.md` if files were added, then tick the box here.
 4. Commit. Push only when the user asks.
 
-- [ ] Step 0: spike (gpt-6.1-sol)
+- [x] Step 0: spike (gpt-6.1-sol)
 - [x] Step 1: reference tests (gemini-3.8-flash-high)
 - [ ] Step 2: kernel, shapes, combine, export (gpt-6.1-sol)
 - [ ] Step 3: extrude, revolve, fillet, chamfer, place (gpt-6.1-sol)
@@ -235,7 +235,7 @@ plus three lines: "clean build: <minutes>", "binary size: <MB>", "missing: <list
 - If any of these fails, show the user the table and ask before going on.
 - If it passes, write the chosen crate into the "Chosen crate" line below.
 
-Chosen crate: _(fill in after step 0)_
+Chosen crate: `cadrum = "0.9"` (MIT; downloads prebuilt static OCCT 8.0.1 at build time, or builds it with `--features source`). No public UV access: get points on a face from its tessellation, then `Face::project` for the normal.
 
 ---
 
