@@ -337,7 +337,7 @@ the findings and the agent's previous report.
 ## 5. Work order
 
 - [x] Step 0: spike (GPT)
-- [ ] Step 1: reference tests (Gemini)
+- [x] Step 1: reference tests (Gemini)
 - [ ] Step 2: loft, sweep, shell, mirror, pattern (GPT)
 - [ ] Step 3: threads and sheet metal (GPT)
 - [ ] Step 4: part_inspect interference, centre of mass, overhang (GPT)
