@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.19.0 — 2026-10-14
+
+- Autorouter for complex boards: multi-pin nets grow from the whole routed tree, blockers are ripped
+  up locally, failed nets keep negotiating, PathFinder runs up to 200 passes with deterministic
+  restarts, and big boards negotiate too (masks computed per net past 128 MiB). 30-part stress board:
+  35/40 nets (the five unrouted nets start on enclosed QFN exposed pads), 40/40 with filled vias.
+- `rules.via_in_pad` (default false) lets a via sit in an SMD pad of its own net. DRC accepts such
+  vias and notes that filled/capped vias-in-pad are required.
+
 ## 0.18.0 — 2026-10-13
 
 - Connector footprints: `usb_c_16` (HRO TYPE-C-31-M-12), `usb_micro_b` (Molex 105017-0001),

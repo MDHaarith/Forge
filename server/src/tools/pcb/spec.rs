@@ -48,6 +48,7 @@ pub struct Rules {
     pub trace: f64,
     pub clearance: f64,
     pub via: [f64; 2],
+    pub via_in_pad: bool,
     pub edge: f64,
 }
 impl Default for Rules {
@@ -56,6 +57,7 @@ impl Default for Rules {
             trace: 0.2,
             clearance: 0.2,
             via: [0.6, 0.3],
+            via_in_pad: false,
             edge: 0.3,
         }
     }
@@ -544,6 +546,20 @@ mod tests {
         assert!(prepare(&input.to_string())
             .unwrap_err()
             .contains("U1.9: U1 (soic8) has pins"));
+    }
+
+    #[test]
+    fn via_in_pad_is_an_opt_in_boolean() {
+        let mut input = example();
+        assert!(!parse(&input.to_string()).unwrap().rules.via_in_pad);
+        input["rules"] = json!({"via_in_pad": true});
+        assert!(parse(&input.to_string()).unwrap().rules.via_in_pad);
+        input["rules"]["via_in_pad"] = json!(false);
+        assert!(!parse(&input.to_string()).unwrap().rules.via_in_pad);
+        for value in [json!("true"), json!(1), json!(null)] {
+            input["rules"]["via_in_pad"] = value;
+            assert!(parse(&input.to_string()).is_err());
+        }
     }
 
     #[test]

@@ -68,7 +68,7 @@ server/src/
     pcb/footprint.rs                        pure nominal footprint generator, pads, courtyard, silk and body geometry
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
     pcb/drc.rs                              saved-copper geometry, net connectivity and sorted native DRC reports
-    pcb/route.rs                            deterministic grid A* with PathFinder negotiation, 2/4 layers, SMD fanout, vias, net-class gaps, rip-up
+    pcb/route.rs                            deterministic tree A*, local rip-up, PathFinder restarts, 2/4 layers, SMD escape and optional filled vias-in-pad
     pcb/pour.rs                             i_overlay planar copper fills, thermals, clearance cuts and hole contours
     pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
     pcb/gerber.rs                           all Gerber X2 layers, 4-layer copper order and split PTH/NPTH Excellon
@@ -97,10 +97,16 @@ Only `.pcb.json` inputs are accepted; other formats fail with `source must be a 
 `pcb_drc {"board":"<name>"}` reads the saved native circuit and source rules, checks geometry and
 connectivity in `spawn_blocking`, and writes sorted faults to `fab/<name>/<name>-drc.txt`.
 Net classes may override clearance as well as trace width; the router, pours and DRC share those rules.
+`rules.via_in_pad` is a strict boolean, default false. When true, a via may overlap only its own
+net's SMD pads; all other clearance checks remain active. The DRC report notes that filled/capped
+vias-in-pad are required when this rule is enabled.
 Drill minima and annular-ring minima come from `rules.via` (drill and half the diameter/drill difference).
 Saved-coordinate checks allow 0.000001 mm rounding tolerance. Through-hole courtyards reserve both sides.
-Routing reserves short SMD exits, includes layer-change cost in its A* heuristic, and preserves
-learned net priority across three deterministic rip-up passes. DRC uses saved component positions
+Routing first reserves short SMD exits across three deterministic passes, then repairs missing nets
+by ripping up their blockers. Multi-pin branches grow from the whole connected tree. PathFinder uses
+soft routed-copper costs, retries failed nets, checks continuous clearance, and keeps the best legal
+result across deterministic orders. Static masks are cached within 128 MiB and computed per net
+beyond that budget, so large boards still negotiate. DRC uses saved component positions
 even when source rules change; it never re-places the board.
 `pcb_export_fab` is removed because native `pcb_build` writes every manufacturing artifact.
 

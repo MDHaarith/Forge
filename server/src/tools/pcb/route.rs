@@ -39,6 +39,7 @@ pub struct Board {
     pub clearance: f64,
     pub edge: f64,
     pub via: [f64; 2],
+    pub via_in_pad: bool,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Track {
@@ -194,6 +195,7 @@ impl Board {
             clearance: spec.rules.clearance,
             edge: spec.rules.edge,
             via: spec.rules.via,
+            via_in_pad: spec.rules.via_in_pad,
         };
         for p in &prepared.parts {
             for pad in &p.footprint.pads {
@@ -418,10 +420,11 @@ impl Grid {
         net: usize,
         radius: f64,
         segments: bool,
+        reserve: bool,
     ) -> Vec<bool> {
         let mut blocked = vec![false; self.nx * self.ny * self.layers];
-        // Half-cell guard covers the complete orthogonal segment, not only each sample point.
-        let guard = if segments { self.g / 2.0 } else { 0. };
+        // Cover the complete segment, including diagonal negotiation moves.
+        let guard = if !segments { 0. } else if reserve { self.g / 2.0 } else { self.g / 2_f64.sqrt() };
         let margin = b.edge + radius + guard;
         let rectangular = b.outline.len() == 4
             && b.outline.iter().all(|p| {
@@ -531,7 +534,7 @@ impl Grid {
             );
         }
         // Reserve short SMD exits so earlier nets cannot trap later pads before they can place a via.
-        for t in self.fanouts.iter().chain(
+        for t in self.fanouts.iter().filter(|_| reserve).chain(
             b.fixed
                 .iter()
                 .filter(|f| !f.nets.contains(&net))
@@ -573,18 +576,36 @@ impl Grid {
     /// Counts how many other-net copper halos cover each cell, for trace and via moves.
     fn congestion<'a>(&self, b: &Board, others: &Routes, net: usize, history: &'a [u32], present: u32) -> Congestion<'a> {
         let mut trace = vec![0u32; history.len()];
-        self.copper(b, others, net, b.nets[net].width / 2.0 + self.g / 2.0, |i| trace[i] += 1);
         let mut via = vec![0u32; history.len()];
-        self.copper(b, others, net, b.via[0] / 2.0, |i| via[i] += 1);
+        let mut seen = vec![false; history.len()];
+        let mut touched = vec![];
+        for n in 0..b.nets.len() {
+            if n == net { continue; }
+            let own = Routes {
+                tracks: others.tracks.iter().filter(|t| t.net == n).cloned().collect(),
+                vias: others.vias.iter().filter(|v| v.net == n).cloned().collect(),
+                routed: vec![], passes: 0,
+            };
+            for (counts, radius) in [(&mut trace, b.nets[net].width / 2.0), (&mut via, b.via[0] / 2.0)] {
+                self.copper(b, &own, net, radius, |i| {
+                    if !seen[i] {
+                        seen[i] = true;
+                        touched.push(i);
+                        counts[i] += 1;
+                    }
+                });
+                for i in touched.drain(..) { seen[i] = false; }
+            }
+        }
         Congestion { trace, via, history, present }
     }
 
-    fn masks(&self, b: &Board, r: &Routes, net: usize) -> Masks {
-        let blocked = self.obstacles(b, r, net, b.nets[net].width / 2.0, true);
-        let mut via_blocked = self.obstacles(b, r, net, b.via[0] / 2.0, false);
-        // Open vias need a fanout stub even when the SMD pad belongs to this net.
-        for p in b.pads.iter().filter(|p| p.drill.is_none()) {
-            let margin = b.clearance(net).max(b.clearance(p.net)) + b.via[0] / 2.0;
+    fn masks(&self, b: &Board, r: &Routes, net: usize, reserve: bool) -> Masks {
+        let blocked = self.obstacles(b, r, net, b.nets[net].width / 2.0, true, reserve);
+        let mut via_blocked = self.obstacles(b, r, net, b.via[0] / 2.0, false, reserve);
+        // Open vias stay outside SMD copper; filled vias may overlap only their own net.
+        for p in b.pads.iter().filter(|p| p.drill.is_none() && !(b.via_in_pad && p.net == net)) {
+            let margin = b.via[0] / 2.0 + if reserve { b.clearance(net).max(b.clearance(p.net)) } else { 0. };
             self.mark(
                 &mut via_blocked,
                 p.at,
@@ -598,17 +619,18 @@ impl Grid {
 
     /// Cells of `path` that other nets' copper also claims.
     fn shared(&self, c: &Congestion, path: &[usize]) -> Vec<usize> {
-        path.windows(2)
-            .filter(|w| {
-                let (x, y, z) = self.xyz(w[1]);
-                if z != self.xyz(w[0]).2 {
-                    (0..self.layers).any(|l| c.via[self.id(x, y, l)] > 0)
-                } else {
-                    c.trace[w[1]] > 0
+        let mut shared = vec![];
+        for pair in path.windows(2) {
+            let (x, y, z) = self.xyz(pair[1]);
+            if z != self.xyz(pair[0]).2 {
+                if (0..self.layers).any(|l| c.via[self.id(x, y, l)] > 0) {
+                    shared.extend((0..self.layers).map(|l| self.id(x, y, l)));
                 }
-            })
-            .map(|w| w[1])
-            .collect()
+            } else if c.trace[pair[1]] > 0 {
+                shared.push(pair[1]);
+            }
+        }
+        shared
     }
 
     // shortcut: grid maze router, upgrade to a shape-based router when real boards leave nets unrouted.
@@ -620,6 +642,7 @@ impl Grid {
         net: usize,
         a: usize,
         bb: usize,
+        tree: &[usize],
         (blocked, via_blocked): &Masks,
         congestion: Option<&Congestion>,
     ) -> Option<Vec<usize>> {
@@ -631,7 +654,8 @@ impl Grid {
             || r.vias.iter().any(|v| v.net == net);
         let heuristic = |i| {
             let (x, y, z) = self.xyz(i);
-            ((x.abs_diff(target_xy.0) + y.abs_diff(target_xy.1)) * 10) as u32
+            let (dx, dy) = (x.abs_diff(target_xy.0), y.abs_diff(target_xy.1));
+            ((dx + dy) * 10 - if congestion.is_some() { dx.min(dy) * 6 } else { 0 }) as u32
                 + if !free_layer_change && target.layers & (1 << z) == 0 {
                     300
                 } else {
@@ -641,13 +665,18 @@ impl Grid {
         let mut cost = vec![u32::MAX; blocked.len()];
         let mut parent = vec![usize::MAX; blocked.len()];
         let mut queue = BinaryHeap::new();
-        for z in 0..self.layers {
-            if source.layers & (1 << z) != 0 {
-                let i = self.node(source.at, z);
-                if !blocked[i] {
-                    cost[i] = 0;
-                    queue.push(Reverse((heuristic(i), Reverse(0), i)));
-                }
+        let starts: Vec<_> = if tree.is_empty() {
+            (0..self.layers)
+                .filter(|z| source.layers & (1 << z) != 0)
+                .map(|z| self.node(source.at, z))
+                .collect()
+        } else {
+            tree.to_vec()
+        };
+        for i in starts {
+            if !blocked[i] && cost[i] != 0 {
+                cost[i] = 0;
+                queue.push(Reverse((heuristic(i), Reverse(0), i)));
             }
         }
         while let Some(Reverse((_, Reverse(g), i))) = queue.pop() {
@@ -665,13 +694,21 @@ impl Grid {
                 path.reverse();
                 return Some(path);
             }
-            for (dx, dy, nz) in [(1, 0, z), (-1, 0, z), (0, 1, z), (0, -1, z)]
+            for (dx, dy, nz) in [(1, 0, z), (-1, 0, z), (0, 1, z), (0, -1, z),
+                (1, 1, z), (1, -1, z), (-1, 1, z), (-1, -1, z)]
                 .into_iter()
                 .chain((0..self.layers).filter(|l| *l != z).map(|l| (0, 0, l)))
             {
                 let xx = x as isize + dx;
                 let yy = y as isize + dy;
                 if xx < 0 || yy < 0 || xx >= self.nx as isize || yy >= self.ny as isize {
+                    continue;
+                }
+                let diagonal = dx != 0 && dy != 0;
+                if diagonal && (congestion.is_none()
+                    || blocked[self.id(xx as usize, y, z)]
+                    || blocked[self.id(x, yy as usize, z)])
+                {
                     continue;
                 }
                 let is_via = dx == 0 && dy == 0;
@@ -692,7 +729,9 @@ impl Grid {
                         .vias
                         .iter()
                         .any(|v| v.net == net && distance(self.at(i), v.at) < 1e-9));
-                let base = if !is_via {
+                let base = if diagonal {
+                    14
+                } else if !is_via {
                     10
                 } else if through {
                     0
@@ -702,7 +741,10 @@ impl Grid {
                 // PathFinder: other nets' copper is a cost, not a wall: (base + history) * present.
                 let step = congestion.map_or(base, |c| {
                     let shared = if is_via { shared_via(c, x, y) } else { c.trace[next] };
-                    (base + c.history[next]).saturating_mul(1 + c.present.saturating_mul(shared))
+                    let history = if is_via {
+                        (0..self.layers).map(|l| c.history[self.id(x, y, l)]).max().unwrap_or(0)
+                    } else { c.history[next] };
+                    (base + history).saturating_mul(1 + c.present.saturating_mul(shared))
                 });
                 let nc = g.saturating_add(step);
                 if nc < cost[next] {
@@ -714,10 +756,10 @@ impl Grid {
         }
         None
     }
-    fn commit(&self, b: &Board, r: &mut Routes, net: usize, a: usize, bb: usize, path: &[usize]) {
-        let mut points = vec![(b.pads[a].at, self.xyz(path[0]).2)];
+    fn commit(&self, b: &Board, r: &mut Routes, net: usize, a: Point, bb: Point, path: &[usize]) {
+        let mut points = vec![(a, self.xyz(path[0]).2)];
         points.extend(path.iter().map(|&i| (self.at(i), self.xyz(i).2)));
-        points.push((b.pads[bb].at, self.xyz(*path.last().unwrap()).2));
+        points.push((bb, self.xyz(*path.last().unwrap()).2));
         for pair in points.windows(2) {
             let ((a, z), (bb, zz)) = (pair[0], pair[1]);
             if z != zz {
@@ -772,7 +814,8 @@ struct Congestion<'a> {
     history: &'a [u32],
     present: u32,
 }
-const NEGOTIATION_PASSES: usize = 30;
+// shortcut: 200 passes per order, use conflict-directed topology repair when more passes stop improving completion.
+const NEGOTIATION_PASSES: usize = 200;
 
 impl Grid {
     /// Connects a net's pads nearest-first into `r`; on failure removes its partial copper.
@@ -792,6 +835,15 @@ impl Grid {
         if pads.len() < 2 {
             return true;
         }
+        let fresh;
+        let masks = match masks {
+            Some(m) => m,
+            None => {
+                fresh = self.masks(b, r, net, true);
+                &fresh
+            }
+        };
+        let mut tree = vec![];
         let mut connected = vec![pads[0]];
         let mut remaining = pads[1..].to_vec();
         while !remaining.is_empty() {
@@ -804,21 +856,16 @@ impl Grid {
                         .then((a, bb).cmp(&(c, d)))
                 })
                 .unwrap();
-            let (start, end) = if reverse { (bb, a) } else { (a, bb) };
-            let fresh;
-            let masks = match masks {
-                Some(m) => m,
-                None => {
-                    fresh = self.masks(b, r, net);
-                    &fresh
-                }
-            };
-            let Some(path) = self.astar(b, r, net, start, end, masks, congestion) else {
+            let (start, end) = if reverse && tree.is_empty() { (bb, a) } else { (a, bb) };
+            let Some(path) = self.astar(b, r, net, start, end, &tree, masks, congestion) else {
                 r.tracks.truncate(tracks);
                 r.vias.truncate(vias);
+                paths.clear();
                 return false;
             };
-            self.commit(b, r, net, start, end, &path);
+            let at = if tree.is_empty() { b.pads[start].at } else { self.at(path[0]) };
+            self.commit(b, r, net, at, b.pads[end].at, &path);
+            tree.extend_from_slice(&path);
             paths.push(path);
             connected.push(bb);
             remaining.retain(|&p| p != bb);
@@ -858,31 +905,90 @@ impl Grid {
         best
     }
 
-    /// PathFinder negotiated congestion (McMurchie and Ebeling, FPGA 1995): every net reroutes each
-    /// pass, sharing cells at a cost that grows with history and pass number until no cell is shared.
-    fn negotiate(&self, b: &Board, order: &[usize]) -> Routes {
+    /// Rip up only the nets blocking a missing connection, keeping the rest of the board intact.
+    fn repair(&self, b: &Board, initial: &Routes) -> Routes {
+        let mut best = initial.clone();
+        let mut working = best.clone();
+        let mut history = vec![0u32; self.nx * self.ny * self.layers];
+        // shortcut: eight local rip-up passes, expand the blocker search when dense boards still cycle.
+        for pass in 1..=8 {
+            let mut changed = false;
+            for net in 0..b.nets.len() {
+                if working.routed[net] { continue; }
+                // Fixed obstacles stay hard; remove routed copper for this tentative escape.
+                let empty = Routes { tracks: vec![], vias: vec![], routed: vec![], passes: 0 };
+                let masks = self.masks(b, &empty, net, false);
+                let congestion = self.congestion(b, &working, net, &history, 4);
+                let mut own = empty;
+                let mut paths = vec![];
+                if !self.connect(b, &mut own, net, pass % 2 == 0, Some(&masks), Some(&congestion), &mut paths) {
+                    continue;
+                }
+                let mut blockers = vec![];
+                for n in 0..b.nets.len() {
+                    if !working.routed[n] { continue; }
+                    let other = Routes {
+                        tracks: working.tracks.iter().filter(|t| t.net == n).cloned().collect(),
+                        vias: working.vias.iter().filter(|v| v.net == n).cloned().collect(),
+                        routed: vec![], passes: 0,
+                    };
+                    if !clear(b, &other, &own) { blockers.push(n); }
+                }
+                let shared: Vec<_> = paths.iter().flat_map(|path| self.shared(&congestion, path)).collect();
+                for i in shared { history[i] = history[i].saturating_add(10); }
+                let mut candidate = working.clone();
+                candidate.tracks.retain(|t| !blockers.contains(&t.net));
+                candidate.vias.retain(|v| !blockers.contains(&v.net));
+                for &n in &blockers { candidate.routed[n] = false; }
+                candidate.tracks.extend(own.tracks);
+                candidate.vias.extend(own.vias);
+                candidate.routed[net] = true;
+                candidate.passes = initial.passes + pass;
+                for n in blockers {
+                    let masks = self.masks(b, &candidate, n, false);
+                    candidate.routed[n] = self.connect(b, &mut candidate, n, false, Some(&masks), None, &mut vec![]);
+                }
+                let count = candidate.routed.iter().filter(|&&v| v).count();
+                if count >= working.routed.iter().filter(|&&v| v).count() {
+                    working = candidate;
+                    changed = true;
+                    if count > best.routed.iter().filter(|&&v| v).count() { best = working.clone(); }
+                    if count == b.nets.len() { return best; }
+                }
+            }
+            if !changed { break; }
+        }
+        best
+    }
+
+    /// PathFinder negotiated congestion: failed and overlapping nets retry with growing copper costs.
+    fn negotiate(&self, b: &Board, order: &[usize], reverse: bool) -> (Routes, bool) {
         let empty = Routes {
             tracks: vec![],
             vias: vec![],
             routed: vec![false; b.nets.len()],
             passes: NEGOTIATION_PASSES,
         };
-        let masks: Vec<_> = (0..b.nets.len()).map(|net| self.masks(b, &empty, net)).collect();
+        let cells = self.nx * self.ny * self.layers;
+        // Bound cached masks to 128 MiB; larger boards compute them per net.
+        let masks = if b.nets.len().saturating_mul(cells) <= 1 << 26 {
+            Some((0..b.nets.len()).map(|net| self.masks(b, &empty, net, false)).collect::<Vec<_>>())
+        } else {
+            None
+        };
         let mut nets = vec![empty.clone(); b.nets.len()];
         let mut routed = vec![false; b.nets.len()];
+        let mut possible = vec![false; b.nets.len()];
+        let mut best = empty.clone();
         let mut history = vec![0u32; self.nx * self.ny * self.layers];
         let mut paths = vec![vec![]; b.nets.len()];
         let mut present = 1u32;
-        let (mut best, mut stale) = (usize::MAX, 0);
         let mut passes = 0;
+        let (mut least, mut stale) = (usize::MAX, 0);
         for pass in 1..=NEGOTIATION_PASSES {
             passes = pass;
             let mut congested = 0;
             for &net in order {
-                // A net that cannot route even through other nets' copper never will.
-                if pass > 1 && !routed[net] {
-                    continue;
-                }
                 let mut others = empty.clone();
                 for n in order.iter().filter(|&&n| n != net) {
                     others.tracks.extend_from_slice(&nets[*n].tracks);
@@ -893,12 +999,18 @@ impl Grid {
                     paths.iter().flat_map(|p| self.shared(&congestion, p)).collect()
                 };
                 // Only nets that still overlap another net are ripped up after the first pass.
-                if pass > 1 && overlaps(&paths[net]).is_empty() {
+                if pass > 1 && routed[net] && overlaps(&paths[net]).is_empty() {
                     continue;
                 }
                 let mut own = empty.clone();
                 paths[net].clear();
-                routed[net] = self.connect(b, &mut own, net, false, Some(&masks[net]), Some(&congestion), &mut paths[net]);
+                let fresh;
+                let mask = if let Some(masks) = &masks { &masks[net] } else {
+                    fresh = self.masks(b, &empty, net, false);
+                    &fresh
+                };
+                routed[net] = self.connect(b, &mut own, net, reverse, Some(mask), Some(&congestion), &mut paths[net]);
+                possible[net] |= routed[net];
                 let shared = overlaps(&paths[net]);
                 congested += !shared.is_empty() as usize;
                 for i in shared {
@@ -906,29 +1018,43 @@ impl Grid {
                 }
                 nets[net] = own;
             }
-            if congested < best {
-                (best, stale) = (congested, 0);
+            if pass % 4 == 0 || congested == 0 {
+                let candidate = self.legalize(b, &nets, &routed, order, pass);
+                let count = candidate.routed.iter().filter(|&&v| v).count();
+                if count > best.routed.iter().filter(|&&v| v).count() {
+                    best = candidate;
+                    stale = 0;
+                }
+                if count == possible.iter().filter(|&&v| v).count() || congested == 0 {
+                    return (best, count == possible.iter().filter(|&&v| v).count());
+                }
+            }
+            if congested < least {
+                least = congested;
+                stale = 0;
             } else {
                 stale += 1;
             }
-            if congested == 0 {
-                let mut r = empty;
-                for &net in order {
-                    r.tracks.append(&mut nets[net].tracks);
-                    r.vias.append(&mut nets[net].vias);
-                }
-                r.routed = routed;
-                r.passes = pass;
-                return r;
-            }
-            if stale == 8 {
+            // shortcut: restart after 32 stale passes, increase this when long plateaus lead to better routes.
+            if stale >= 32 {
                 break;
             }
             present = present.saturating_mul(2).min(1 << 12);
         }
-        // Still congested: keep the nets that clear everything kept so far, then reroute the rest hard.
-        let mut kept = empty;
-        kept.passes = passes;
+        let candidate = self.legalize(b, &nets, &routed, order, passes);
+        if candidate.routed.iter().filter(|&&v| v).count() > best.routed.iter().filter(|&&v| v).count() {
+            best = candidate;
+        }
+        best.passes = passes;
+        let complete = best.routed.iter().filter(|&&v| v).count() == possible.iter().filter(|&&v| v).count();
+        (best, complete)
+    }
+
+    /// Accept only continuous, clearance-clean copper, then retry the missing nets with hard obstacles.
+    fn legalize(&self, b: &Board, nets: &[Routes], routed: &[bool], order: &[usize], passes: usize) -> Routes {
+        let mut kept = Routes {
+            tracks: vec![], vias: vec![], routed: vec![false; b.nets.len()], passes,
+        };
         for &net in order {
             if routed[net] && clear(b, &kept, &nets[net]) {
                 kept.tracks.extend_from_slice(&nets[net].tracks);
@@ -938,7 +1064,8 @@ impl Grid {
         }
         for &net in order {
             if !kept.routed[net] {
-                kept.routed[net] = self.connect(b, &mut kept, net, false, None, None, &mut vec![]);
+                let masks = self.masks(b, &kept, net, false);
+                kept.routed[net] = self.connect(b, &mut kept, net, false, Some(&masks), None, &mut vec![]);
             }
         }
         kept
@@ -984,16 +1111,35 @@ pub fn route(b: &Board) -> Routes {
     order.sort_by(|&a, &bb| net_length(a).total_cmp(&net_length(bb)).then(a.cmp(&bb)));
     let sequential = grid.sequential(b, order.clone());
     let count = |r: &Routes| r.routed.iter().filter(|&&v| v).count();
-    // shortcut: negotiation caches two masks per net, skipped above 64M net-cells; share masks when big boards need it.
-    if count(&sequential) == b.nets.len() || b.nets.len() * grid.nx * grid.ny * grid.layers > 1 << 26 {
+    if count(&sequential) == b.nets.len() {
         return sequential;
     }
-    let negotiated = grid.negotiate(b, &order);
-    if count(&negotiated) > count(&sequential) {
-        negotiated
-    } else {
-        sequential
+    let mut best = grid.repair(b, &sequential);
+    if count(&best) == b.nets.len() { return best; }
+    // shortcut: four deterministic restarts, use local topology repair when more orders stop improving completion.
+    for restart in 0..4 {
+        match restart {
+            1 => order.sort_by_key(|&net| best.routed[net]),
+            2 => order.reverse(),
+            3 => {
+                let mut seed = 0x7351_b032u64;
+                for i in (1..order.len()).rev() {
+                    seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+                    order.swap(i, ((seed >> 32) as usize) % (i + 1));
+                }
+            }
+            _ => {}
+        }
+        let (negotiated, complete) = grid.negotiate(b, &order, restart % 2 != 0);
+        let repaired = grid.repair(b, &negotiated);
+        if count(&repaired) > count(&best) {
+            best = repaired;
+        }
+        if complete || count(&best) == b.nets.len() {
+            break;
+        }
     }
+    best
 }
 
 pub(super) fn segment_segment(a: Point, b: Point, c: Point, d: Point) -> f64 {
@@ -1028,6 +1174,7 @@ fn segment_rect(a: Point, b: Point, c: Point, size: Point) -> f64 {
 #[cfg(test)]
 pub fn clearance_check(b: &Board, r: &Routes) -> (usize, f64) {
     let mut bad = 0;
+    let mut via_pad_bad = 0;
     let mut min = f64::INFINITY;
     let mut check = |gap: f64| {
         min = min.min(gap);
@@ -1070,6 +1217,12 @@ pub fn clearance_check(b: &Board, r: &Routes) -> (usize, f64) {
     }
     for (i, v) in r.vias.iter().enumerate() {
         for p in &b.pads {
+            if p.drill.is_none()
+                && !(b.via_in_pad && p.net != usize::MAX && p.net == v.net)
+                && rect_distance(p.local(v.at), [0.; 2], p.size) <= b.via[0] / 2.0 + 1e-9
+            {
+                via_pad_bad += 1;
+            }
             if p.net != v.net {
                 let d = if p.round {
                     distance(v.at, p.at) - p.size[0] / 2.0
@@ -1088,7 +1241,7 @@ pub fn clearance_check(b: &Board, r: &Routes) -> (usize, f64) {
             check(distance(at, v.at) - (d + b.via[0]) / 2.0);
         }
     }
-    (bad, min)
+    (bad + via_pad_bad, min)
 }
 
 #[cfg(test)]
@@ -1157,16 +1310,16 @@ mod tests {
             &b,
             &mut r,
             0,
-            0,
-            1,
+            b.pads[0].at,
+            b.pads[1].at,
             &[grid.node(b.pads[0].at, 0), grid.node(b.pads[1].at, 0)],
         );
         grid.commit(
             &b,
             &mut r,
             0,
-            1,
-            2,
+            b.pads[1].at,
+            b.pads[2].at,
             &[grid.node(b.pads[1].at, 0), grid.node(b.pads[2].at, 0)],
         );
         assert_eq!(r.tracks.len(), 2);
@@ -1263,7 +1416,7 @@ mod tests {
         assert_eq!(sequential.routed.iter().filter(|v| **v).count(), 9);
         let r = route(&b);
         assert_eq!(r.routed, vec![true; 12]);
-        assert_eq!(r.passes, 8);
+        assert_eq!(r.passes, 9);
         assert_eq!(clearance_check(&b, &r).0, 0);
         assert_eq!(r, route(&b));
     }
@@ -1272,9 +1425,18 @@ mod tests {
     #[ignore = "routing benchmark; run explicitly in release"]
     fn stress_and_555_benchmarks() {
         let b = stress_board(30, 40, 0x7351_b032);
+        let mut filled = b.clone();
+        filled.via_in_pad = true;
+        let mut four = b.clone();
+        four.layers = 4;
+        let mut four_filled = four.clone();
+        four_filled.via_in_pad = true;
         let blinker = Board::from_prepared(&super::super::prepare(BLINKER).unwrap()).unwrap();
         for (name, b, minimum) in [
-            ("30-part stress", &b, 34),
+            ("30-part stress 2L, open vias", &b, 35),
+            ("30-part stress 2L, filled vias", &filled, 40),
+            ("30-part stress 4L, open vias", &four, 35),
+            ("30-part stress 4L, filled vias", &four_filled, 40),
             ("555 blinker", &blinker, blinker.nets.len()),
         ] {
             let start = Instant::now();
@@ -1293,6 +1455,41 @@ mod tests {
             assert_eq!(r, route(b));
         }
     }
+    #[test]
+    fn exposed_pad_escape_requires_filled_vias() {
+        let mut input = json!({"board":{"width":16,"height":12},"parts":[
+            {"ref":"U1","kind":"chip","footprint":"qfn32","at":[0,0]},
+            {"ref":"R1","kind":"resistor","footprint":"0603","at":[5,0]}],
+            "nets":{"GND":["U1.33","R1.1"]}});
+        let b = Board::from_prepared(&super::super::prepare(&input.to_string()).unwrap()).unwrap();
+        assert_eq!(route(&b).routed, vec![false]);
+        input["rules"] = json!({"via_in_pad": true});
+        let b = Board::from_prepared(&super::super::prepare(&input.to_string()).unwrap()).unwrap();
+        let r = route(&b);
+        assert_eq!(r.routed, vec![true]);
+        assert!(r.vias.iter().any(|v| rect_distance(v.at, [0.; 2], [3.1; 2]) <= b.via[0] / 2.));
+        assert_eq!(clearance_check(&b, &r).0, 0);
+        assert_eq!(r, route(&b));
+        let mut forbidden = b.clone();
+        forbidden.via_in_pad = false;
+        assert!(clearance_check(&forbidden, &r).0 > 0);
+    }
+
+    #[test]
+    fn multi_pin_tree_escapes_crossing_nets() {
+        let mut b = stress_board(6, 18, 0x7351_b032 + 26);
+        let pads: Vec<_> = b.nets.drain(..3).flat_map(|n| n.pads).collect();
+        b.nets.insert(0, Net { name: "POWER".into(), pads, width: 0.2, clearance: 0.2 });
+        for (n, net) in b.nets.iter().enumerate() {
+            for &p in &net.pads { b.pads[p].net = n; }
+        }
+        assert_eq!(b.nets[0].pads.len(), 6);
+        let r = route(&b);
+        assert_eq!(r.routed, vec![true; 16]);
+        assert_eq!(clearance_check(&b, &r).0, 0);
+        assert_eq!(r, route(&b));
+    }
+
     const BLINKER: &str = r#"{
   "board": {"width": 40, "height": 30, "layers": 2, "thickness": 1.6},
   "rules": {"trace": 0.2, "clearance": 0.2, "via": [0.6, 0.3], "edge": 0.3},

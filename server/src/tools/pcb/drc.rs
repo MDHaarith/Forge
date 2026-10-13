@@ -271,7 +271,7 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     false,
                 );
                 pads.insert(name, i);
-                smd.push(p);
+                smd.push((p, i));
             }
             Some("pcb_plated_hole" | "pcb_via") => {
                 let via = e["type"] == "pcb_via";
@@ -443,7 +443,10 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
         });
     }
     for (i, at, radius) in vias {
-        for p in &smd {
+        for (p, pad) in &smd {
+            if rules.via_in_pad && items[i].net.is_some() && items[i].net == items[*pad].net {
+                continue;
+            }
             let q = p.local(at);
             if route::rect_distance(q, [0.; 2], p.size) <= radius + EPS {
                 faults.push(format!("via in pad: {} in {}", items[i].name, p.name));
@@ -540,6 +543,9 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
     } else {
         format!("{} DRC error(s).", faults.len())
     };
+    if rules.via_in_pad {
+        faults.push("Filled/capped vias-in-pad are required.".into());
+    }
     faults.push(summary);
     Ok(faults.join("\n"))
 }

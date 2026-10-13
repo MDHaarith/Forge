@@ -1803,3 +1803,41 @@ async fn route_congested_board_negotiates_every_net_drc_clean() {
     let drc = run("pcb_drc", json!({"board": "congested"}), &dir.path).await.unwrap();
     assert!(drc.text.contains("No DRC errors."), "{}", drc.text);
 }
+
+#[tokio::test]
+async fn route_exposed_pad_with_opt_in_filled_vias_and_drc() {
+    let mut input = json!({"board":{"width":16,"height":12},"rules":{"clearance":0.15},"parts":[
+        {"ref":"U1","kind":"chip","footprint":"qfn32","at":[0,0]},
+        {"ref":"R1","kind":"resistor","footprint":"0603","at":[5,0]}],
+        "nets":{"GND":["U1.33","R1.1"]}});
+    let dir = project("filled_vias", &[("pcb/ep.pcb.json", &input.to_string())]);
+    let failed = run("pcb_build", json!({"source":"pcb/ep.pcb.json"}), &dir.path).await.unwrap_err().to_string();
+    assert!(failed.contains("unroutable: net GND"), "{failed}");
+    input["rules"]["via_in_pad"] = json!(true);
+    std::fs::write(dir.path.join("pcb/ep.pcb.json"), input.to_string()).unwrap();
+    run("pcb_build", json!({"source":"pcb/ep.pcb.json"}), &dir.path).await.unwrap();
+    let drc = run("pcb_drc", json!({"board":"ep"}), &dir.path).await.unwrap();
+    assert_eq!(drc.text, "Filled/capped vias-in-pad are required.\nNo DRC errors.");
+    let original = std::fs::read_to_string(dir.path.join("pcb/ep.circuit.json")).unwrap();
+    let mut circuit: Value = serde_json::from_str(&original).unwrap();
+    let via = circuit.as_array_mut().unwrap().iter_mut().find(|e| {
+        e["type"] == "pcb_via"
+            && (e["x"].as_f64().unwrap().abs() - 1.55).max(0.)
+                .hypot((e["y"].as_f64().unwrap().abs() - 1.55).max(0.)) <= 0.3 + 1e-6
+    }).unwrap();
+    via["net"] = json!("OTHER");
+    std::fs::write(dir.path.join("pcb/ep.circuit.json"), circuit.to_string()).unwrap();
+    let drc = run("pcb_drc", json!({"board":"ep"}), &dir.path).await.unwrap();
+    assert!(drc.text.contains("via in pad: via OTHER in U1.33"), "{}", drc.text);
+    circuit.as_array_mut().unwrap().iter_mut().filter(|e| e["type"] == "pcb_via")
+        .for_each(|e| e["net"] = Value::Null);
+    std::fs::write(dir.path.join("pcb/ep.circuit.json"), circuit.to_string()).unwrap();
+    let drc = run("pcb_drc", json!({"board":"ep"}), &dir.path).await.unwrap();
+    assert!(drc.text.contains("via in pad: via unconnected in U1.33"), "{}", drc.text);
+    std::fs::write(dir.path.join("pcb/ep.circuit.json"), original).unwrap();
+    input["rules"]["via_in_pad"] = json!(false);
+    std::fs::write(dir.path.join("pcb/ep.pcb.json"), input.to_string()).unwrap();
+    let drc = run("pcb_drc", json!({"board":"ep"}), &dir.path).await.unwrap();
+    assert!(drc.text.contains("via in pad: via GND in U1.33"), "{}", drc.text);
+    assert!(!drc.text.contains("Filled/capped"));
+}
