@@ -41,7 +41,7 @@ Ported from KiCad (feature list: `docs/reference/app-features.md`), grouped into
 | `pcb_build` | Native Rust engine in `server/src/tools/pcb/`. Input `pcb/<name>.pcb.json` (section 3). Does netlist + connectivity check (light ERC), IPC-7351 footprint generator, auto-placement, autorouter (2 or 4 layers, vias), copper pours with thermal reliefs, keepouts, printed antennas, net classes, teardrops; writes the same outputs as today plus `pcb/<name>.step`. |
 | `pcb_drc` | Native DRC on the built board: clearance, track width, annular ring, drill size, copper-to-edge, unrouted nets, overlapping courtyards, per net class. Input becomes `{"board":"<name>"}`. Writes `fab/<name>/<name>-drc.txt`. |
 | `pcb_export_fab` | Deleted: `pcb_build` already writes every fab file natively. |
-| `rf_calc` | New ops from KiCad's PCB Calculator: `track_width` (IPC-2152), `via` (current and resistance), `fusing` (Onderdonk), `spacing` (IPC-2221B table), `e_series` (nearest E12/E24/E96 value and best divider pair). |
+| `rf_calc` | New ops from KiCad's PCB Calculator: `track_width` (IPC-2221, as KiCad's calculator), `via` (current and resistance), `fusing` (Onderdonk), `spacing` (IPC-2221B table), `e_series` (nearest E12/E24/E96 value and best divider pair). |
 
 Removed at the end: `engines/pcb/`, `run_engine`, `node_program` setting if unused, the `.tsx`
 format, `kicad-cli` from every tool. Release v0.17.0.
@@ -155,6 +155,15 @@ stencil needs them`.
 - `parts overlap: <a> and <b>`
 - `unroutable: net <net> (<pin> to <pin>)`
 - `board <name> is not built; run pcb_build first` (pcb_drc)
+
+`pcb_drc` reads `pcb/<name>.circuit.json` (so a test can break a built board by editing it) and the
+rules from `pcb/<name>.pcb.json`. Report lines, one per fault, sorted, also written to
+`fab/<name>/<name>-drc.txt`:
+- `clearance: <item> to <item> is <gap> mm, needs <rule> mm` (items like `R1.1`, `track GND`, `via A`)
+- `track width: track <net> is <w> mm, needs <rule> mm`
+- `edge: <item> is <gap> mm from the board edge, needs <rule> mm`
+- `unrouted: net <net> (<pin> to <pin>)`
+- last line `N DRC error(s).` or `No DRC errors.`
 
 ### 3.6 Test hooks
 
