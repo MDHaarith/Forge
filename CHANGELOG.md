@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.16.0 — 2026-10-13
+
+- Forge no longer needs FreeCAD. `freecad_build`, `freecad_inspect` and `freecad_drawing` are removed;
+  Forge's own CAD kernel covers everything they did.
+- `part_build` adds loft (ruled or smooth), sweep along line and arc paths, shell with chosen open
+  sides, mirror, linear and polar patterns, ISO metric threaded rods (M2–M12), threaded holes
+  (`kind:"thread"`) and sheet metal with bends; sheet bodies report their flat length.
+- `part_inspect` reports centre of mass, takes an overhang angle, and with `against` checks every pair
+  of parts for overlap volume and clearance.
+- New `part_drawing`: front, top, right and iso views with hidden lines, first or third angle, automatic
+  sheet (A4–A2) and scale, overall dimensions, hole tags and table, title block, and an optional
+  top-view DXF.
+- The Flatpak test and setup script now cover Blender only.
+
 ## 0.15.1 — 2026-10-13
 
 - The provider, model and thinking-level pickers moved from the menu bar into the chat box, beside Send.
