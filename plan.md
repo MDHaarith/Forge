@@ -156,6 +156,15 @@ stencil needs them`.
 - `unroutable: net <net> (<pin> to <pin>)`
 - `board <name> is not built; run pcb_build first` (pcb_drc)
 
+### 3.6 Test hooks
+
+- `forge_server::tools::pcb::footprint(name: &str) -> Result<Footprint, String>`, where
+  `Footprint { pads: Vec<Pad>, courtyard: [f64; 4], height: f64 }` and
+  `Pad { number: String, at: [f64; 2], size: [f64; 2], drill: Option<f64> }` (all fields `pub`;
+  courtyard is `[min_x, min_y, max_x, max_y]`). `fp_` tests use it.
+- `spec_` tests call `pcb_build` on a `.pcb.json` and check the 3.5 errors; step 2 wires parsing and
+  validation into `pcb_build` (`.tsx` keeps using Node). Everything else goes through the tools.
+
 ## 4. Models: who does what
 
 | Role | Model | `delegate_task` target |
@@ -204,7 +213,10 @@ the polygon decision and any new crate (with its reason) in section 3.4; copy pi
 ### Step 1 brief: reference tests (send to gemini-3.8-flash-high)
 
 > You write tests for Forge, a Rust server in `server/`. Read `AGENTS.md`, `plan.md` sections 2 and 3,
-> `spikes/pcb/README.md` and `server/tests/board.rs` (style to follow). Create
+> `spikes/pcb/README.md` and `server/tests/board.rs` (style to follow). Section 3.6 says which API each
+> group calls. `footprint()` does not exist yet: put the `fp_` tests in `mod fp` marked
+> `#[cfg(any())] // step 2 removes this line` so the file compiles; every other test goes through
+> the tools and must compile now. Create
 > `server/tests/pcb_native.rs`. Do not edit any other file.
 >
 > Write one test per Reference bullet, per output file and report line in 3.3, per error in 3.5, and
@@ -227,8 +239,9 @@ numbers match the plan and spike; the suite passes with the new tests ignored.
 > You code Forge, a Rust server in `server/`. Read `AGENTS.md`, all of `plan.md` and
 > `spikes/pcb/README.md`. Create `server/src/tools/pcb/` (`mod.rs`, `spec.rs`, `footprint.rs`,
 > `place.rs`): parse and validate `.pcb.json` per 3.1 with the errors of 3.5, generate the footprints
-> of 3.2, build the netlist, check pins, place parts per 3.4. Do not wire it into `pcb_build` yet;
-> expose pure functions. Un-ignore the `spec_` and `fp_` tests and make them pass without changing
+> of 3.2, build the netlist, check pins, place parts per 3.4. Keep it out of the outputs for now;
+> expose pure functions plus the 3.6 hooks, and make `pcb_build` on a `.pcb.json` parse and validate
+> it (returning the 3.5 errors; output comes in step 4). Un-ignore the `spec_` and `fp_` tests and make them pass without changing
 > what they assert. No new crates unless step 0 chose one. Done means `cargo test --workspace` passes
 > and `cargo clippy --workspace` shows no warnings. Report the diff summary and test tail.
 
