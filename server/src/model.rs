@@ -65,7 +65,7 @@ impl Model for OfflineModel {
                     .filter_map(|m| m["content"].as_array())
                     .flatten()
                     .find(|b| b["type"] == "tool_use" && b["id"] == result["tool_use_id"]);
-                if from.is_some_and(|b| b["name"] == "cad_model") && result["is_error"] != true {
+                if from.is_some_and(|b| b["name"] == "part_build") && result["is_error"] != true {
                     return Ok(reply(
                         "tool_use",
                         vec![tool_use(
@@ -74,7 +74,7 @@ impl Model for OfflineModel {
                         )],
                     ));
                 }
-                return Ok(reply("end_turn",vec![text("Done. The enclosure is in models/: open demo-enclosure.stl to see it in 3D, or the .scad file to edit it. This is the offline demo; sign in with the Claude Code CLI and restart Forge to work with Claude.")]));
+                return Ok(reply("end_turn",vec![text("Done. The enclosure is in models/: open demo-enclosure.stl to see it in 3D, or demo-enclosure.step for CAD. This is the offline demo; sign in with the Claude Code CLI and restart Forge to work with Claude.")]));
             }
             let prompt = last["content"]
                 .as_str()
@@ -97,21 +97,15 @@ impl Model for OfflineModel {
                 .iter()
                 .any(|s| prompt.contains(s))
             {
-                let mut parts = vec![
-                    json!({"shape":"box","size":[60,40,2],"at":[0,0,0]}),
-                    json!({"shape":"box","size":[60,2,20],"at":[0,0,0]}),
-                    json!({"shape":"box","size":[60,2,20],"at":[0,38,0]}),
-                    json!({"shape":"box","size":[2,40,20],"at":[0,0,0]}),
-                    json!({"shape":"box","size":[2,40,20],"at":[58,0,0]}),
-                ];
-                for [x, y] in [[6, 6], [54, 6], [6, 34], [54, 34]] {
-                    parts.push(json!({"shape":"cylinder","radius":3,"height":8,"at":[x,y,2]}));
-                }
+                let steps = json!([
+                    {"id":"base","op":"enclosure","size":[60,40,20]},
+                    {"op":"standoffs","target":"base","points":{"corners":[60,40,6]},"size":"M3","height":8,"base":2}
+                ]);
                 return Ok(reply(
                     "tool_use",
                     vec![
                         text("Building a 60 × 40 mm enclosure base with four M3 standoffs."),
-                        tool_use("cad_model", json!({"name":"demo-enclosure","parts":parts})),
+                        tool_use("part_build", json!({"name":"demo-enclosure","steps":steps})),
                     ],
                 ));
             }

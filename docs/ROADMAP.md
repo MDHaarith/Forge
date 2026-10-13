@@ -13,7 +13,7 @@ the phases, and keep the external version working until its native replacement p
 
 | Tool | Needs | Native replacement |
 |---|---|---|
-| freecad_build, freecad_inspect, freecad_drawing | FreeCAD | CAD kernel tools |
+| freecad_build, freecad_inspect, freecad_drawing | FreeCAD | part_build/part_inspect cover solids, holes, mass and overhangs (v0.15.0); still missing: loft, sweep, shell, threads, sheet metal, interference checks, drawings |
 | blender_build | Blender | renderer and mesh modifiers |
 | openscad_render | OpenSCAD | fold into the CAD kernel, or drop |
 | pcb_build | Node + tscircuit engine | Rust PCB engine |
@@ -22,14 +22,13 @@ the phases, and keep the external version working until its native replacement p
 | rf_antenna_sim | openEMS | FDTD solver |
 | git_status, git_commit, git_log | git | built-in git library (gitoxide) |
 
-Already native: list_files, read_file, write_file, cad_model, rf_calc, design_assemble.
+Already native: list_files, read_file, write_file, part_build, part_inspect, rf_calc, design_assemble.
 
-CAD kernel progress (v0.14.0): `part_build` supports primitives, booleans, line/arc/circle extrusion,
-revolution, edge fillets/chamfers, placement, standard holes and enclosure/lid/standoffs, with
-STEP/STL/JSON export. `part_inspect` reads STEP/STP/STL size, volume, material mass and 45-degree
-printing overhangs; STEP inspection also detects hole features. Step 4 in `plan.md` is complete.
-Next: finish tool descriptions (step 5), then retire legacy solid tools and verify the desktop
-workflow (step 6). FreeCAD drawing tools stay until a native drawing replacement is ready.
+CAD kernel (v0.15.0, stage 1 of `plan.md` done): `part_build` makes exact solids (primitives, extrude,
+revolve, booleans, fillet, chamfer, place, ISO holes, enclosure, lid, standoffs) → STEP/STL/JSON, and
+`part_inspect` reports size, volume, mass, holes and overhangs. `cad_model` is removed. The FreeCAD tools
+stay as a fallback until loft, sweep, shell, threads, sheet metal, interference checks and drawings are
+native.
 
 ## Phases (estimates include tests; ±50%)
 

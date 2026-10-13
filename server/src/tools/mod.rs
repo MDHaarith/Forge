@@ -10,7 +10,6 @@ pub mod cad;
 pub mod code;
 pub mod exec;
 pub mod launch;
-pub mod mesh;
 pub mod paths;
 pub mod part;
 pub mod script3d;

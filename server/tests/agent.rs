@@ -122,7 +122,7 @@ async fn runs_tools_feeds_results_and_keeps_history_append_only() {
             .collect::<Vec<_>>(),
         ["user", "assistant", "user", "assistant"]
     );
-    assert!(first.tools.iter().any(|t| t["name"] == "cad_model"));
+    assert!(first.tools.iter().any(|t| t["name"] == "part_build"));
     assert!(!first.tools.iter().any(|t| t["name"] == "git_commit"));
     assert!(!agent.running());
 }
@@ -205,34 +205,6 @@ async fn cut_off_reply_does_not_run_its_call() {
         "user"
     );
     assert!(events.lock().unwrap().iter().any(|e|matches!(e,AgentEvent::ToolResult{ok:false,text,..}if text=="Not run: the reply hit its length limit before this call was complete.")));
-}
-
-#[tokio::test]
-async fn cad_model_writes_stl_scad_and_integer_json() {
-    let (dir, _model, agent, events) = setup(vec![
-        reply(
-            "tool_use",
-            vec![call(
-                "t",
-                "cad_model",
-                json!({"name":"bracket","parts":[{"shape":"box","size":[10.0,10.0,2.0]},{"shape":"cylinder","radius":2.0,"height":5.0,"at":[5.0,5.0,2.0]}]}),
-            )],
-        ),
-        reply("end_turn", vec![]),
-    ]);
-    agent
-        .send("bracket", &|e| events.lock().unwrap().push(e))
-        .await
-        .unwrap();
-    let mut files = std::fs::read_dir(dir.path.join("models"))
-        .unwrap()
-        .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .collect::<Vec<_>>();
-    files.sort();
-    assert_eq!(files, ["bracket.json", "bracket.scad", "bracket.stl"]);
-    let json = std::fs::read_to_string(dir.path.join("models/bracket.json")).unwrap();
-    assert!(!json.contains(".0"));
-    assert!(json.ends_with('\n'));
 }
 
 #[tokio::test]

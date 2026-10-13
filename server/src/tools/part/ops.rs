@@ -233,6 +233,7 @@ mod tests {
 
     #[test]
     fn curved_profiles_selectors_and_rotation_order() {
+        let _kernel = super::super::kernel();
         let profile = json!({"height":3,"outline":{"start":[0,-2],"segments":[
             {"arc":[0,2],"through":[2,0]},{"line":[0,-2]}
         ]}});

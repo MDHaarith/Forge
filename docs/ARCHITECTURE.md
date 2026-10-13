@@ -48,7 +48,7 @@ server/src/
     validate.rs            JSON-schema subset used to check tool input
     launch.rs              run an app natively or as a sandboxed Flatpak
     workspace.rs vcs.rs code.rs              files, git, run_command
-    cad.rs mesh.rs                           cad_model: primitives → STL/SCAD/JSON (no external app)
+    cad.rs                                   openscad_render
     part.rs                                  part_build: OCCT solids, booleans and engineering parts → STEP/binary STL/JSON
     part/ops.rs                              outlines, extrude/revolve, edge selectors, fillet/chamfer, place
     part/kit.rs                              standard holes, grid/corner patterns, rounded enclosure/lid/standoffs

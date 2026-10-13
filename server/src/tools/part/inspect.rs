@@ -26,6 +26,7 @@ fn part_inspect(input: Value, ctx: ToolContext) -> ToolFuture {
 }
 
 fn inspect(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
+    let _kernel = super::kernel();
     let file = input_str(&input, "path")?;
     let path = project_path(&ctx.project_dir, file)?;
     let extension = path
@@ -142,10 +143,7 @@ fn overhangs(triangles: impl IntoIterator<Item = [DVec3; 3]>, zmin: f64) -> f64 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::{
-        mesh::{box_mesh, to_ascii_stl},
-        part::test_common::TempDir,
-    };
+    use crate::tools::part::test_common::TempDir;
 
     #[tokio::test]
     async fn inspects_hole_features_patterns_and_rounded_pockets() {
@@ -237,7 +235,9 @@ mod tests {
     #[tokio::test]
     async fn inspects_ascii_stl_and_stp_and_rejects_bad_inputs() {
         let dir = TempDir::new("part-inspect");
-        let ascii = to_ascii_stl("box", &box_mesh([2.0, 3.0, 4.0], [10.0, -5.0, 8.0]));
+        let facet = |a: &str, b: &str, c: &str| format!("facet normal 0 0 0\nouter loop\nvertex {a}\nvertex {b}\nvertex {c}\nendloop\nendfacet\n");
+        let (o, x, y, z) = ("0 0 0", "1 0 0", "0 1 0", "0 0 1");
+        let ascii = format!("solid t\n{}{}{}{}endsolid t\n", facet(o, y, x), facet(o, x, z), facet(o, z, y), facet(x, y, z));
         fs::write(dir.path.join("box.stl"), ascii).unwrap();
         let ctx = || ToolContext::new(dir.path.clone(), dir.path.clone());
         let result = part_inspect(json!({"path":"box.stl","material":"PLA"}), ctx())
@@ -246,8 +246,8 @@ mod tests {
         let report: Value = serde_json::from_str(&result.text).unwrap();
         assert_eq!(
             report,
-            json!({"file":"box.stl","size":[2,3,4],"volume":24,
-            "material":"PLA","mass_g":0.03,"holes":"unknown (mesh)",
+            json!({"file":"box.stl","size":[1,1,1],"volume":0.167,
+            "material":"PLA","mass_g":0,"holes":"unknown (mesh)",
             "overhang_area":0,"overhang_warning":false})
         );
         assert_eq!(result.text, stringify_pretty(&report).unwrap());

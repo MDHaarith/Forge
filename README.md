@@ -142,12 +142,13 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | Workspace | `list_files`, `read_file`, `write_file` | – |
 | Version control | `git_status`, `git_commit`, `git_log` | git |
 | Code | `run_command` | `FORGE_ALLOW_COMMANDS=1` |
-| 3D: engineering | `freecad_build`: exact-dimension parts (Part or PartDesign/Sketcher, ISO holes from the `forge` helpers) → STEP, STL, FCStd | [FreeCAD](https://www.freecad.org) 0.21+ (`freecadcmd`), native or Flatpak `org.freecad.FreeCAD` |
+| 3D: engineering | `part_build`: exact solids from Forge's own CAD kernel (OpenCASCADE): shapes, extrude, revolve, booleans, fillet, chamfer, ISO holes, enclosure, lid, standoffs → STEP, STL, JSON | – |
+| | `part_inspect`: size, volume, mass in a material, holes and the screws they fit, print overhangs | – |
+| | `freecad_build`: exact-dimension parts (Part or PartDesign/Sketcher, ISO holes from the `forge` helpers) → STEP, STL, FCStd | [FreeCAD](https://www.freecad.org) 0.21+ (`freecadcmd`), native or Flatpak `org.freecad.FreeCAD` |
 | | `freecad_inspect`: mass in a material, holes and the screws they fit, print overhangs, interference and clearance between parts | FreeCAD |
 | | `freecad_drawing`: technical drawing (views, hidden lines, dimensions, hole table, title block) → SVG, PDF, DXF | FreeCAD; `rsvg-convert` for the PDF |
 | 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+, native or Flatpak `org.blender.Blender` |
-| 3D: quick | `cad_model` (STL + OpenSCAD + JSON from primitives) | – |
-| | `openscad_render` | [OpenSCAD](https://openscad.org) |
+| 3D: quick | `openscad_render` | [OpenSCAD](https://openscad.org) |
 | PCB | `pcb_build`: board from tscircuit code → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM | Node.js and the built-in engine (`npm run pcb-engine`) |
 | | `design_assemble`: boards and enclosure parts in one 3D assembly, with a fit check | – |
 | RF | `rf_calc`: impedance and trace width (microstrip, coplanar, stripline, differential) on fab stackups, antenna matching networks, link budget and range | – |

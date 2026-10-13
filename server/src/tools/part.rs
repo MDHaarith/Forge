@@ -106,7 +106,17 @@ fn body_index(bodies: &[(String, Vec<Solid>)], id: &str, index: usize) -> Result
         .ok_or_else(|| ToolError::expected(format!("step {index}: no body \"{id}\"")))
 }
 
+// shortcut: OpenCASCADE crashes (SIGSEGV) when two threads use it at once, so every part builds or
+// inspects one at a time; move kernel work to a worker process when parallel builds are needed.
+static KERNEL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Held for the whole time a thread uses OpenCASCADE, including dropping its shapes.
+fn kernel() -> std::sync::MutexGuard<'static, ()> {
+    KERNEL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
+    let _kernel = kernel();
     let name = input_str(&input, "name")?;
     if name.is_empty()
         || !name
@@ -413,6 +423,7 @@ mod tests {
         assert_eq!(stl.len(), 84 + 50 * triangles);
         let path = project_path(&dir.path, &result.files[0]).unwrap();
         tokio::task::spawn_blocking(move || {
+            let _kernel = kernel();
             let solids = Solid::read_step(&mut fs::File::open(path).unwrap()).unwrap();
             assert_eq!(solids.len(), 2);
             assert!(

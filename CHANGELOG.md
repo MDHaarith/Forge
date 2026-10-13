@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0 — 2026-10-13
+
+- Removed `cad_model`; `part_build` replaces it. The offline demo now builds its enclosure with
+  `part_build` (STEP, STL and JSON).
+- Fixed a crash: OpenCASCADE is not thread-safe, so parts now build and inspect one at a time.
+  Parallel builds segfaulted about once in 20 test runs.
+- The in-app AI now uses `part_build`/`part_inspect` first and keeps FreeCAD for loft, sweep, shell,
+  threads, sheet metal, interference checks and drawings.
+
 ## 0.14.1 — 2026-10-13
 
 - `part_build` and `part_inspect` descriptions now list every op with its defaults, the material names

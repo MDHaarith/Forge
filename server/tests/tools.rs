@@ -109,36 +109,3 @@ async fn commands_require_explicit_opt_in_in_context_and_registry() {
     );
 }
 
-#[tokio::test]
-async fn cad_rejects_invalid_names_and_missing_shape_dimensions() {
-    let dir = TempDir::new("cad-errors");
-    let ctx = ToolContext::new(dir.path.clone(), dir.path.clone());
-    let tool = all_tools()
-        .into_iter()
-        .find(|t| t.name == "cad_model")
-        .unwrap();
-    assert_eq!(
-        (tool.run)(json!({"name":"../escape","parts":[]}), ctx.clone())
-            .await
-            .unwrap_err()
-            .to_string(),
-        "name may only use letters, digits, - and _"
-    );
-    for (shape, missing) in [
-        ("box", "size"),
-        ("cylinder", "radius and height"),
-        ("sphere", "radius"),
-    ] {
-        assert_eq!(
-            (tool.run)(
-                json!({"name":"part","parts":[{"shape":shape}]}),
-                ctx.clone()
-            )
-            .await
-            .unwrap_err()
-            .to_string(),
-            format!("parts[0] ({shape}) needs {missing}")
-        );
-    }
-    assert!(!dir.path.join("models").exists());
-}

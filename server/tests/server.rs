@@ -81,11 +81,11 @@ async fn status_lists_every_capability() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect::<Vec<_>>();
-    for n in ["write_file", "git_commit", "cad_model", "pcb_export_fab", "chip_synthesize"] {
+    for n in ["write_file", "git_commit", "part_build", "pcb_export_fab", "chip_synthesize"] {
         assert!(names.contains(&n), "{n}");
     }
     assert_eq!(
-        tools.iter().find(|t| t["name"] == "cad_model").unwrap()["available"],
+        tools.iter().find(|t| t["name"] == "part_build").unwrap()["available"],
         true
     );
     assert_eq!(
@@ -136,7 +136,7 @@ async fn offline_demo_builds_and_commits_enclosure_end_to_end() {
         .filter(|e| e["type"] == "tool_call")
         .map(|e| e["name"].as_str().unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(calls, ["cad_model", "git_commit"]);
+    assert_eq!(calls, ["part_build", "git_commit"]);
     assert!(streamed
         .iter()
         .filter(|e| e["type"] == "tool_result")
@@ -148,14 +148,9 @@ async fn offline_demo_builds_and_commits_enclosure_end_to_end() {
         .json()
         .await
         .unwrap();
-    assert!(files.contains(&"models/demo-enclosure.stl".into()));
-    let stl = server
-        .get("/projects/rover/file?path=models/demo-enclosure.stl")
-        .await
-        .text()
-        .await
-        .unwrap();
-    assert!(stl.starts_with("solid demo-enclosure"));
+    for ext in ["step", "stl", "json"] {
+        assert!(files.contains(&format!("models/demo-enclosure.{ext}")), "{ext}");
+    }
     let history: Value = server
         .get("/projects/rover/history")
         .await
@@ -192,26 +187,7 @@ async fn offline_demo_builds_and_commits_enclosure_end_to_end() {
     )
     .unwrap();
     assert!(!json.contains(".0"));
-    // Golden fingerprints from TS cad_model compare every byte without a large STL fixture.
-    for (ext, length, expected) in [
-        ("stl", 85815, 15860311762566082420u64),
-        ("scad", 533, 752138743025860563u64),
-        ("json", 1339, 10979603412810776451u64),
-    ] {
-        let bytes = std::fs::read(
-            server
-                .state
-                .projects
-                .home
-                .join(format!("rover/models/demo-enclosure.{ext}")),
-        )
-        .unwrap();
-        assert_eq!(bytes.len(), length);
-        let hash = bytes.iter().fold(14695981039346656037u64, |hash, byte| {
-            (hash ^ u64::from(*byte)).wrapping_mul(1099511628211)
-        });
-        assert_eq!(hash, expected, "TS output differs: {ext}");
-    }
+    assert_eq!(serde_json::from_str::<Value>(&json).unwrap()["bodies"][0]["solids"], 1);
     let log = forge_server::tools::exec::run(
         "git",
         &["log".into(), "-1".into(), "--format=%s".into()],
