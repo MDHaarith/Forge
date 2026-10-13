@@ -4,13 +4,13 @@ use serde_json::{json, Value};
 pub fn tools() -> Vec<Tool> {
     vec![
         {
-            let mut tool = Tool::new("chip", "chip_simulate", r#"Compile Verilog sources with Icarus Verilog and run the testbench. Put $display / $finish in the testbench; its output is returned."#, json!({"type":"object","properties":{"sources":{"type":"array","items":{"type":"string"},"minItems":1,"description":"Project-relative .v files, testbench included"}},"required":["sources"]}), chip_simulate);
+            let mut tool = Tool::new("chip", "chip_simulate", r#"Compile Verilog sources with Icarus Verilog and run the testbench. Put $display / $finish in the testbench; its output is returned."#, json!({"type":"object", "additionalProperties": false,"properties":{"sources":{"type":"array","items":{"type":"string"},"minItems":1,"description":"Project-relative .v files, testbench included"}},"required":["sources"]}), chip_simulate);
             tool.requires = vec!["iverilog".into()];
             tool.install = Some(serde_json::from_value(json!({"dnf":"iverilog","apt":"iverilog","brew":"icarus-verilog"})).unwrap());
             tool
         },
         {
-            let mut tool = Tool::new("chip", "chip_synthesize", r#"Synthesize Verilog to a generic gate netlist with Yosys and report cell counts. Writes build/<top>.json. The first step towards place-and-route with OpenROAD/OpenLane."#, json!({"type":"object","properties":{"sources":{"type":"array","items":{"type":"string"},"minItems":1,"description":"Project-relative .v files (no testbench)"},"top":{"type":"string","description":"Top module name"}},"required":["sources","top"]}), chip_synthesize);
+            let mut tool = Tool::new("chip", "chip_synthesize", r#"Synthesize Verilog to a generic gate netlist with Yosys and report cell counts. Writes build/<top>.json. The first step towards place-and-route with OpenROAD/OpenLane."#, json!({"type":"object", "additionalProperties": false,"properties":{"sources":{"type":"array","items":{"type":"string"},"minItems":1,"description":"Project-relative .v files (no testbench)"},"top":{"type":"string","description":"Top module name"}},"required":["sources","top"]}), chip_synthesize);
             tool.requires = vec!["yosys".into()];
             tool.install = Some(serde_json::from_value(json!({"dnf":"yosys","apt":"yosys","brew":"yosys"})).unwrap());
             tool

@@ -47,9 +47,9 @@ fn list_files_in<'a>(
 
 pub fn tools() -> Vec<Tool> {
     vec![
-        Tool::new("workspace", "list_files", "List every file in the project (paths relative to the project root).", json!({"type": "object", "properties": {}}), list_files_tool),
-        Tool::new("workspace", "read_file", "Read a text file from the project.", json!({"type": "object", "properties": {"path": {"type": "string", "description": "Project-relative path"}}, "required": ["path"]}), read_file),
-        Tool::new("workspace", "write_file", "Create or overwrite a text file in the project. Use it for source code, OpenSCAD, Verilog, notes, BOMs and any other text artifact. Parent folders are created.", json!({"type": "object", "properties": {"path": {"type": "string", "description": "Project-relative path"}, "contents": {"type": "string", "description": "The full file contents"}}, "required": ["path", "contents"]}), write_file)
+        Tool::new("workspace", "list_files", "List every file in the project (paths relative to the project root).", json!({"type": "object", "additionalProperties": false, "properties": {}}), list_files_tool),
+        Tool::new("workspace", "read_file", "Read a text file from the project.", json!({"type": "object", "additionalProperties": false, "properties": {"path": {"type": "string", "description": "Project-relative path"}}, "required": ["path"]}), read_file),
+        Tool::new("workspace", "write_file", "Create or overwrite a text file in the project. Use it for source code, OpenSCAD, Verilog, notes, BOMs and any other text artifact. Parent folders are created.", json!({"type": "object", "additionalProperties": false, "properties": {"path": {"type": "string", "description": "Project-relative path"}, "contents": {"type": "string", "description": "The full file contents"}}, "required": ["path", "contents"]}), write_file)
     ]
 }
 

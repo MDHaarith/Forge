@@ -64,7 +64,7 @@ pub(crate) async fn handle(
                 &state.settings,
             );
             let (ok, outcome) =
-                execute_tool(tools.iter().find(|t| t.name == name), name, &input, context).await;
+                execute_tool(&tools, name, &input, context).await;
             let _ = sender.send(AgentEvent::ToolResult {
                 id: call_id,
                 name: name.into(),

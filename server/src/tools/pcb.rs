@@ -4,13 +4,13 @@ use serde_json::{json, Value};
 pub fn tools() -> Vec<Tool> {
     vec![
         {
-            let mut tool = Tool::new("pcb", "pcb_drc", r#"Run KiCad's design rule check on a board and write the report to fab/drc.rpt."#, json!({"type":"object","properties":{"board":{"type":"string","description":"Project-relative .kicad_pcb file"}},"required":["board"]}), pcb_drc);
+            let mut tool = Tool::new("pcb", "pcb_drc", r#"Run KiCad's design rule check on a board and write the report to fab/drc.rpt."#, json!({"type":"object", "additionalProperties": false,"properties":{"board":{"type":"string","description":"Project-relative .kicad_pcb file"}},"required":["board"]}), pcb_drc);
             tool.requires = vec!["kicad-cli".into()];
             tool.install = Some(serde_json::from_value(json!({"dnf":"kicad","apt":"kicad","brew":"--cask kicad","url":"https://www.kicad.org/download/"})).unwrap());
             tool
         },
         {
-            let mut tool = Tool::new("pcb", "pcb_export_fab", r#"Export manufacturing files for a board: Gerbers and drill files into fab/, ready to zip and upload to a PCB fab such as JLCPCB or PCBWay."#, json!({"type":"object","properties":{"board":{"type":"string","description":"Project-relative .kicad_pcb file"}},"required":["board"]}), pcb_export_fab);
+            let mut tool = Tool::new("pcb", "pcb_export_fab", r#"Export manufacturing files for a board: Gerbers and drill files into fab/, ready to zip and upload to a PCB fab such as JLCPCB or PCBWay."#, json!({"type":"object", "additionalProperties": false,"properties":{"board":{"type":"string","description":"Project-relative .kicad_pcb file"}},"required":["board"]}), pcb_export_fab);
             tool.requires = vec!["kicad-cli".into()];
             tool.install = Some(serde_json::from_value(json!({"dnf":"kicad","apt":"kicad","brew":"--cask kicad","url":"https://www.kicad.org/download/"})).unwrap());
             tool

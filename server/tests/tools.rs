@@ -218,7 +218,6 @@ fn check_schema_node(tool_name: &str, path: &str, node: &Value, is_root: bool) {
 }
 
 #[test]
-#[ignore = "patch 0.15.1 not built yet"]
 fn every_tool_schema_is_portable() {
     let tools = all_tools();
     assert!(!tools.is_empty(), "expected tools to be registered");
@@ -264,7 +263,6 @@ fn every_tool_schema_is_portable() {
 }
 
 #[test]
-#[ignore = "patch 0.15.1 not built yet"]
 fn validator_handles_any_of_and_unknown_keys() {
     // 1. anyOf with 3 types: number, string, array
     let schema_three = json!({

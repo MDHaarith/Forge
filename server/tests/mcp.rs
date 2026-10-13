@@ -160,6 +160,34 @@ async fn tool_calls_stream_once_with_files_and_match_saved_history() {
 }
 
 #[tokio::test]
+async fn normalised_tool_names_run_and_keep_the_sent_name_in_events() {
+    let server = FakeServer::start(WAIT).await;
+    let chat = server.chat("write a file").await;
+    server.wait_started().await;
+    for (index, name) in ["FUNCTIONS.write-file", "mcp__forge__write_file"]
+        .iter()
+        .enumerate()
+    {
+        let response: Value = server.post("/mcp/test", json!({"id":index,"method":"tools/call","params":{"name":name,"arguments":{"path":format!("{index}.txt"),"contents":"hi"}}})).await.json().await.unwrap();
+        assert!(response["result"].get("isError").is_none());
+        assert_eq!(
+            std::fs::read_to_string(server.dir().join(format!("{index}.txt"))).unwrap(),
+            "hi"
+        );
+    }
+    std::fs::write(server.dir().join("go"), "").unwrap();
+    let streamed = events(chat).await;
+    for (index, name) in ["FUNCTIONS.write-file", "mcp__forge__write_file"]
+        .iter()
+        .enumerate()
+    {
+        assert_eq!(streamed[1 + index * 2]["name"], *name);
+        assert_eq!(streamed[2 + index * 2]["name"], *name);
+    }
+    assert_eq!(server.history().await["events"], json!(streamed));
+}
+
+#[tokio::test]
 async fn in_flight_tool_result_precedes_done_after_cli_exit() {
     use std::time::Duration;
     let server = FakeServer::start(&format!("{WAIT}touch exited\n")).await;
@@ -222,6 +250,9 @@ async fn tool_errors_keep_validation_unavailable_and_path_escape_wording() {
     let server = FakeServer::start(WAIT).await;
     let chat = server.chat("errors").await;
     server.wait_started().await;
+    let available = available_tools(&server.settings).iter().map(|t| t.name).collect::<Vec<_>>().join(", ");
+    let unknown = format!("Unknown or unavailable tool \"unknown\". Available tools: {available}.");
+    let unavailable = format!("Unknown or unavailable tool \"run_command\". Available tools: {available}.");
     for (name, arguments, expected) in [
         (
             "write_file",
@@ -236,12 +267,12 @@ async fn tool_errors_keep_validation_unavailable_and_path_escape_wording() {
         (
             "unknown",
             Some(json!({})),
-            "Unknown or unavailable tool \"unknown\".",
+            unknown.as_str(),
         ),
         (
             "run_command",
             Some(json!({"command":"pwd"})),
-            "Unknown or unavailable tool \"run_command\".",
+            unavailable.as_str(),
         ),
         (
             "write_file",

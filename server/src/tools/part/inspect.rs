@@ -11,7 +11,7 @@ pub(super) fn tool() -> Tool {
     Tool::new("3d", "part_inspect",
         r#"Measure a STEP, STP or STL file in the project; writes nothing. Returns one JSON object: file, size [x,y,z] in mm, volume in mm³, material and mass_g (both null unless material is given), holes (STEP only: axis, diameter, through, depth, center, fits, e.g. "M5 clearance"; the string "unknown (mesh)" for STL), overhang_area (downward-facing area steeper than 45° from vertical, excluding the bed faces, in mm²) and overhang_warning (true when overhang_area > 1). Lengths are mm, Z up. Use it after part_build to check size, holes and printability. Limits: no drawings (use freecad_drawing for drawings while it exists), no edits, and no hole detection in meshes.
 Example: {"path":"models/case.step","material":"PLA"}"#,
-        json!({"type":"object","properties":{
+        json!({"type":"object", "additionalProperties": false,"properties":{
             "path":{"type":"string", "description":"Project-relative .step, .stp or .stl file"},"material":{"type":"string", "description":"Optional MATERIALS key, used for mass_g"}
         },"required":["path"]}),
         part_inspect)

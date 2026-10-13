@@ -37,15 +37,15 @@ pub fn tools() -> Vec<Tool> {
             "vcs",
             "git_status",
             "Show which project files changed since the last commit.",
-            json!({"type": "object", "properties": {}}),
+            json!({"type": "object", "additionalProperties": false, "properties": {}}),
             git_status,
         ),
-        Tool::new("vcs", "git_commit", "Record every current change in the project's history with a message. Commit after each meaningful step so the user can review and roll back.", json!({"type": "object", "properties": {"message": {"type": "string", "description": "What changed and why, one line"}}, "required": ["message"]}), git_commit),
+        Tool::new("vcs", "git_commit", "Record every current change in the project's history with a message. Commit after each meaningful step so the user can review and roll back.", json!({"type": "object", "additionalProperties": false, "properties": {"message": {"type": "string", "description": "What changed and why, one line"}}, "required": ["message"]}), git_commit),
         Tool::new(
             "vcs",
             "git_log",
             "Show the most recent commits in the project.",
-            json!({"type": "object", "properties": {"limit": {"type": "integer", "description": "How many commits (default 20)"}}}),
+            json!({"type": "object", "additionalProperties": false, "properties": {"limit": {"type": "integer", "description": "How many commits (default 20)"}}}),
             git_log,
         ),
     ];

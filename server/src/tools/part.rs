@@ -11,6 +11,26 @@ mod ops;
 mod standards;
 
 pub fn tools() -> Vec<Tool> {
+    let outline = json!({"type":"object", "properties":{
+        "circle":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
+        "start":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2},
+        "segments":{"type":"array","items":{"type":"object","properties":{
+            "line":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2},
+            "arc":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2},
+            "through":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}
+        }}}
+    }});
+    let edges = json!({"anyOf":[
+        {"type":"string","enum":["all","vertical"]},
+        {"type":"object","properties":{"at_z":{"type":"number"}},"required":["at_z"]}
+    ]});
+    let points = json!({"anyOf":[
+        {"type":"array","items":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}},
+        {"type":"object","properties":{
+            "grid":{"type":"array","items":{"type":"number"}},
+            "corners":{"type":"array","items":{"type":"number"}}
+        }}
+    ]});
     vec![Tool::new(
         "3d",
         "part_build",
@@ -36,20 +56,20 @@ Limits: no sketcher constraints, loft, sweep, shell, threads or drawings (use fr
 Example, 80x50x25 enclosure with 2 mm walls, M3 insert standoffs, and a matching lid beside it at x=90 (at z=2 so its lip rests on the bed):
 {"name":"case","steps":[{"op":"enclosure","id":"box","size":[80,50,25],"wall":2,"floor":2},{"op":"standoffs","target":"box","points":{"corners":[80,50,6]},"size":"M3","base":2,"kind":"insert"},{"op":"lid","id":"cover","size":[80,50],"at":[90,0,2]}]}
 Errors: step <index>: unknown op "<op>"; step <index>: no body "<id>"; step <index>: fillet failed (or chamfer failed)."#,
-        json!({"type":"object", "properties":{
+        json!({"type":"object", "additionalProperties": false, "properties":{
             "name":{"type":"string", "description":"Lowercase letters, digits, - and _ only"},
             "material":{"type":"string", "description":"Optional MATERIALS key, used for mass"},
-            "steps":{"type":"array", "minItems":1, "items":{"type":"object", "properties":{
-                "op":{"type":"string"}, "id":{"type":"string"},
-                "size":{},
+            "steps":{"type":"array", "description":"Ordered shape and operation steps; each op may use any of the declared step fields", "minItems":1, "items":{"type":"object", "additionalProperties":false, "properties":{
+                "op":{"type":"string", "enum":["box","cylinder","sphere","cone","extrude","revolve","union","cut","intersect","fillet","chamfer","place","hole","enclosure","lid","standoffs"]}, "id":{"type":"string"},
+                "size":{"anyOf":[{"type":"number"},{"type":"string"},{"type":"array","items":{"type":"number"}}], "description":"Array for box and enclosure dimensions (lid: [x,y]); string such as M3 for hole and standoffs; number for chamfer"},
                 "at":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "radius":{"type":"number"}, "radius1":{"type":"number"},
                 "radius2":{"type":"number"}, "height":{"type":"number"},
-                "angle":{"type":"number"}, "outline":{"type":"object"}, "edges":{},
+                "angle":{"type":"number"}, "outline":outline, "edges":edges,
                 "rotate":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "move":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "target":{"type":"string"}, "tool":{"type":"string"},
-                "points":{}, "kind":{"type":"string"}, "fit":{"type":"string"},
+                "points":points, "kind":{"type":"string"}, "fit":{"type":"string"},
                 "depth":{"type":"number"}, "wall":{"type":"number"}, "floor":{"type":"number"},
                 "thickness":{"type":"number"}, "lip":{"type":"number"}, "gap":{"type":"number"},
                 "base":{"type":"number"}

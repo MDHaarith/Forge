@@ -11,7 +11,7 @@ pub fn tools() -> Vec<Tool> {
 }
 
 fn openscad_tool() -> Tool {
-    let mut tool = Tool::new("3d", "openscad_render", r#"Render an OpenSCAD file in the project to STL with the real OpenSCAD engine (supports difference(), hull(), etc.)."#, json!({"type":"object","properties":{"path":{"type":"string","description":"Project-relative .scad file"},"output":{"type":"string","description":"Project-relative .stl to write (default: same name)"}},"required":["path"]}), openscad_render);
+    let mut tool = Tool::new("3d", "openscad_render", r#"Render an OpenSCAD file in the project to STL with the real OpenSCAD engine (supports difference(), hull(), etc.)."#, json!({"type":"object", "additionalProperties": false,"properties":{"path":{"type":"string","description":"Project-relative .scad file"},"output":{"type":"string","description":"Project-relative .stl to write (default: same name)"}},"required":["path"]}), openscad_render);
     tool.requires = vec!["openscad".into()];
     tool.install = Some(serde_json::from_value(json!({"dnf":"openscad","apt":"openscad","brew":"--cask openscad","url":"https://openscad.org/downloads.html"})).unwrap());
     tool

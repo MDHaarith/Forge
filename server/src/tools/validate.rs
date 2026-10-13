@@ -10,6 +10,31 @@ pub fn validate(value: &Value, schema: &Value) -> Vec<String> {
 
 fn validate_at(value: &Value, schema: &Value, at: &str) -> Vec<String> {
     let mut problems = Vec::new();
+    if let Some(branches) = schema["anyOf"].as_array().filter(|b| !b.is_empty()) {
+        if !branches
+            .iter()
+            .any(|branch| validate_at(value, branch, at).is_empty())
+        {
+            let types = branches
+                .iter()
+                .filter_map(|branch| match branch["type"].as_str()? {
+                    "number" => Some("a number"),
+                    "integer" => Some("an integer"),
+                    "string" => Some("a string"),
+                    "boolean" => Some("a boolean"),
+                    "array" => Some("an array"),
+                    "object" => Some("an object"),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let choices = match types.split_last() {
+                Some((last, [])) => last.to_string(),
+                Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+                None => "one of the allowed types".into(),
+            };
+            return vec![format!("{at} must be {choices}")];
+        }
+    }
     if let Some(choices) = schema["enum"].as_array() {
         if !choices.contains(value) {
             problems.push(format!(
@@ -38,6 +63,16 @@ fn validate_at(value: &Value, schema: &Value, at: &str) -> Vec<String> {
                 for (key, sub) in properties {
                     if let Some(value) = record.get(key) {
                         problems.extend(validate_at(value, sub, &format!("{at}.{key}")));
+                    }
+                }
+            }
+            if schema["additionalProperties"] == false {
+                for key in record.keys() {
+                    if !schema["properties"]
+                        .as_object()
+                        .is_some_and(|p| p.contains_key(key))
+                    {
+                        problems.push(format!("{at}.{key} is not a known field"));
                     }
                 }
             }

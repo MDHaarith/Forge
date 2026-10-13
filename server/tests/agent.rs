@@ -140,7 +140,9 @@ async fn invalid_unknown_and_tool_errors_return_together() {
     );
     assert_eq!(
         results[1].1,
-        "Unknown or unavailable tool \"launch_rocket\"."
+        &format!("Unknown or unavailable tool \"launch_rocket\". Available tools: {}.",
+            all_tools().into_iter().filter(|t| t.domain == "workspace" || t.domain == "3d")
+                .map(|t| t.name).collect::<Vec<_>>().join(", "))
     );
     assert_eq!(
         results[2].1,
@@ -282,7 +284,6 @@ async fn stop_ends_a_turn_and_answers_its_open_tool_calls() {
 }
 
 #[tokio::test]
-#[ignore = "patch 0.15.1 not built yet"]
 async fn weak_model_recovers_from_bad_calls() {
     let (dir, _model, agent, events) = setup(vec![
         // Turn 1: write_file call whose input is {"_unparsed":"{oops"}
@@ -338,7 +339,6 @@ async fn weak_model_recovers_from_bad_calls() {
 }
 
 #[tokio::test]
-#[ignore = "patch 0.15.1 not built yet"]
 async fn unknown_tool_lists_available_tools() {
     let (_dir, _model, agent, events) = setup(vec![
         reply(
@@ -376,7 +376,6 @@ async fn unknown_tool_lists_available_tools() {
 }
 
 #[test]
-#[ignore = "patch 0.15.1 not built yet"]
 fn prompt_names_only_available_tools() {
     let subset: Vec<Tool> = all_tools()
         .into_iter()

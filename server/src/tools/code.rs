@@ -15,7 +15,7 @@ pub fn commands_allowed(settings: &Settings) -> bool {
 
 pub fn tools() -> Vec<Tool> {
     vec![
-        Tool::new("code", "run_command", "Run a program inside the project folder (no shell: pass the program and its arguments separately), e.g. to build or test code. Times out after 2 minutes.", json!({"type": "object", "properties": {"program": {"type": "string", "description": "Executable name, e.g. npm, python3, make"}, "args": {"type": "array", "items": {"type": "string"}, "description": "Arguments"}}, "required": ["program"]}), run_command)
+        Tool::new("code", "run_command", "Run a program inside the project folder (no shell: pass the program and its arguments separately), e.g. to build or test code. Times out after 2 minutes.", json!({"type": "object", "additionalProperties": false, "properties": {"program": {"type": "string", "description": "Executable name, e.g. npm, python3, make"}, "args": {"type": "array", "items": {"type": "string"}, "description": "Arguments"}}, "required": ["program"]}), run_command)
     ]
 }
 

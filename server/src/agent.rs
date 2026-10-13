@@ -6,7 +6,6 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -55,6 +54,23 @@ pub fn system_prompt(project_name: &str, tools: &[Tool]) -> String {
         }
     }
     let domains = domains.join(", ");
+    let guidance = [
+        (&["git_commit"][..], "Commit with git_commit after each meaningful step, with a one-line message."),
+        (&["part_build"][..], "Use part_build for engineering parts that need exact dimensions, standard holes, enclosures or a STEP file for manufacturing (Forge's own CAD kernel). Use the standard hole, standoff, enclosure and lid ops instead of guessing sizes."),
+        (&["part_inspect"][..], "Check the result with part_inspect (size, mass, holes and the screws they fit, print overhangs) and fix what does not meet the request."),
+        (&["freecad_build"][..], "Use freecad_build for loft, sweep, shell, threads and sheet metal. Keep FreeCAD .py scripts in cad/ and re-run them after edits."),
+        (&["blender_build"][..], "Use blender_build for visual and organic models, scenes, materials and renders. Keep Blender .py scripts in art/ and re-run them after edits."),
+        (&["freecad_inspect"][..], "Use freecad_inspect for interference between mating parts."),
+        (&["freecad_drawing"][..], "Use freecad_drawing when the part will be manufactured or the user wants a drawing."),
+        (&["pcb_build"][..], "For circuit boards: write the board as tscircuit code in pcb/<name>.tsx and build it with pcb_build (Forge's own PCB engine; no KiCad needed). Fix every error it reports and rebuild until it says every connection is routed."),
+        (&["rf_calc"][..], "For radios and antennas: get trace widths for 50 ohm feeds and impedance-controlled pairs from rf_calc and use them in the board code; pour ground under RF traces but keep it out from under the antenna; put a pi matching footprint between the radio and the antenna. Check range with rf_calc link. Prefer a pre-certified radio module unless the user wants a custom RF design."),
+        (&["rf_antenna_sim", "pcb_build", "rf_calc"][..], "Simulate the antenna with rf_antenna_sim after pcb_build, fix its length if the resonance is off, and size the matching network from the simulated impedance with rf_calc match."),
+        (&["design_assemble", "part_build"][..], "For electronics in an enclosure, design both together like in Fusion 360: build the board, then size the enclosure with part_build from the board's size, hole positions and tallest part, then call design_assemble with the board's .glb and the enclosure parts. Fix every collision (move parts, the board or the enclosure feature) and re-run it; the Design view shows the PCB beside the 3D assembly."),
+    ].into_iter()
+        .filter(|(names, _)| names.iter().all(|name| tools.iter().any(|tool| tool.name == *name)))
+        .map(|(_, sentence)| format!("- {sentence}"))
+        .collect::<Vec<_>>().join("\n");
+
     format!(
         r#"You are Forge, an engineering assistant that runs a personal workshop: software, 3D/mechanical parts, printed circuit boards and chips. You act through tools on the user's project "{project_name}", a git repository on their machine.
 
@@ -63,13 +79,8 @@ Available domains right now: {domains}. Domains with no tools here need software
 How to work:
 - Keep every design as text in the project (code, OpenSCAD, Verilog, KiCad files, notes) so it can be diffed, reviewed and rebuilt.
 - Use the check tools (simulation, DRC, synthesis, builds) on your own output before calling something finished, and report what passed or failed.
-- Commit with git_commit after each meaningful step, with a one-line message.
 - Use millimetres for mechanical work. State key dimensions and assumptions in your reply.
-- Pick the 3D tool by purpose: part_build for engineering parts that need exact dimensions, standard holes, enclosures or a STEP file for manufacturing (Forge's own CAD kernel, always available); freecad_build only for what part_build cannot do yet (loft, sweep, shell, threads, sheet metal); blender_build for visual and organic models, scenes, materials and renders. Keep FreeCAD and Blender .py scripts in the project (cad/ for FreeCAD, art/ for Blender) and re-run them after edits.
-- Use the standard hole, standoff, enclosure and lid ops instead of guessing sizes; check the result with part_inspect (size, mass, holes and the screws they fit, print overhangs) and fix what does not meet the request. Use freecad_inspect for interference between mating parts and freecad_drawing when the part will be manufactured or the user wants a drawing, when FreeCAD is installed.
-- For circuit boards: write the board as tscircuit code in pcb/<name>.tsx and build it with pcb_build (Forge's own PCB engine; no KiCad needed). Fix every error it reports and rebuild until it says every connection is routed. Use KiCad tools only when the user works in KiCad.
-- For radios and antennas: get trace widths for 50 ohm feeds and impedance-controlled pairs from rf_calc and use them in the board code; pour ground under RF traces but keep it out from under the antenna; put a pi matching footprint between the radio and the antenna. When rf_antenna_sim is available, simulate the antenna after pcb_build, fix its length if the resonance is off, and size the matching network from the simulated impedance with rf_calc match. Check range with rf_calc link. Prefer a pre-certified radio module unless the user wants a custom RF design.
-- For electronics in an enclosure, design both together like in Fusion 360: build the board, then size the enclosure with part_build from the board's size, hole positions and tallest part, then call design_assemble with the board's .glb and the enclosure parts. Fix every collision (move parts, the board or the enclosure feature) and re-run it; the Design view shows the PCB beside the 3D assembly.
+{guidance}
 - Manufacturing means producing files ready to order (STL for printing, Gerbers for a PCB fab, GDS for a shuttle). You cannot place orders; tell the user what to upload where.
 - Be brief in chat: what you made, where it is, what to check."#
     )
@@ -169,7 +180,6 @@ impl Agent {
         let tools = tokio::task::spawn_blocking(move || source())
             .await
             .map_err(|e| e.to_string())?;
-        let by_name: HashMap<_, _> = tools.iter().map(|t| (t.name, t)).collect();
         let system = system_prompt(&self.project_name, &tools);
         let definitions=tools.iter().map(|t|json!({"name":t.name,"description":t.description,"input_schema":t.input_schema})).collect::<Vec<_>>();
         for _ in 0..MAX_STEPS {
@@ -228,7 +238,7 @@ impl Agent {
                     Some(reason) => (false, ToolResult::text(format!("Not run: {reason}."))),
                     None => {
                         execute_tool(
-                            by_name.get(name).copied(),
+                            &tools,
                             name,
                             input,
                             self.context.clone(),
@@ -271,17 +281,35 @@ impl Agent {
 
 /// Both model loops share validation and error wording at the tool boundary.
 pub(crate) async fn execute_tool(
-    tool: Option<&Tool>,
+    tools: &[Tool],
     name: &str,
     input: &Value,
     context: ToolContext,
 ) -> (bool, ToolResult) {
-    let Some(tool) = tool else {
+    let Some(tool) = find_tool(tools, name) else {
+        let available = tools.iter().map(|t| t.name).collect::<Vec<_>>().join(", ");
         return (
             false,
-            ToolResult::text(format!("Unknown or unavailable tool \"{name}\".")),
+            ToolResult::text(format!(
+                "Unknown or unavailable tool \"{name}\". Available tools: {available}."
+            )),
         );
     };
+    if let Some(raw) = input
+        .as_object()
+        .filter(|o| o.len() == 1)
+        .and_then(|o| o.get("_unparsed"))
+        .and_then(Value::as_str)
+    {
+        if let Err(error) = serde_json::from_str::<Value>(raw) {
+            return (
+                false,
+                ToolResult::text(format!(
+                    "Arguments were not valid JSON: {error}. Send the input as one JSON object."
+                )),
+            );
+        }
+    }
     let problems = validate(input, &tool.input_schema);
     if !problems.is_empty() {
         return (
@@ -301,9 +329,96 @@ pub(crate) async fn execute_tool(
     }
 }
 
+pub(crate) fn find_tool<'a>(tools: &'a [Tool], name: &str) -> Option<&'a Tool> {
+    if let Some(tool) = tools.iter().find(|t| t.name == name) {
+        return Some(tool);
+    }
+    let lower = name.to_lowercase();
+    let suffix = lower.rsplit('.').next().unwrap_or(&lower);
+    let suffix = suffix.rsplit("__").next().unwrap_or(suffix);
+    let normal = suffix.replace('-', "_");
+    tools.iter().find(|t| t.name == normal)
+}
+
 pub(crate) struct BusyGuard<'a>(&'a AtomicBool);
 impl Drop for BusyGuard<'_> {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_lookup_normalises_prefixes_case_and_hyphens_after_exact_match() {
+        let mut tools = crate::tools::workspace::tools();
+        for name in [
+            "write_file",
+            "functions.write-file",
+            "mcp__forge__write_file",
+            "FUNCTIONS.MCP__FORGE__WRITE-FILE",
+        ] {
+            assert_eq!(find_tool(&tools, name).unwrap().name, "write_file");
+        }
+        assert!(find_tool(&tools, "write-file.extra").is_none());
+        let mut exact = tools[2].clone();
+        exact.name = "functions.write-file";
+        tools.push(exact);
+        assert_eq!(
+            find_tool(&tools, "functions.write-file").unwrap().name,
+            "functions.write-file"
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_arguments_use_the_parser_error_only_for_the_single_key_marker() {
+        let tools = crate::tools::workspace::tools();
+        let context = ToolContext::new(std::env::temp_dir(), std::env::temp_dir());
+        let (ok, result) = execute_tool(
+            &tools,
+            "write_file",
+            &json!({"_unparsed":"{oops"}),
+            context.clone(),
+        )
+        .await;
+        let error = serde_json::from_str::<Value>("{oops").unwrap_err();
+        assert!(!ok);
+        assert_eq!(
+            result.text,
+            format!("Arguments were not valid JSON: {error}. Send the input as one JSON object.")
+        );
+        let (ok, result) = execute_tool(
+            &tools,
+            "write_file",
+            &json!({"_unparsed":"{oops", "path":"x"}),
+            context,
+        )
+        .await;
+        assert!(!ok);
+        assert_eq!(
+            serde_json::from_str::<Value>(&result.text).unwrap()["INVALID_INPUT"],
+            json!([
+                "input.contents is required",
+                "input._unparsed is not a known field"
+            ])
+        );
+    }
+
+    #[test]
+    fn prompt_omits_every_unavailable_tool_even_in_single_tool_subsets() {
+        let tools = crate::tools::all_tools();
+        for available in &tools {
+            let prompt = system_prompt("p", std::slice::from_ref(available));
+            for missing in tools.iter().filter(|tool| tool.name != available.name) {
+                assert!(
+                    !prompt.contains(missing.name),
+                    "{} mentions {}",
+                    available.name,
+                    missing.name
+                );
+            }
+        }
     }
 }
