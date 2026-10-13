@@ -6,4 +6,4 @@ edition = "2021"
 [workspace]
 
 [dependencies]
-cadrum = "0.9"
+cadrum = { version = "0.9", default-features = false }
