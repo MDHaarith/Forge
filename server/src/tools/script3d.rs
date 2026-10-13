@@ -17,20 +17,6 @@ pub static BLENDER: LazyLock<AppSpec> = LazyLock::new(|| AppSpec {
     }),
 });
 
-// FreeCAD 1.x names the console program freecadcmd; 0.x used FreeCADCmd.
-pub static FREECAD: LazyLock<AppSpec> = LazyLock::new(|| AppSpec {
-    label: "freecadcmd".into(),
-    native: vec![
-        "freecadcmd".into(),
-        "FreeCADCmd".into(),
-        "freecad.cmd".into(),
-    ],
-    flatpak: Some(FlatpakSpec {
-        id: "org.freecad.FreeCAD".into(),
-        commands: vec!["freecadcmd".into(), "FreeCADCmd".into()],
-    }),
-});
-
 pub fn with_override(spec: &AppSpec, program: Option<&Path>) -> AppSpec {
     let mut spec = spec.clone();
     if let Some(program) = program {
@@ -48,7 +34,7 @@ pub async fn run_app(
     timeout_ms: u64,
     env: Vec<(String, String)>,
 ) -> Result<ExecResult, ToolError> {
-    let program = if spec.label == "blender" { ctx.blender_program.as_deref() } else { ctx.freecad_program.as_deref() };
+    let program = ctx.blender_program.as_deref();
     let owned = with_override(spec, program);
     let app = tokio::task::spawn_blocking(move || resolve_app(&owned))
         .await
@@ -105,66 +91,13 @@ pub fn parse_runner_output(r: &ExecResult) -> Result<RunnerOutput, ToolError> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn reads_runner_markers_and_last_log_lines() {
-        let r = |code, stdout: &str, stderr: &str| ExecResult {
-            code,
-            stdout: stdout.into(),
-            stderr: stderr.into(),
-        };
-        assert_eq!(
-            parse_runner_output(&r(0, "noise\nFORGE_RESULT {\"a\":1}\n", "")).unwrap(),
-            RunnerOutput {
-                result: Some(serde_json::json!({"a":1})),
-                error: None
-            }
-        );
-        assert_eq!(
-            parse_runner_output(&r(1, "FORGE_ERROR \"bad\"\n", ""))
-                .unwrap()
-                .error
-                .as_deref(),
-            Some("bad")
-        );
-        let error = parse_runner_output(&r(139, "x", "segfault"))
-            .unwrap()
-            .error
-            .unwrap();
-        assert!(error.contains("code 139") && error.contains("segfault"));
-        assert_eq!(
-            parse_runner_output(&r(1, "FORGE_RESULT {}\nFORGE_ERROR \"last\"", ""))
-                .unwrap()
-                .error
-                .as_deref(),
-            Some("last")
-        );
-    }
-}
-
 pub fn tools() -> Vec<Tool> {
     vec![
         {
-            let mut tool = Tool::new("3d", "blender_build", r#"Run a Blender Python (bpy) script headless to build visual 3D: product renders, organic or sculpted shapes, scenes, materials, artwork, game assets. Not for parts that need exact engineering dimensions (use freecad_build).
+            let mut tool = Tool::new("3d", "blender_build", r#"Run a Blender Python (bpy) script headless to build visual 3D: product renders, organic or sculpted shapes, scenes, materials, artwork, game assets. Not for parts that need exact engineering dimensions (use part_build).
 Write the script with write_file first. It runs in an empty scene with the project folder as working directory; create objects, modifiers, materials, and optionally lights and a camera. Afterwards every object is exported to models/<name>.glb (shown in Forge's 3D viewer) plus any other requested formats. With render=true a 960×720 PNG is rendered to renders/<name>.png with Cycles on the CPU; if the script adds no camera or lights, Forge frames the scene and lights it. Blender units are metres by default."#, json!({"type":"object", "additionalProperties": false,"properties":{"script":{"type":"string","description":"Project-relative .py file written beforehand with write_file"},"name":{"type":"string","description":"Base name for output files: letters, digits, - and _"},"formats":{"type":"array","items":{"type":"string","enum":["glb","stl","obj","blend"]},"description":"Export formats (default [\"glb\"]). stl for 3D printing, blend to keep an editable Blender file."},"render":{"type":"boolean","description":"Also render a PNG (takes longer)"}},"required":["script","name"]}), blender_build);
             tool.app = Some(BLENDER.clone());
             tool.install = Some(serde_json::from_value(json!({"dnf":"blender python3-numpy","apt":"blender python3-numpy","brew":"--cask blender","flatpak":"org.blender.Blender","url":"https://www.blender.org/download/"})).unwrap());
-            tool
-        },
-        {
-            let mut tool = Tool::new("3d", "freecad_build", r#"Run a FreeCAD Python script headless to build an engineering part with exact dimensions: brackets, enclosures, mounts, shafts, anything with holes, fits, fillets or chamfers that will be machined or printed. Units are millimetres.
-Write the script with write_file first. It receives App (FreeCAD), Part, Vector, a new document doc, and forge, Forge's engineering helpers:
-  forge.rounded_box(l, w, h, radius) · forge.enclosure(l, w, h, wall, floor, radius) · forge.lid(l, w, thickness, wall, lip, clearance_gap, radius)
-  forge.hole(shape, x, y, "M3", kind="clearance"|"tap"|"counterbore"|"countersink"|"insert"|<diameter>, depth=None (through), fit="close"|"normal"|"loose", top=None) and forge.holes(shape, points, "M3", ...); holes go down -Z from the top
-  forge.corners(l, w, inset) · forge.grid(x0, y0, dx, dy, nx, ny) · forge.standoffs(shape, points, "M3", height, base, outer, kind="insert"|"tap"|"clearance")
-  forge.fillet(shape, r, edges) · forge.chamfer(shape, size, edges) · forge.vertical_edges(shape) · forge.edges_at(shape, z)
-  forge.place(shape, x, y, z, rx, ry, rz) · forge.load("models/other.step") to build assemblies from earlier parts · forge.clearance("M4") · forge.tap_drill("M4")
-Sizes follow ISO 273, ISO 4762 and ISO 10642. Plain Part (makeBox, makeCylinder, cut, fuse, extrude, makeLoft ...), Sketcher and PartDesign bodies (doc.addObject("PartDesign::Body")) work too; assign result = <shape> or leave the solids in doc. Forge exports models/<name>.step (for CNC shops and other CAD), models/<name>.stl (3D viewer and printing) and models/<name>.FCStd (opens in FreeCAD with its history), and reports whether the solid is valid, its volume and bounding box: check them against the requirements, then verify details with freecad_inspect and make a freecad_drawing for manufacturing."#, json!({"type":"object", "additionalProperties": false,"properties":{"script":{"type":"string","description":"Project-relative .py file written beforehand with write_file"},"name":{"type":"string","description":"Base name for output files: letters, digits, - and _"},"formats":{"type":"array","items":{"type":"string","enum":["step","stl","fcstd"]},"description":"Export formats (default all three)"}},"required":["script","name"]}), freecad_build);
-            tool.app = Some(FREECAD.clone());
-            // Fedora's repositories have no FreeCAD package; Flathub carries the official build.
-            tool.install = Some(serde_json::from_value(json!({"flatpak":"org.freecad.FreeCAD","apt":"freecad","brew":"--cask freecad","url":"https://www.freecad.org/downloads.php"})).unwrap());
             tool
         },
     ]
@@ -218,19 +151,41 @@ fn blender_build(input: Value, ctx: ToolContext) -> ToolFuture {
     })
 }
 
-fn freecad_build(input: Value, ctx: ToolContext) -> ToolFuture {
-    Box::pin(async move {
-        let (name, script, formats) = check_inputs(&input, &ctx, &["step", "stl", "fcstd"]).await?;
-        let r = run_app(&FREECAD, vec![ctx.app_dir.join("server/runners/freecad_runner.py").to_string_lossy().into_owned()], &ctx, 5 * 60_000, vec![
-            ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
-            ("FORGE_PROJECT".into(), project_path(&ctx.project_dir, "")?.to_string_lossy().into_owned()),
-            ("FORGE_SCRIPT".into(), script), ("FORGE_NAME".into(), name), ("FORGE_FORMATS".into(), formats.join(",")),
-        ]).await?;
-        let parsed = parse_runner_output(&r)?;
-        if let Some(error) = parsed.error { return Err(ToolError::expected(clip(&format!("FreeCAD: {error}"), 12_000))); }
-        let res = parsed.result.unwrap();
-        let files = files(&res["files"]);
-        let warning = if truthy(&res["valid"]) { "" } else { "\nWARNING: the shape is not a valid solid; fix the geometry before manufacturing." };
-        Ok(ToolResult { text: format!("FreeCAD built {} solid(s): {} mm, volume {} mm³, valid: {}.{warning}\nFiles: {}", string(res.get("solids")), joined(&res["size_mm"], " × "), string(res.get("volume_mm3")), string(res.get("valid")), files.join(", ")), files })
-    })
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn reads_runner_markers_and_last_log_lines() {
+        let r = |code, stdout: &str, stderr: &str| ExecResult {
+            code,
+            stdout: stdout.into(),
+            stderr: stderr.into(),
+        };
+        assert_eq!(
+            parse_runner_output(&r(0, "noise\nFORGE_RESULT {\"a\":1}\n", "")).unwrap(),
+            RunnerOutput {
+                result: Some(serde_json::json!({"a":1})),
+                error: None
+            }
+        );
+        assert_eq!(
+            parse_runner_output(&r(1, "FORGE_ERROR \"bad\"\n", ""))
+                .unwrap()
+                .error
+                .as_deref(),
+            Some("bad")
+        );
+        let error = parse_runner_output(&r(139, "x", "segfault"))
+            .unwrap()
+            .error
+            .unwrap();
+        assert!(error.contains("code 139") && error.contains("segfault"));
+        assert_eq!(
+            parse_runner_output(&r(1, "FORGE_RESULT {}\nFORGE_ERROR \"last\"", ""))
+                .unwrap()
+                .error
+                .as_deref(),
+            Some("last")
+        );
+    }
 }

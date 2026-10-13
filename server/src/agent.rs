@@ -56,12 +56,10 @@ pub fn system_prompt(project_name: &str, tools: &[Tool]) -> String {
     let domains = domains.join(", ");
     let guidance = [
         (&["git_commit"][..], "Commit with git_commit after each meaningful step, with a one-line message."),
-        (&["part_build"][..], "Use part_build for engineering parts that need exact dimensions, standard holes, enclosures or a STEP file for manufacturing (Forge's own CAD kernel). Use the standard hole, standoff, enclosure and lid ops instead of guessing sizes."),
-        (&["part_inspect"][..], "Check the result with part_inspect (size, mass, holes and the screws they fit, print overhangs) and fix what does not meet the request."),
-        (&["freecad_build"][..], "Use freecad_build for loft, sweep, shell, threads and sheet metal. Keep FreeCAD .py scripts in cad/ and re-run them after edits."),
+        (&["part_build"][..], "Use part_build for every exact engineering part (Forge's own CAD kernel): loft, sweep, shell, mirror, patterns, threads, sheet metal, standard holes, enclosures and STEP files for manufacturing. Use the standard hole, standoff, enclosure and lid ops instead of guessing sizes."),
+        (&["part_inspect"][..], "Check every exact part with part_inspect (size, mass, holes and the screws they fit, print overhangs). Use against to check interference or clearance between mating parts and fix what does not meet the request."),
+        (&["part_drawing"][..], "Use part_drawing when the part will be manufactured or the user wants a drawing."),
         (&["blender_build"][..], "Use blender_build for visual and organic models, scenes, materials and renders. Keep Blender .py scripts in art/ and re-run them after edits."),
-        (&["freecad_inspect"][..], "Use freecad_inspect for interference between mating parts."),
-        (&["freecad_drawing"][..], "Use freecad_drawing when the part will be manufactured or the user wants a drawing."),
         (&["pcb_build"][..], "For circuit boards: write the board as tscircuit code in pcb/<name>.tsx and build it with pcb_build (Forge's own PCB engine; no KiCad needed). Fix every error it reports and rebuild until it says every connection is routed."),
         (&["rf_calc"][..], "For radios and antennas: get trace widths for 50 ohm feeds and impedance-controlled pairs from rf_calc and use them in the board code; pour ground under RF traces but keep it out from under the antenna; put a pi matching footprint between the radio and the antenna. Check range with rf_calc link. Prefer a pre-certified radio module unless the user wants a custom RF design."),
         (&["rf_antenna_sim", "pcb_build", "rf_calc"][..], "Simulate the antenna with rf_antenna_sim after pcb_build, fix its length if the resonance is off, and size the matching network from the simulated impedance with rf_calc match."),

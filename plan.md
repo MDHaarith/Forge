@@ -342,7 +342,7 @@ the findings and the agent's previous report.
 - [x] Step 3: threads and sheet metal (GPT)
 - [x] Step 4: part_inspect interference, centre of mass, overhang (GPT)
 - [x] Step 5: part_drawing (GPT)
-- [ ] Step 6: retire FreeCAD (GPT)
+- [x] Step 6: retire FreeCAD (GPT)
 - [ ] Step 7: release 0.16.0 and finish line (orchestrator)
 
 ### Step 0 brief: spike (send to gpt-6.1-sol)

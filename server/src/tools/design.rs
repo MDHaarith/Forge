@@ -6,7 +6,7 @@ pub fn tools() -> Vec<Tool> {
     vec![
         {
             Tool::new("pcb", "design_assemble", r#"Put circuit boards and mechanical parts together in one 3D assembly, like an electronics + mechanical design in Fusion 360, and check that the boards fit. Writes design/<name>.json, which the Design view shows: the board's PCB layout beside the 3D assembly.
-Parts are board models from pcb_build (pcb/<name>.glb) and enclosure parts from part_build or freecad_build (.stl, or the .step with its .stl beside it), each placed with position [x, y, z] in mm and rotation [rx, ry, rz] in degrees. A board's origin is its centre, at half its thickness. FreeCAD parts keep their own coordinates.
+Parts are board models from pcb_build (pcb/<name>.glb) and enclosure parts from part_build (.stl, or the .step with its .stl beside it), each placed with position [x, y, z] in mm and rotation [rx, ry, rz] in degrees. A board's origin is its centre, at half its thickness. Mechanical parts keep their own coordinates.
 The fit check tests the board and every component's 3D box against every mechanical part: a collision means a part cuts into the enclosure (move the board, the part or the enclosure feature); tight means closer than the clearance. It also reports the space each board takes up, to size or adjust an enclosure around it. Re-run it after changing either side."#, json!({"type":"object", "additionalProperties": false,"properties":{"name":{"type":"string","description":"Assembly name: letters, digits, - and _"},"parts":{"type":"array","description":"Board and mechanical model files with their placements","minItems":1,"items":{"type":"object","properties":{"file":{"type":"string","description":"Project-relative .glb (board) or .stl/.step (mechanical)"},"position":{"type":"array","items":{"type":"number"},"description":"[x, y, z] in mm (default 0, 0, 0)"},"rotation":{"type":"array","items":{"type":"number"},"description":"[rx, ry, rz] in degrees (default 0, 0, 0)"},"color":{"type":"string","description":"Display colour such as #b0b8c8 (mechanical parts)"},"opacity":{"type":"number","description":"Display opacity, e.g. 0.35 to see a board through its case (default 1)"}},"required":["file"]}},"clearance":{"type":"number","description":"Gap in mm closer than which parts are reported as tight (default 0.5)"}},"required":["name","parts"]}), design_assemble)
         },
     ]
@@ -31,13 +31,13 @@ pub fn board_data_for(file: &str) -> Option<String> {
 
 async fn check_part(ctx: &ToolContext, raw: &Value) -> Result<Value, ToolError> {
     let mut file = string(Some(raw.get("file").filter(|v| !v.is_null()).unwrap_or(&Value::String(String::new()))));
-    // A STEP or FreeCAD file is shown and checked through the mesh freecad_build writes next to it.
+    // A STEP file is shown and checked through the mesh part_build writes next to it.
     let ext = file.rsplit('.').next().unwrap_or("").to_lowercase();
-    if ["step", "stp", "fcstd"].contains(&ext.as_str()) { file = format!("{}.stl", file.rsplit_once('.').unwrap().0); }
+    if ["step", "stp"].contains(&ext.as_str()) { file = format!("{}.stl", file.rsplit_once('.').unwrap().0); }
     if !["stl", "glb"].iter().any(|ext| file.to_lowercase().ends_with(&format!(".{ext}"))) {
         return Err(ToolError::expected(format!("{}: parts must be .stl or .glb models (or a .step with its .stl beside it)", string(raw.get("file")))));
     }
-    if !exists(ctx, &file).await? { return Err(ToolError::expected(format!("{file} does not exist; build it first (pcb_build for a board, freecad_build for an enclosure)"))); }
+    if !exists(ctx, &file).await? { return Err(ToolError::expected(format!("{file} does not exist; build it first (pcb_build for a board, part_build for an enclosure)"))); }
     let mut part = json!({"file":file,"position":vec(raw.get("position"), &format!("{file} position"))?,"rotation":vec(raw.get("rotation"), &format!("{file} rotation"))?});
     if let Some(color) = raw.get("color") {
         if !color.as_str().is_some_and(|s| s.len() == 7 && s.starts_with('#') && s[1..].bytes().all(|b| b.is_ascii_hexdigit())) {

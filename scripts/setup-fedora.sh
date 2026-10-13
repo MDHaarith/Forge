@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Sets Forge up on Fedora: system packages with dnf, FreeCAD from Flathub (Fedora's
-# repositories have no FreeCAD), the app's own dependencies and build, and a `forge`
-# command with a desktop launcher that runs Forge as a systemd user service.
+# Sets Forge up on Fedora: system packages with dnf, the app's own dependencies
+# and build, and a `forge` command with a desktop launcher that runs Forge as a
+# systemd user service.
 #
 #   scripts/setup-fedora.sh                 everything (3D, PCB, chip tools)
 #   scripts/setup-fedora.sh --only "3d"     just some domains: any of 3d, pcb, chip, rf
@@ -79,7 +79,7 @@ PACKAGES=(git rust cargo nodejs nodejs-npm curl xdg-utils cmake gcc-c++)
 want 3d && PACKAGES+=(blender python3-numpy openscad librsvg2-tools flatpak)
 want pcb && PACKAGES+=(kicad)
 want chip && PACKAGES+=(iverilog yosys)
-# openEMS is not packaged for Fedora; these build it from source (step 3b).
+# openEMS is not packaged for Fedora; these build it from source (step 3).
 want rf && PACKAGES+=(gcc gcc-c++ cmake git boost-devel tinyxml-devel hdf5-devel CGAL-devel vtk-devel
   python3-pip python3-setuptools python3-wheel python3-setuptools_scm python3-Cython python3-numpy python3-h5py python3-matplotlib)
 # What building the desktop app (Tauri) needs.
@@ -102,15 +102,7 @@ fi
 NODE="${NODE:-/usr/bin/node}"
 NPM="${NPM:-$(dirname "$NODE")/npm}"; [ -x "$NPM" ] || command -v "$NPM" >/dev/null || NPM="npm"
 
-# --- 3. FreeCAD from Flathub ---------------------------------------------------------
-
-if want 3d; then
-  say "Installing FreeCAD from Flathub (per user, no root needed)"
-  run flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-  run flatpak install --user -y --noninteractive flathub org.freecad.FreeCAD
-fi
-
-# --- 3b. openEMS (antenna simulation) -----------------------------------------------
+# --- 3. openEMS (antenna simulation) -----------------------------------------------
 
 OPENEMS_VERSION=v0.37.0
 OPENEMS="${FORGE_OPENEMS_HOME:-$HOME/opt/openEMS}"

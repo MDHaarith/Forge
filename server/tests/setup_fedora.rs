@@ -160,9 +160,7 @@ fn a_dry_run_lists_the_dnf_packages_per_domain_and_changes_nothing() {
             "{package} missing from: {stdout}"
         );
     }
-    assert!(
-        stdout.contains("flatpak install --user -y --noninteractive flathub org.freecad.FreeCAD")
-    );
+    assert!(!stdout.contains("flatpak install"));
     assert!(stdout.contains("cargo build --release -p forge-server --manifest-path"));
 
     let chip = succeeded(&sandbox.setup(&["--dry-run", "--only", "chip"]));
@@ -172,7 +170,7 @@ fn a_dry_run_lists_the_dnf_packages_per_domain_and_changes_nothing() {
             && !packages.contains(&"blender")
             && !packages.contains(&"kicad")
     );
-    assert!(!chip.contains("FreeCAD"));
+    assert!(!chip.contains("flatpak install"));
     assert_eq!(fs::read_dir(&sandbox.home).unwrap().count(), 0);
     assert!(sandbox.calls().is_empty());
     assert_eq!(sandbox.setup(&["--only", "cnc"]).status.code(), Some(2));
@@ -249,7 +247,7 @@ fn desktop_adds_tauri_packages_builds_and_installs_the_rpm_and_skips_the_browser
 }
 
 #[tokio::test]
-async fn a_real_run_installs_packages_freecad_the_service_and_a_working_forge_command() {
+async fn a_real_run_installs_packages_the_service_and_a_working_forge_command() {
     let Some(sandbox) = Sandbox::new(FEDORA) else {
         return;
     };
@@ -272,9 +270,7 @@ async fn a_real_run_installs_packages_freecad_the_service_and_a_working_forge_co
     ] {
         assert!(packages.contains(&package), "{package}: {calls}");
     }
-    assert!(calls.lines().any(
-        |line| line == "flatpak install --user -y --noninteractive flathub org.freecad.FreeCAD"
-    ));
+    assert!(!calls.lines().any(|line| line.starts_with("flatpak ")));
     for args in ["ci --no-audit --no-fund", "run pcb-engine", "run build"] {
         assert!(calls
             .lines()

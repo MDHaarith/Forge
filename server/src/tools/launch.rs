@@ -9,8 +9,7 @@ use std::{
 };
 
 /// A desktop program Forge drives headless, installed either normally (dnf, a tarball, an
-/// AppImage) or as a Flatpak. Fedora Workstation ships Flatpak, and some programs (FreeCAD)
-/// are only packaged there, so both have to work.
+/// AppImage) or as a Flatpak. Both installations have to work.
 #[derive(Clone, Debug)]
 pub struct AppSpec {
     /// Shown in the UI when the program is missing.
@@ -37,7 +36,7 @@ pub struct Launch {
     pub env: Vec<(String, String)>,
 }
 
-/// Finds the command inside an installed Flatpak app, e.g. freecadcmd in org.freecad.FreeCAD. Cached.
+/// Finds the command inside an installed Flatpak app, e.g. blender in org.blender.Blender. Cached.
 fn flatpak_command(id: &str, commands: &[String]) -> Option<String> {
     static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
@@ -154,8 +153,8 @@ mod tests {
     fn flatpak_access_and_environment_are_explicit() {
         let launch = launch_args(
             &Resolved::Flatpak {
-                id: "org.freecad.FreeCAD".into(),
-                command: "freecadcmd".into(),
+                id: "org.blender.Blender".into(),
+                command: "blender".into(),
             },
             vec!["runner.py".into()],
             &["/home/me/Forge/rover".into()],
@@ -167,11 +166,11 @@ mod tests {
             launch.args,
             [
                 "run",
-                "--command=freecadcmd",
+                "--command=blender",
                 "--filesystem=/home/me/Forge/rover",
                 "--filesystem=/opt/forge/runners:ro",
                 "--env=FORGE_NAME=plate",
-                "org.freecad.FreeCAD",
+                "org.blender.Blender",
                 "runner.py"
             ]
         );

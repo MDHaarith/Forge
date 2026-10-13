@@ -125,18 +125,18 @@ mod tests {
     #[test]
     fn install_hints_prefer_native_then_flathub() {
         let blender: InstallHint = serde_json::from_value(serde_json::json!({"dnf":"blender python3-numpy", "apt":"blender", "flatpak":"org.blender.Blender", "url":"https://blender.org"})).unwrap();
-        let freecad: InstallHint = serde_json::from_value(serde_json::json!({"flatpak":"org.freecad.FreeCAD", "apt":"freecad", "url":"https://freecad.org"})).unwrap();
+        let flatpak_blender: InstallHint = serde_json::from_value(serde_json::json!({"flatpak":"org.blender.Blender", "apt":"blender", "url":"https://blender.org"})).unwrap();
         assert_eq!(
             install_text(Some(&blender), Distro::Fedora).as_deref(),
             Some("sudo dnf install blender python3-numpy")
         );
         assert_eq!(
-            install_text(Some(&freecad), Distro::Fedora).as_deref(),
-            Some("flatpak install flathub org.freecad.FreeCAD")
+            install_text(Some(&flatpak_blender), Distro::Fedora).as_deref(),
+            Some("flatpak install flathub org.blender.Blender")
         );
         assert_eq!(
-            install_text(Some(&freecad), Distro::Debian).as_deref(),
-            Some("sudo apt install freecad")
+            install_text(Some(&flatpak_blender), Distro::Debian).as_deref(),
+            Some("sudo apt install blender")
         );
         let url = InstallHint {
             url: Some("https://x".into()),

@@ -35,13 +35,13 @@ const DOMAINS: Record<string, string> = {
   chip: "Chip",
 };
 
-const BINARY = new Set(["step", "stp", "fcstd", "iges", "igs", "brep", "blend", "obj", "zip", "vvp", "pdf", "dxf", "kicad_pcb"]);
+const BINARY = new Set(["step", "stp", "iges", "igs", "brep", "blend", "obj", "zip", "vvp", "pdf", "dxf", "kicad_pcb"]);
 const IMAGES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml" };
 // After a tool runs, show its most telling output: a drawing, then a render, then a model.
 const PREVIEW_ORDER = ["svg", "png", "glb", "stl"];
 /** Icon colour group for the file tree. */
 const KINDS: Record<string, string> = {
-  stl: "model", glb: "model", step: "model", stp: "model", fcstd: "model", blend: "model", obj: "model", scad: "model",
+  stl: "model", glb: "model", step: "model", stp: "model", blend: "model", obj: "model", scad: "model",
   svg: "drawing", pdf: "drawing", dxf: "drawing", png: "drawing", jpg: "drawing", jpeg: "drawing", webp: "drawing",
   kicad_pcb: "board",
 };
@@ -269,9 +269,9 @@ async function preview(file: string) {
   showOpenButton(file);
   const host = $("preview");
   const ext = file.toLowerCase().split(".").pop() ?? "";
-  // An exact CAD file has no browser preview; show the mesh FreeCAD exported next to it.
+  // An exact CAD file has no browser preview; show the mesh part_build exported next to it.
   let shown = file;
-  if (["step", "stp", "fcstd"].includes(ext)) {
+  if (["step", "stp"].includes(ext)) {
     const mesh = file.replace(/\.[^.]+$/, ".stl");
     if (files.includes(mesh)) shown = mesh;
   }

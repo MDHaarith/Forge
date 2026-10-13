@@ -17,7 +17,7 @@
     "targets": ["rpm"],
     "category": "DeveloperTool",
     "shortDescription": "AI workshop for code, 3D, PCB and chip design",
-    "longDescription": "Forge drives code, Blender, FreeCAD, OpenSCAD, KiCad, Icarus Verilog and Yosys from one conversation, and keeps every project in git.",
+    "longDescription": "Forge drives code, exact CAD, Blender, OpenSCAD, KiCad, Icarus Verilog and Yosys from one conversation, and keeps every project in git.",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.png"],
     "resources": { "../build/app/": "app/" },
     "linux": {

@@ -62,18 +62,18 @@ server/src/
     part/holes.rs                            analytic STEP hole grouping and standard diameter descriptions
     part/inspect.rs                          part_inspect: STEP/STP/STL size, volume, centre of mass, holes, configurable overhangs and STEP pair interference/clearance
     part/drawing.rs                          part_drawing: scaled landscape SVG views, hidden lines, dimensions, hole table/title block and top-outline R12 DXF
-    script3d.rs freecad.rs                   blender_build, freecad_build/inspect/drawing
+    script3d.rs                              blender_build and shared runner-output helpers
     board.rs pcb.rs design.rs fit.rs         PCB engine, DRC, fab export, board-in-enclosure fit
     rf.rs rfmath.rs                          rf_calc, rf_antenna_sim (openEMS)
     chip.rs                                  Verilog simulate/synthesize
-server/runners/*.py        scripts that run inside FreeCAD / Blender / openEMS; forge_cad.py = CAD helpers
+server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
 desktop/src/main.rs        Tauri app: binds a free port, runs forge_server::serve in-process
 engines/pcb/               tscircuit PCB engine (JavaScript), bundled to dist/pcb-engine.mjs, run by Node
 web/                       UI (TypeScript + Vite + three.js): main.ts app, design.ts PCB/3D view, viewer.ts,
                            markdown.ts (Markdown + KaTeX, sanitized with DOMPurify)
 scripts/                   setup-fedora.sh installer, stage-app.sh bundles files for the desktop app
-docs/                      this map, ROADMAP.md, reference/ (feature lists of FreeCAD, KiCad, Blender)
+docs/                      this map, ROADMAP.md, reference/ (engineering CAD, KiCad and Blender feature checklists)
 ```
 
 ## HTTP API (all under /api, localhost only)

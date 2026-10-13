@@ -2,7 +2,6 @@ pub mod board;
 pub mod chip;
 pub mod design;
 pub mod fit;
-pub mod freecad;
 pub mod pcb;
 pub mod rf;
 pub mod rfmath;
@@ -35,7 +34,6 @@ pub struct ToolContext {
     pub app_dir: PathBuf,
     pub allow_commands: bool,
     pub blender_program: Option<PathBuf>,
-    pub freecad_program: Option<PathBuf>,
     pub node_program: Option<PathBuf>,
     pub node_env: Vec<(String, String)>,
     pub openems_python: Vec<String>,
@@ -48,7 +46,6 @@ impl ToolContext {
             app_dir: paths::lexical_path(&app_dir),
             allow_commands: false,
             blender_program: None,
-            freecad_program: None,
             node_program: None,
             node_env: vec![("PATH".into(), std::env::var("PATH").unwrap_or_default()), ("LANG".into(), std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()))],
             openems_python: rf::openems_python(),
@@ -58,7 +55,6 @@ impl ToolContext {
         let mut context = Self::new(project_dir, settings.app_dir.clone());
         context.allow_commands = settings.allow_commands;
         context.blender_program = settings.blender_program.clone();
-        context.freecad_program = settings.freecad_program.clone();
         context.node_program = settings.node_program.clone();
         context.node_env = settings.node_env.clone();
         context.openems_python = settings.openems_python.clone();
@@ -162,7 +158,6 @@ pub fn all_tools() -> Vec<Tool> {
     tools.extend(vcs::tools());
     tools.extend(code::tools());
     tools.extend(script3d::tools());
-    tools.extend(freecad::tools());
     tools.extend(cad::tools());
     tools.extend(board::tools());
     tools.extend(rf::tools());
@@ -178,7 +173,7 @@ pub fn is_available(tool: &Tool, settings: &Settings) -> bool {
         return code::commands_allowed(settings);
     }
     if let Some(app) = &tool.app {
-        let program = if app.label == "blender" { settings.blender_program.as_deref() } else { settings.freecad_program.as_deref() };
+        let program = settings.blender_program.as_deref();
         return resolve_app(&script3d::with_override(app, program)).is_some();
     }
     if tool.name == "pcb_build" {

@@ -380,15 +380,16 @@ fn prompt_names_only_available_tools() {
     let subset: Vec<Tool> = all_tools()
         .into_iter()
         .filter(|t| {
-            !t.name.starts_with("freecad_")
-                && !t.name.starts_with("blender_")
+            !t.name.starts_with("blender_")
                 && !t.name.starts_with("rf_antenna")
         })
         .collect();
 
     let prompt = system_prompt("p", &subset);
     assert!(prompt.contains("part_build"));
-    assert!(!prompt.contains("freecad_"));
+    assert!(prompt.contains("part_inspect"));
+    assert!(prompt.contains("against"));
+    assert!(prompt.contains("part_drawing"));
     assert!(!prompt.contains("blender_build"));
     assert!(!prompt.contains("rf_antenna_sim"));
     assert!(!prompt.contains("KiCad tools"));

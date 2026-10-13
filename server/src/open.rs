@@ -25,14 +25,6 @@ fn hint(value: Value) -> InstallHint {
 
 /// Desktop programs that project files open in, so a part built by Forge can be refined by hand.
 pub fn openers(settings: &Settings) -> Vec<Opener> {
-    let freecad = AppSpec {
-        label: "freecad".into(),
-        native: vec!["freecad".into(), "FreeCAD".into()],
-        flatpak: Some(FlatpakSpec {
-            id: "org.freecad.FreeCAD".into(),
-            commands: vec!["freecad".into(), "FreeCAD".into()],
-        }),
-    };
     let kicad = |command: &str| AppSpec {
         label: command.into(),
         native: vec![command.into()],
@@ -45,14 +37,6 @@ pub fn openers(settings: &Settings) -> Vec<Opener> {
         json!({"dnf":"kicad","apt":"kicad","flatpak":"org.kicad.KiCad","brew":"--cask kicad","url":"https://www.kicad.org/download/"}),
     );
     vec![
-        Opener {
-            name: "FreeCAD",
-            types: vec![".fcstd", ".step", ".stp", ".iges", ".igs", ".brep"],
-            app: with_override(&freecad, settings.freecad_gui_program.as_deref()),
-            install: hint(
-                json!({"flatpak":"org.freecad.FreeCAD","apt":"freecad","brew":"--cask freecad","url":"https://www.freecad.org/downloads.php"}),
-            ),
-        },
         Opener {
             name: "Blender",
             types: vec![".blend"],

@@ -1,4 +1,4 @@
-/* Desktop CAD look: Blender's neutral greys and blue selection, FreeCAD's gradient viewport, KiCad's status bar. */
+/* Desktop CAD look: Blender's neutral greys and blue selection, a gradient viewport, KiCad's status bar. */
 :root {
   --bg: #1d1d1d;
   --surface: #2b2b2b;
@@ -145,7 +145,7 @@ textarea { resize: none; line-height: 1.4; }
 .view-title { font-family: ui-monospace, "DejaVu Sans Mono", monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .view-head button { padding: 2px 10px; font-size: 12px; }
 .preview, .model-view {
-  /* FreeCAD's default viewport gradient, toned down to sit in a dark UI. */
+  /* A CAD viewport gradient, toned down to sit in a dark UI. */
   background: linear-gradient(#4b4f63, #23242b);
 }
 .preview { flex: 1; min-height: 0; position: relative; overflow: auto; }

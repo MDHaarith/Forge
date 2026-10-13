@@ -3,9 +3,9 @@
 An AI workshop: one conversation that drives the tools for software, 3D/mechanical parts,
 printed circuit boards and chips, and records every step in git.
 
-Forge does not reimplement CAD or EDA. It is an orchestrator. Claude plans the work and calls
-**tools**; each tool either does the job itself (the built-in mesh kernel) or wraps a proven
-open-source program (FreeCAD, Blender, KiCad, Icarus Verilog, Yosys); circuit boards are built
+Claude plans the work and calls **tools**; each tool either does the job itself
+(the built-in OpenCASCADE CAD kernel) or wraps a proven open-source program
+(Blender, KiCad, Icarus Verilog, Yosys); circuit boards are built
 by a PCB engine that ships with Forge. Every project is a git
 repository, and designs are kept as text so they can be diffed, reviewed and rebuilt.
 
@@ -22,8 +22,6 @@ The script:
 
 - installs Rust, Cargo, Node.js, git, Blender, OpenSCAD, rsvg-convert (PDF drawings), KiCad, Icarus Verilog and Yosys with `dnf`
   (KiCad is a large download; leave it out with `--only "3d chip"`);
-- installs **FreeCAD from Flathub** for your user, because Fedora's repositories have no FreeCAD
-  package. Forge runs it inside its Flatpak sandbox and gives it access to the project folder only;
 - with `--with-rf` (or `--only rf` later), builds the openEMS field solver from source into
   `~/opt/openEMS` for antenna simulation (about 20 minutes);
 - builds Forge and its built-in PCB engine, and adds a `forge` command, an app-menu launcher, and a systemd user service;
@@ -93,8 +91,8 @@ runs the test suite; `npm run typecheck` checks the UI and Vite config.
 | `FORGE_ALLOW_COMMANDS=1` | Let the agent run programs in the project folder (`run_command`). Off by default. |
 | `FORGE_HOME` | Where projects are stored. |
 | `FORGE_APP_DIR` | Folder holding `dist/`, `server/runners/` and `engines/pcb/dist/` for a standalone binary. |
-| `FORGE_BLENDER`, `FORGE_FREECAD` | Path to `blender` / `freecadcmd` when they are not on `PATH` (e.g. an AppImage). A native install is preferred over a Flatpak. |
-| `FORGE_NO_FLATPAK=1` | Ignore Flatpak installs of Blender and FreeCAD. |
+| `FORGE_BLENDER` | Path to `blender` when it is not on `PATH` (e.g. an AppImage). A native install is preferred over a Flatpak. |
+| `FORGE_NO_FLATPAK=1` | Ignore Flatpak installs of Blender and KiCad. |
 | `PORT` | Server port (default 4317). |
 
 ## Models and subscriptions
@@ -142,11 +140,9 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | Workspace | `list_files`, `read_file`, `write_file` | – |
 | Version control | `git_status`, `git_commit`, `git_log` | git |
 | Code | `run_command` | `FORGE_ALLOW_COMMANDS=1` |
-| 3D: engineering | `part_build`: exact solids from Forge's own CAD kernel (OpenCASCADE): shapes, extrude, revolve, booleans, fillet, chamfer, ISO holes, enclosure, lid, standoffs → STEP, STL, JSON | – |
-| | `part_inspect`: size, volume, mass in a material, holes and the screws they fit, print overhangs | – |
-| | `freecad_build`: exact-dimension parts (Part or PartDesign/Sketcher, ISO holes from the `forge` helpers) → STEP, STL, FCStd | [FreeCAD](https://www.freecad.org) 0.21+ (`freecadcmd`), native or Flatpak `org.freecad.FreeCAD` |
-| | `freecad_inspect`: mass in a material, holes and the screws they fit, print overhangs, interference and clearance between parts | FreeCAD |
-| | `freecad_drawing`: technical drawing (views, hidden lines, dimensions, hole table, title block) → SVG, PDF, DXF | FreeCAD; `rsvg-convert` for the PDF |
+| 3D: engineering | `part_build`: exact solids from Forge's own CAD kernel (OpenCASCADE): shapes, extrude, revolve, loft, sweep, shell, mirror, patterns, threads, sheet metal, booleans, fillet, chamfer, ISO holes, enclosure, lid, standoffs → STEP, STL, JSON | – |
+| | `part_inspect`: size, volume, centre of mass, mass in a material, holes and the screws they fit, print overhangs, interference and clearance with `against` | – |
+| | `part_drawing`: scaled technical views, hidden lines, dimensions, hole table and title block → SVG, top-outline DXF | – |
 | 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+, native or Flatpak `org.blender.Blender` |
 | 3D: quick | `openscad_render` | [OpenSCAD](https://openscad.org) |
 | PCB | `pcb_build`: board from tscircuit code → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM | Node.js and the built-in engine (`npm run pcb-engine`) |
@@ -157,46 +153,27 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | Chip | `chip_simulate` | Icarus Verilog |
 | | `chip_synthesize` | Yosys |
 
-## Blender and FreeCAD
+## Exact CAD and Blender
 
-The agent picks the 3D tool by purpose. **FreeCAD** is for engineering parts that need exact
-dimensions, holes, fits and fillets, and a STEP file a machine shop or other CAD program can
-open. **Blender** is for visual work: organic shapes, materials, scenes and rendered images.
+The agent uses **`part_build`** for every exact engineering part: dimensions, holes, fits,
+fillets, lofts, sweeps, shells, patterns, threads and sheet metal. Forge's built-in CAD kernel
+exports STEP for manufacturing, STL for printing and previews, and JSON metadata.
+**Blender** handles visual work: organic shapes, materials, scenes and rendered images.
 
-Both work the same way. The agent writes a Python script into the project (`cad/*.py` for
-FreeCAD, `art/*.py` for Blender), Forge runs it in the real program with no window
-(`server/runners/`), and the exported files appear in the project and the viewer. The
-script stays in git, so a design is reproducible and can be edited and re-run.
-
-- FreeCAD scripts get `App`, `Part`, `Vector`, a new document `doc` and the `forge` helpers, and
-  set `result = <shape>` or add objects to `doc` (PartDesign bodies and constrained sketches
-  work too). Forge reports whether the solid is valid, its volume and its bounding box.
-- The `forge` helpers (`server/runners/forge_cad.py`) know ISO metric hardware:
-  `forge.hole(part, x, y, "M3", kind="counterbore")` cuts a clearance hole with the right
-  counterbore for an ISO 4762 screw; `kind` can also be `"countersink"`, `"tap"` (tap drill)
-  or `"insert"` (heat-set insert). There are also `rounded_box`, `enclosure`, `lid`,
-  `standoffs`, `fillet`/`chamfer` by edge selection, and `load` for STEP/FCStd parts to assemble.
-- They also cover the feature set of a parametric CAD program: profiles with rounded corners and
-  arcs; extrude (symmetric, two-sided, tapered, twisted), revolve, loft, sweep and pipe; shell,
-  draft, offset, thicken and press-pull; fillets (variable too) and chamfers on edges chosen with
-  CadQuery-style selectors such as `forge.edges(part, "|Z")` or `forge.faces(part, ">Z")`;
-  linear, polar and path patterns, mirror, scale and split; ribs, slots, coil springs, embossed
-  and engraved text; modelled ISO metric threads (`thread`, `threaded_hole`); and sheet-metal
-  parts bent from a profile with their flat pattern.
+- `part_inspect` measures size, volume, centre of mass, material mass, holes and print overhangs.
+  Use `against` to check interference and clearance between mating parts.
+- `part_drawing` writes scaled technical SVG drawings with hidden lines, dimensions, a hole table
+  and title block, plus the top outline as DXF. PDF output remains planned.
+- The agent writes Blender Python scripts in `art/`. Forge runs them headless through
+  `server/runners/`, then shows the exported files. Scripts stay in git for editing and rebuilding.
 - Blender scripts get their own `forge` helpers (`server/runners/forge_art.py`): bevel,
   solidify, subdivision, array, mirror, exact booleans, screw/lathe, decimate, remesh,
   shrinkwrap, displace, twist/bend deforms and more as modifiers; face extrude, inset and bisect
   as mesh edits; `apply_all` to bake them; and metal, plastic, rubber, glass, ceramic and
   emissive material presets. Objects the script hides (boolean cutters) are left out of the
-  exports. [docs/3d-operations.md](docs/3d-operations.md) maps Fusion 360, FreeCAD and Blender
-  operations to these helpers and lists what is left out and why.
-- `freecad_inspect` measures the result: mass in a chosen material, every hole with the screw
-  it fits, overhang area for 3D printing, and interference or clearance between the parts of
-  an assembly. `freecad_drawing` makes a manufacturing drawing in first or third angle
-  projection on an A4–A2 sheet, with a hole table and title block, as SVG and PDF, plus the
-  top outline as DXF for laser cutting.
-- **Open in FreeCAD / Blender / KiCad**: the preview has a button that opens the file in the
-  installed desktop program (a Flatpak gets only the project folder), to refine it by hand.
+  exports.
+- **Open in Blender / KiCad**: the preview has a button that opens supported files in the
+  installed desktop program (a Flatpak gets only the project folder), to refine them by hand.
 - Blender scripts start from an empty scene. With `render: true`, Forge adds a camera framed on
   the subject and lights if the script did not, and renders with Cycles on the CPU so it works
   on machines without a GPU.
@@ -218,7 +195,7 @@ in red and tight spots in amber, and "See-through case" makes the enclosure tran
   files ready for JLCPCB. The board code runs in a Node permission sandbox: it can read and
   write only the project, start no programs and does not see Forge's settings or API key, and
   it stays offline unless `lookup_parts` is set.
-- **The case** is a FreeCAD script, sized from the board's size, holes and tallest part.
+- **The case** is built with `part_build`, sized from the board's size, holes and tallest part.
 - **`design_assemble`** places both in `design/<name>.json` and checks every component's box
   against the case's triangles, so the agent can move a connector or raise a lid until it fits.
 

@@ -2,18 +2,17 @@
 
 ## Goal: Forge stands on its own
 
-Forge must run on a machine with no FreeCAD, KiCad, Blender, OpenSCAD, openEMS, iverilog, yosys or Node.
+Forge must run on a machine with no CAD/EDA apps, Blender, OpenSCAD, openEMS, iverilog, yosys or Node.
 Every capability is built into Forge. Embedded libraries compiled into the binary (for example a CAD kernel
 such as OpenCascade) count as Forge; separately installed programs do not.
 
 shortcut: today several tools still call external programs (table below); replace them in the order of
 the phases, and keep the external version working until its native replacement passes the same tests.
 
-### What still depends on an outside program (v0.10.0)
+### What still depends on an outside program
 
 | Tool | Needs | Native replacement |
 |---|---|---|
-| freecad_build, freecad_inspect, freecad_drawing | FreeCAD | part_build/part_inspect/part_drawing cover solids, holes, mass, overhangs, loft, sweep, shell, mirror, patterns, threads, sheet metal, centre of mass, interference/clearance and SVG/DXF drawings (stage 2); retiring the FreeCAD tools is next |
 | blender_build | Blender | renderer and mesh modifiers |
 | openscad_render | OpenSCAD | fold into the CAD kernel, or drop |
 | pcb_build | Node + tscircuit engine | Rust PCB engine |
@@ -24,18 +23,20 @@ the phases, and keep the external version working until its native replacement p
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble.
 
-CAD kernel (v0.15.0, stage 1 of `plan.md` done): `part_build` makes exact solids (primitives, extrude,
-revolve, booleans, fillet, chamfer, place, ISO holes, enclosure, lid, standoffs) → STEP/STL/JSON, and
-`part_inspect` reports size, volume, centre of mass, mass, holes, configurable overhangs and STEP
-interference/clearance. `part_drawing` writes scaled SVG drawings with hidden lines, dimensions,
-hole tables and title blocks, plus top-outline DXF. `cad_model` is removed. Retiring the FreeCAD tools
-is the next stage 2 step; PDF drawings remain planned.
+CAD kernel (`plan.md` stages 1 and 2 done): `part_build` makes exact solids (primitives, extrude,
+revolve, loft, sweep, shell, mirror, linear/polar patterns, ISO threads, sheet metal, booleans,
+fillet, chamfer, place, ISO holes, enclosure, lid, standoffs) → STEP/STL/JSON. `part_inspect`
+reports size, volume, centre of mass, material mass, holes, configurable print overhangs and
+STEP interference/clearance with `against`. `part_drawing` writes scaled SVG drawings with
+hidden lines, dimensions, hole tables and title blocks, plus top-outline DXF. Exact CAD tools
+now use the built-in kernel; the external CAD tools, runners and settings are removed.
+`cad_model` is removed. PDF drawings remain planned.
 
 ## Phases (estimates include tests; ±50%)
 
 **Phase 1, core (~35k lines):** Forge works with nothing else installed.
 - CAD kernel tools: sketch, extrude/revolve, booleans, fillets/chamfers, ISO holes, STEP/STL export,
-  mass properties, hole detection, interference (port `server/runners/forge_cad.py` helpers).
+  mass properties, hole detection, interference and SVG/DXF drawings are native (stage 2 done).
 - Rust PCB engine: netlist, IPC-7351 footprint generator, placement, autorouter, copper pours,
   schematic SVG, 3D board; native DRC; Gerber, drill, pick-and-place, BOM.
 - Renderer: CPU path tracer (PBR), glTF export, mesh modifiers (subdivide, bevel, array, mirror, solidify).
@@ -49,7 +50,7 @@ OpenSCAD interpreter, BIM/IFC.
 
 Target: about 57 tools in total. More than ~60 tools makes the AI pick badly; group features into
 workflow tools instead of one tool per app command. `docs/reference/app-features.md` lists every
-FreeCAD, KiCad and Blender command as the checklist of what to cover.
+engineering CAD, KiCad and Blender feature as the checklist of what to cover.
 
 ## Accuracy rule
 

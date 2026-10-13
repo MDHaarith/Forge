@@ -28,8 +28,6 @@ pub struct Settings {
     pub startup_model: Option<String>,
     pub offline: bool,
     pub blender_program: Option<PathBuf>,
-    pub freecad_program: Option<PathBuf>,
-    pub freecad_gui_program: Option<PathBuf>,
     pub node_program: Option<PathBuf>,
     pub node_env: Vec<(String, String)>,
     pub openems_python: Vec<String>,
@@ -47,8 +45,6 @@ impl Settings {
             startup_model: None,
             offline: false,
             blender_program: None,
-            freecad_program: None,
-            freecad_gui_program: None,
             node_program: None,
             node_env: vec![
                 ("PATH".into(), std::env::var("PATH").unwrap_or_default()),
@@ -81,14 +77,6 @@ impl Settings {
         );
         settings.blender_program = vars
             .get("FORGE_BLENDER")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from);
-        settings.freecad_program = vars
-            .get("FORGE_FREECAD")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from);
-        settings.freecad_gui_program = vars
-            .get("FORGE_FREECAD_GUI")
             .filter(|v| !v.is_empty())
             .map(PathBuf::from);
         settings.node_program = vars
