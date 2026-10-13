@@ -513,6 +513,8 @@ Goal: finish part_build and part_inspect.
    the valid names.
 3. part_inspect: port holes_in(), describe_diameter(), mass_g() and overhangs() (angle 45°). Output
    exactly the JSON in plan.md section 3.3. overhang_warning = overhang_area > 1.
+   cadrum has no public UV access (see the "Chosen crate" line in plan.md): for a point on a face,
+   take one from the face's tessellation, then call Face::project for the outward normal there.
 4. Remove the step 3 shortcut comment in part_inspect.
 
 Tests: remove #[ignore] from every remaining test in server/tests/part.rs. Do not change test bodies or
