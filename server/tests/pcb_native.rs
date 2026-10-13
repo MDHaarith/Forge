@@ -1772,3 +1772,34 @@ async fn oval_pads_flash_on_the_right_angle_grid_and_stay_regions_otherwise() {
         assert_eq!(oval.map(|l| &l[l.find("O,").unwrap()..]), expected, "{rotation}");
     }
 }
+
+// The 6-part board from route.rs negotiation test: shortest-first routing walls off three nets.
+#[tokio::test]
+async fn route_congested_board_negotiates_every_net_drc_clean() {
+    let parts: Vec<_> = (0..6)
+        .map(|i| {
+            let (kind, footprint) = [("chip", "soic8"), ("chip", "qfn32"), ("resistor", "0603")][i % 3];
+            json!({"ref": format!("P{}", i + 1), "kind": kind, "footprint": footprint,
+                   "at": [-20 + i as i64 * 8, 0], "side": if i % 5 == 0 { "bottom" } else { "top" }})
+        })
+        .collect();
+    let board_json = json!({
+        "board": { "width": 50, "height": 10, "layers": 2, "thickness": 1.6 },
+        "rules": { "trace": 0.2, "clearance": 0.15, "via": [0.6, 0.3], "edge": 0.3 },
+        "parts": parts,
+        "nets": {
+            "N00": ["P5.7", "P5.3"], "N01": ["P2.5", "P5.13"], "N02": ["P2.24", "P2.28"],
+            "N03": ["P4.5", "P2.25"], "N04": ["P5.5", "P1.3"], "N05": ["P5.30", "P2.2"],
+            "N06": ["P4.4", "P4.6"], "N07": ["P2.30", "P5.11"], "N08": ["P1.5", "P2.9"],
+            "N09": ["P2.6", "P5.18"], "N10": ["P5.23", "P5.31"], "N11": ["P4.1", "P2.12"]
+        }
+    })
+    .to_string();
+    let dir = project("congested", &[("pcb/congested.pcb.json", &board_json)]);
+    let out = run("pcb_build", json!({"source": "pcb/congested.pcb.json"}), &dir.path)
+        .await
+        .unwrap();
+    assert!(out.text.contains("No errors: every connection is routed."), "{}", out.text);
+    let drc = run("pcb_drc", json!({"board": "congested"}), &dir.path).await.unwrap();
+    assert!(drc.text.contains("No DRC errors."), "{}", drc.text);
+}
