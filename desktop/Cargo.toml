@@ -4,6 +4,7 @@ name = "forge-desktop"
 version = "0.0.0"
 description = "Forge desktop app: runs the Forge server and shows it in a native window"
 edition = "2021"
+license = "MIT"
 publish = false
 
 [build-dependencies]

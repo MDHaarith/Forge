@@ -235,3 +235,8 @@ openEMS is not packaged for Fedora; `scripts/setup-fedora.sh --with-rf` builds i
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how a request flows, every file, the API, how to add a tool.
 - [docs/ROADMAP.md](docs/ROADMAP.md): the plan to make Forge run with no external CAD/EDA programs.
 - [AGENTS.md](AGENTS.md): rules every change must follow.
+
+## Licence
+
+Forge is MIT licensed (see [LICENSE](LICENSE)). It bundles Open CASCADE Technology under the LGPL 2.1
+with the Open CASCADE exception; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
