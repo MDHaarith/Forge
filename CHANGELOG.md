@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.3 — 2026-10-13
+
+- Native `.pcb.json` builds now write PCB and schematic SVGs, GLB and STEP board assemblies,
+  every Gerber X2 layer, separate plated/non-plated drills, pick-and-place and BOM CSVs.
+  Four-layer builds include both inner copper layers. CAD export shares Forge's kernel lock
+  inside the blocking worker; repeated builds produce identical artifacts.
+- The PCB tool description and agent prompt now use the native JSON format. Native JSON execution
+  needs no Node; legacy `.tsx`/`.jsx` builds keep their existing Node path.
+- Build reports count routed pin-to-pin connections rather than route segments and include
+  the error-summary prefix. Output tests now run, including RF-reader checks for every antenna
+  shape and geometry, drill, coordinate-frame and determinism checks. No new dependencies.
+
 ## 0.16.2 — 2026-10-13
 
 - Native `.pcb.json` builds now route two- and four-layer boards, respect holes and keepouts,

@@ -135,6 +135,9 @@ stencil needs them`.
   cadrum has no 2D face booleans and its 3D workaround took 1.3 s). Board − clearance-expanded
   foreign copper − keepouts − drills, 0.3 mm thermal spokes for same-net pads, subtract foreign
   copper again after spokes, islands under 1 mm² removed, clearance arcs circumscribed (64 segments).
+- Vias never sit inside an SMD pad (solder wicks into an open via): fan out a short stub first.
+  The step 4 review found 4 of 5 vias on the 555 board inside pads. `pcb_drc` reports
+  `via in pad: via <net> in <ref>.<pin>`.
 - Placement: parts with `at` stay; others are packed on the free board area, connected parts near
   each other, courtyards not overlapping, `edge` from the outline.
 - Schematic SVG: `shortcut: grid of symbols with net labels instead of drawn wires, upgrade to
@@ -191,7 +194,7 @@ the findings and the agent's previous report.
 - [x] Step 1: reference tests (Gemini)
 - [x] Step 2: spec parser, footprints, netlist check, placement (GPT)
 - [x] Step 3: autorouter, pours, keepouts, antennas (GPT)
-- [ ] Step 4: outputs: Gerber, drill, pnp, BOM, SVGs, circuit.json, board.json, GLB, STEP (GPT)
+- [x] Step 4: outputs: Gerber, drill, pnp, BOM, SVGs, circuit.json, board.json, GLB, STEP (GPT)
 - [ ] Step 5: native pcb_drc, delete pcb_export_fab, rf_calc calculators (GPT)
 - [ ] Step 6: retire the Node engine and the .tsx format (GPT)
 - [ ] Step 7: release 0.17.0 and finish line (orchestrator)

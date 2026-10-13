@@ -189,7 +189,7 @@ fn body_index(bodies: &[Body], id: &str, index: usize) -> Result<usize, ToolErro
 static KERNEL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Held for the whole time a thread uses OpenCASCADE, including dropping its shapes.
-fn kernel() -> std::sync::MutexGuard<'static, ()> {
+pub(super) fn kernel() -> std::sync::MutexGuard<'static, ()> {
     KERNEL
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())

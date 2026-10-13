@@ -471,7 +471,34 @@ async fn pour_antenna_clears_ground_under_keepout() {
 // -----------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
+async fn out_555_build_time_and_connection_count() {
+    let dir = project("out_555", &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)]);
+    let start = std::time::Instant::now();
+    let out = run("pcb_build", json!({"source":"pcb/blinker.pcb.json"}), &dir.path).await.unwrap();
+    eprintln!("555 board native build: {:.3} ms (routing, all exports and file writes)", start.elapsed().as_secs_f64() * 1000.);
+    assert!(out.text.contains("7 net(s) routed as 15 trace(s)"), "{}", out.text);
+    assert_eq!(out.files.len(), 19);
+}
+
+#[tokio::test]
+async fn out_circuit_matches_the_rf_reader_for_every_antenna_shape() {
+    use forge_server::tools::exec::{find_program, run as exec};
+    if tokio::task::spawn_blocking(|| find_program(&["python3".into()])).await.unwrap().is_none() {
+        eprintln!("skipped: python3 is not installed");
+        return;
+    }
+    let reader = include_str!("../runners/openems_antenna.py").split("# ---------- mesh ----------").next().unwrap().replace("import numpy as np", "");
+    let check = format!("{reader}\nboard, z, name, copper, barrels, pours, pads, arm = load_board(json.load(open(sys.argv[1])), 'ANT1')\nassert name == 'ANT1' and arm and copper and pours and 'pin1' in pads\nassert set(z) == {{'top', 'bottom', 'inner1', 'inner2'}}\nassert feed_port(z, pads, pours)[2] in ('x', 'y', 'z')\n");
+    for shape in ["2.4ghz_quarter_wave_monopole", "2.4ghz_meandered_monopole", "2.4ghz_inverted_f", "2.4ghz_meandered_inverted_f", "2.4ghz_folded_dipole"] {
+        let json = json!({"board":{"width":80,"height":60,"layers":4},"parts":[{"ref":"ANT1","kind":"antenna","shape":shape,"at":[0,0]}],"pours":[{"net":"GND","layer":"bottom"}]}).to_string();
+        let dir = project("out_rf_reader", &[("pcb/ant.pcb.json", json)]);
+        run("pcb_build", json!({"source":"pcb/ant.pcb.json"}), &dir.path).await.unwrap();
+        let result = exec("python3", &["-c".into(), check.clone(), "pcb/ant.circuit.json".into()], &dir.path, 30_000, &[]).await;
+        assert_eq!(result.code, 0, "{shape}: {}", result.stderr);
+    }
+}
+
+#[tokio::test]
 async fn out_file_pcb_svg() {
     let dir = project("out_pcb_svg", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -483,7 +510,6 @@ async fn out_file_pcb_svg() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_schematic_svg() {
     let dir = project("out_sch_svg", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -495,7 +521,6 @@ async fn out_file_schematic_svg() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_glb() {
     let dir = project("out_glb", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -507,7 +532,6 @@ async fn out_file_glb() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_step() {
     let dir = project("out_step", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -519,7 +543,6 @@ async fn out_file_step() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_board_json() {
     let dir = project("out_board_json", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -534,7 +557,6 @@ async fn out_file_board_json() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_circuit_json() {
     let dir = project("out_circuit_json", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -551,7 +573,6 @@ async fn out_file_circuit_json() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_copper_f_cu_gerber() {
     let dir = project("out_f_cu", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -561,7 +582,6 @@ async fn out_file_fab_copper_f_cu_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_copper_b_cu_gerber() {
     let dir = project("out_b_cu", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -571,7 +591,6 @@ async fn out_file_fab_copper_b_cu_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_copper_in1_cu_4layer_gerber() {
     let dir = project("out_in1", &[("pcb/four.pcb.json", FOUR_LAYER_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/four.pcb.json"}), &dir.path)
@@ -581,7 +600,6 @@ async fn out_file_fab_copper_in1_cu_4layer_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_copper_in2_cu_4layer_gerber() {
     let dir = project("out_in2", &[("pcb/four.pcb.json", FOUR_LAYER_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/four.pcb.json"}), &dir.path)
@@ -591,7 +609,6 @@ async fn out_file_fab_copper_in2_cu_4layer_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_mask_f_mask_gerber() {
     let dir = project("out_f_mask", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -601,7 +618,6 @@ async fn out_file_fab_mask_f_mask_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_mask_b_mask_gerber() {
     let dir = project("out_b_mask", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -611,7 +627,6 @@ async fn out_file_fab_mask_b_mask_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_paste_f_paste_gerber() {
     let dir = project("out_f_paste", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -621,7 +636,6 @@ async fn out_file_fab_paste_f_paste_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_paste_b_paste_gerber() {
     let dir = project("out_b_paste", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -631,7 +645,6 @@ async fn out_file_fab_paste_b_paste_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_silkscreen_f_silkscreen_gerber() {
     let dir = project("out_f_silk", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -641,7 +654,6 @@ async fn out_file_fab_silkscreen_f_silkscreen_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_silkscreen_b_silkscreen_gerber() {
     let dir = project("out_b_silk", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -651,7 +663,6 @@ async fn out_file_fab_silkscreen_b_silkscreen_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_edge_cuts_gerber() {
     let dir = project("out_edge", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -661,7 +672,6 @@ async fn out_file_fab_edge_cuts_gerber() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_drill_pth_excellon() {
     let dir = project("out_pth", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -671,7 +681,6 @@ async fn out_file_fab_drill_pth_excellon() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_drill_npth_excellon() {
     let dir = project("out_npth", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -681,7 +690,6 @@ async fn out_file_fab_drill_npth_excellon() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_pnp_csv() {
     let dir = project("out_pnp", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -692,7 +700,6 @@ async fn out_file_fab_pnp_csv() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_file_fab_bom_csv() {
     let dir = project("out_bom", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -703,7 +710,6 @@ async fn out_file_fab_bom_csv() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_report_line_built_board() {
     let dir = project("out_rep_board", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -713,7 +719,6 @@ async fn out_report_line_built_board() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_report_line_parts() {
     let dir = project("out_rep_parts", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -723,7 +728,6 @@ async fn out_report_line_parts() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_report_line_routed_traces() {
     let dir = project("out_rep_traces", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -733,7 +737,6 @@ async fn out_report_line_routed_traces() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_report_line_copper_pours() {
     let dir = project("out_rep_pours", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -743,7 +746,6 @@ async fn out_report_line_copper_pours() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_report_line_no_errors() {
     let dir = project("out_rep_no_err", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -753,7 +755,6 @@ async fn out_report_line_no_errors() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn out_report_line_errors_summary() {
     let unroutable_board = r#"{
   "board": {"width": 30, "height": 20, "layers": 2, "thickness": 1.6},

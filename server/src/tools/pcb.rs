@@ -2,6 +2,9 @@ use super::{exec::{report, run}, input_str, paths::project_path, Tool, ToolConte
 use serde_json::{json, Value};
 
 mod antenna;
+mod gerber;
+mod svg;
+mod export;
 mod route;
 mod pour;
 mod footprint;
@@ -55,6 +58,7 @@ fn pcb_export_fab(input: Value, ctx: ToolContext) -> ToolFuture {
 pub struct NativeBuild {
     pub report: String,
     pub files: Vec<(String, String)>,
+    pub binary_files: Vec<(String, Vec<u8>)>,
 }
 
 /// CPU-only native build. The caller writes these files through project_path after this returns.
@@ -77,7 +81,7 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         })
         .collect();
     if !errors.is_empty() {
-        return Err(errors.join("\n"));
+        return Err(format!("{} ERROR(S), fix them and rebuild:\n{}", errors.len(), errors.join("\n")));
     }
     let pours: Vec<_> = prepared
         .spec
@@ -92,21 +96,29 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
             )
         })
         .collect();
-    let files = vec![
+    let mut files = vec![
         (
             format!("pcb/{name}.circuit.json"),
-            crate::jsfmt::stringify_pretty(&circuit(&prepared, &board, &routed, &pours))
+            export::json(&circuit(&prepared, &board, &routed, &pours))
                 .map_err(|e| e.to_string())?,
         ),
         (
             format!("pcb/{name}.board.json"),
-            crate::jsfmt::stringify_pretty(&boxes(&prepared)).map_err(|e| e.to_string())?,
+            export::json(&boxes(&prepared)).map_err(|e| e.to_string())?,
         ),
         (
             format!("fab/{name}/{name}-B_Cu.gbr"),
-            bottom_copper(&board, &routed, &pours),
+            gerber::copper(&board, &routed, &pours, Layer::Bottom),
         ),
     ];
+    files.extend(gerber::files(&prepared, &board, &routed, &pours, name));
+    files.push((format!("pcb/{name}-pcb.svg"), svg::board(&prepared, &board, &routed, &pours)));
+    files.push((format!("pcb/{name}-schematic.svg"), svg::schematic(&prepared)));
+    files.push((format!("fab/{name}/{name}-pnp.csv"), export::pnp(&prepared)));
+    files.push((format!("fab/{name}/{name}-bom.csv"), export::bom(&prepared)));
+    let (step, glb) = export::model(&prepared, &board, &routed)?;
+    files.push((format!("pcb/{name}.step"), step));
+    let binary_files = vec![(format!("pcb/{name}.glb"), glb)];
     let n = crate::jsfmt::number;
     let mut lines = vec![
         format!(
@@ -130,7 +142,7 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         format!(
             "{} net(s) routed as {} trace(s) with {} via(s); {} hole(s).",
             board.nets.len(),
-            routed.tracks.len() + board.fixed.len(),
+            board.nets.iter().map(|net| net.pads.len().saturating_sub(1)).sum::<usize>(),
             routed.vias.len(),
             board.holes.len()
         ),
@@ -153,12 +165,14 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         files
             .iter()
             .map(|(p, _)| p.as_str())
+            .chain(binary_files.iter().map(|(p, _)| p.as_str()))
             .collect::<Vec<_>>()
             .join(", ")
     ));
     Ok(NativeBuild {
         report: lines.join("\n"),
         files,
+        binary_files,
     })
 }
 
@@ -231,125 +245,6 @@ fn circuit(prepared: &PreparedBoard, b: &route::Board, r: &route::Routes, pours:
     Value::Array(elements)
 }
 
-fn gerber_coord(p: route::Point, op: usize) -> String {
-    format!(
-        "X{}Y{}D{op:02}*\n",
-        (p[0] * 1e6).round() as i64,
-        (p[1] * 1e6).round() as i64
-    )
-}
-fn gerber_region(out: &mut String, shape: &[pour::Contour]) {
-    out.push_str("G36*\n");
-    for ring in shape {
-        out.push_str(&gerber_coord(ring[0], 2));
-        for p in ring.iter().skip(1).chain(std::iter::once(&ring[0])) {
-            out.push_str(&gerber_coord(*p, 1));
-        }
-    }
-    out.push_str("G37*\n");
-}
-fn gerber_attribute(s: &str) -> String {
-    s.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || "_+- .".contains(c) {
-                c.to_string()
-            } else {
-                format!("\\u{:04X}", c as u32)
-            }
-        })
-        .collect()
-}
-
-/// Bottom copper includes the real pads, routed traces, vias, antenna copper and holed pours.
-fn bottom_copper(b: &route::Board, r: &route::Routes, pours: &Pours) -> String {
-    use std::collections::BTreeMap;
-    let mut out = format!("G04 Forge native PCB*\n%FSLAX46Y46*%\n%MOMM*%\n%TF.GenerationSoftware,Forge,pcb,{}*%\n%TF.FileFunction,Copper,L{},Bot*%\n%TF.FilePolarity,Positive*%\n%LPD*%\nG01*\n",env!("CARGO_PKG_VERSION"),b.layers);
-    let mut apertures = BTreeMap::new();
-    apertures.insert((b.via[0] * 1e6).round() as i64, 0);
-    for t in r
-        .tracks
-        .iter()
-        .chain(b.fixed.iter().map(|f| &f.track))
-        .filter(|t| t.layer == 1)
-    {
-        apertures.insert((t.width * 1e6).round() as i64, 0);
-    }
-    for p in b.pads.iter().filter(|p| p.round && p.layers & 2 != 0) {
-        apertures.insert((p.size[0] * 1e6).round() as i64, 0);
-    }
-    for (i, (width, id)) in apertures.iter_mut().enumerate() {
-        *id = i + 10;
-        out.push_str(&format!(
-            "%TA.AperFunction,Conductor*%\n%ADD{id}C,{}*%\n%TD*%\n",
-            crate::jsfmt::fixed_string(*width as f64 / 1e6, 6)
-        ));
-    }
-    out.push_str("D10*\n");
-    let attribute = |net: usize| {
-        format!(
-            "%TO.N,{}*%\n",
-            gerber_attribute(b.nets.get(net).map_or("N/C", |n| n.name.as_str()))
-        )
-    };
-    for (net, layer, shapes) in pours {
-        if *layer != Layer::Bottom {
-            continue;
-        }
-        out.push_str(&attribute(*net));
-        for shape in shapes {
-            gerber_region(&mut out, shape);
-        }
-        out.push_str("%TD*%\n");
-    }
-    for p in b.pads.iter().filter(|p| p.layers & 2 != 0) {
-        out.push_str(&attribute(p.net));
-        out.push_str(&format!(
-            "%TO.C,{}*%\n",
-            gerber_attribute(p.name.split('.').next().unwrap())
-        ));
-        if p.round {
-            out.push_str(&format!(
-                "D{}*\n",
-                apertures[&((p.size[0] * 1e6).round() as i64)]
-            ));
-            out.push_str(&gerber_coord(p.at, 3));
-        } else {
-            let ring = pour::rect([0.; 2], p.size)
-                .into_iter()
-                .map(|q| p.point(q))
-                .collect();
-            gerber_region(&mut out, &[ring]);
-        }
-        out.push_str("%TD*%\n");
-    }
-    for t in r
-        .tracks
-        .iter()
-        .chain(b.fixed.iter().map(|f| &f.track))
-        .filter(|t| t.layer == 1)
-    {
-        out.push_str(&attribute(t.net));
-        out.push_str(&format!(
-            "D{}*\n",
-            apertures[&((t.width * 1e6).round() as i64)]
-        ));
-        out.push_str(&gerber_coord(t.a, 2));
-        out.push_str(&gerber_coord(t.b, 1));
-        out.push_str("%TD*%\n");
-    }
-    for v in &r.vias {
-        out.push_str(&attribute(v.net));
-        out.push_str(&format!(
-            "D{}*\n",
-            apertures[&((b.via[0] * 1e6).round() as i64)]
-        ));
-        out.push_str(&gerber_coord(v.at, 3));
-        out.push_str("%TD*%\n");
-    }
-    out.push_str("M02*\n");
-    out
-}
-
 #[cfg(test)]
 mod native_tests {
     use super::*;
@@ -391,7 +286,7 @@ mod native_tests {
         );
         assert!(gerber.ends_with("M02*\n"));
         assert_eq!(
-            gerber_attribute("GND,*%\\"),
+            gerber::attribute("GND,*%\\"),
             "GND\\u002C\\u002A\\u0025\\u005C"
         );
     }

@@ -15,7 +15,7 @@ the phases, and keep the external version working until its native replacement p
 |---|---|---|
 | blender_build | Blender | renderer and mesh modifiers |
 | openscad_render | OpenSCAD | fold into the CAD kernel, or drop |
-| pcb_build | Node + tscircuit engine | Rust PCB engine |
+| pcb_build (legacy inputs and availability gate) | Node + tscircuit engine | Native .pcb.json execution works; retire legacy inputs and gate |
 | pcb_drc, pcb_export_fab | kicad-cli | native DRC, Gerber/Excellon writer |
 | chip_simulate, chip_synthesize | iverilog, yosys | Verilog simulator and synthesis |
 | rf_antenna_sim | openEMS | FDTD solver |
@@ -41,8 +41,9 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
   schematic SVG, 3D board; native DRC; Gerber, drill, pick-and-place, BOM.
   Stage 3 steps 2–3 add strict `.pcb.json` validation, generated footprints, pin/net checks,
   deterministic placement and 2/4-layer routing, keepouts, thermal copper pours and five printed
-  antenna shapes. Native builds write circuit JSON, board boxes and bottom copper Gerber.
-  Remaining outputs and native DRC are next; `.tsx` builds still use Node.
+  antenna shapes. Step 4 adds PCB/schematic SVGs, GLB/STEP assemblies, circuit JSON, board boxes,
+  all Gerber layers, split drills and assembly CSVs. Native DRC and Node retirement are next;
+  `.tsx` builds still use Node.
 - Renderer: CPU path tracer (PBR), glTF export, mesh modifiers (subdivide, bevel, array, mirror, solidify).
 
 **Phase 2, common (~30k lines):** drawings (hidden-line views, dimensions, SVG/DXF/PDF), assembly

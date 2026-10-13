@@ -70,6 +70,9 @@ server/src/
     pcb/route.rs                            deterministic grid A*, 2/4 layers, through vias, rip-up passes and keepouts
     pcb/pour.rs                             i_overlay planar copper fills, thermals, clearance cuts and hole contours
     pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
+    pcb/gerber.rs                           all Gerber X2 layers, 4-layer copper order and split PTH/NPTH Excellon
+    pcb/svg.rs                              PCB copper/silk/drill view and grid schematic symbols with net labels
+    pcb/export.rs                           rounded JS JSON, JLCPCB CSVs and shared-kernel STEP/GLB assemblies
     rf.rs rfmath.rs                          rf_calc, rf_antenna_sim (openEMS)
     chip.rs                                  Verilog simulate/synthesize
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
@@ -84,9 +87,12 @@ docs/                      this map, ROADMAP.md, reference/ (engineering CAD, Ki
 ```
 
 `pcb.rs` remains the PCB module root and re-exports the native pure helpers. `pcb_build` validates,
-places, routes and pours `.pcb.json` inputs in `spawn_blocking`. The module root currently writes
-the report, circuit JSON, board boxes and bottom copper Gerber; the remaining outputs arrive in
-step 4. Routing grids are limited to eight million cells to bound memory use.
+places, routes and pours `.pcb.json` inputs in `spawn_blocking`. The module root writes the report,
+circuit JSON and board boxes, then collects every SVG, CAD and manufacturing export. Native builds
+execute without Node; the legacy tool availability gate stays until step 6. CAD export shares
+`part.rs`'s kernel lock, held only inside the worker;
+GLB coordinates, normals and edges use `[x,z,-y]` for Forge's viewer. All output paths resolve through
+`project_path` before async writes. Routing grids are limited to eight million cells to bound memory use.
 The existing `.tsx`/`.jsx` path still runs the Node engine and writes its usual outputs.
 
 ## HTTP API (all under /api, localhost only)
