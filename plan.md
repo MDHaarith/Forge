@@ -189,7 +189,7 @@ the findings and the agent's previous report.
 
 - [x] Step 0: spike (GPT)
 - [x] Step 1: reference tests (Gemini)
-- [ ] Step 2: spec parser, footprints, netlist check, placement (GPT)
+- [x] Step 2: spec parser, footprints, netlist check, placement (GPT)
 - [ ] Step 3: autorouter, pours, keepouts, antennas (GPT)
 - [ ] Step 4: outputs: Gerber, drill, pnp, BOM, SVGs, circuit.json, board.json, GLB, STEP (GPT)
 - [ ] Step 5: native pcb_drc, delete pcb_export_fab, rf_calc calculators (GPT)
@@ -315,3 +315,6 @@ mounting hole in each corner, then an enclosure for it". It must build, route wi
 - Never block the async runtime; never hold `kernel()` or any `std::sync::Mutex` across `.await`.
 - Tools never touch paths outside the project: every path through `project_path`.
 - The `.tsx` path keeps working until step 6, so the app never loses PCB support mid-stage.
+- Footprint pads use KiCad's frame (y down, pin 1 at -y), verified equal to KiCad in step 2. Outputs
+  are +y up: flip y once when writing, and make pick-and-place rotations match JLCPCB's convention
+  for KiCad footprints. Format every coordinate through `jsfmt` (raw f64 shows `-0.9750000000000001`).

@@ -333,6 +333,28 @@ const LED_BOARD: &str = r#"export default () => (
 "#;
 
 #[tokio::test]
+async fn pcb_build_json_validates_without_outputs_or_a_node_engine() {
+    let dir = project("pcb_json", &[("pcb/led.pcb.json", r#"{
+        "board":{"width":30,"height":20},
+        "parts":[
+            {"ref":"R1","kind":"resistor","footprint":"0402"},
+            {"ref":"LED1","kind":"led","footprint":"0603"}
+        ],
+        "nets":{"A":["R1.2","LED1.A"]}
+    }"#)]);
+    let settings = forge_server::Settings::from_env(app_dir());
+    let mut ctx = ToolContext::from_settings(dir.path.clone(), &settings);
+    ctx.app_dir = dir.path.join("no-engine");
+    ctx.node_program = Some(dir.path.join("no-node"));
+    let tool = all_tools().into_iter().find(|t| t.name == "pcb_build").unwrap();
+    let out = (tool.run)(json!({"source":"pcb/led.pcb.json"}), ctx).await.unwrap();
+    assert_eq!(out.text, "Validated pcb/led.pcb.json: 2 part(s), 1 named net(s). Native PCB outputs are not built yet.");
+    assert!(out.files.is_empty());
+    assert!(!dir.path.join("fab").exists());
+    assert_eq!(std::fs::read_dir(dir.path.join("pcb")).unwrap().count(), 1);
+}
+
+#[tokio::test]
 async fn pcb_build_routes_a_board_and_writes_its_views_3d_model_and_fab_files() {
     if !has_engine() {
         return;

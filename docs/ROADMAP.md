@@ -39,6 +39,8 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
   mass properties, hole detection, interference and SVG/DXF drawings are native (stage 2 done).
 - Rust PCB engine: netlist, IPC-7351 footprint generator, placement, autorouter, copper pours,
   schematic SVG, 3D board; native DRC; Gerber, drill, pick-and-place, BOM.
+  Stage 3 step 2 adds strict `.pcb.json` validation, generated footprints, pin/net checks and
+  deterministic placement. Native routing and outputs remain next; `.tsx` builds still use Node.
 - Renderer: CPU path tracer (PBR), glTF export, mesh modifiers (subdivide, bevel, array, mirror, solidify).
 
 **Phase 2, common (~30k lines):** drawings (hidden-line views, dimensions, SVG/DXF/PDF), assembly

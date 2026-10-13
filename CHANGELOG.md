@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.1 — 2026-10-13
+
+- `pcb_build` accepts native `.pcb.json` inputs for strict validation, footprint generation,
+  pin/net checks and deterministic placement. Native files arrive in a later stage; `.tsx` builds
+  continue using the existing engine.
+- Native PCB helpers expose pads, courtyards, package bodies, netlists and placements for the next
+  routing and output steps. The footprint and spec reference tests now run offline.
+
 ## 0.16.0 — 2026-10-13
 
 - Forge no longer needs FreeCAD. `freecad_build`, `freecad_inspect` and `freecad_drawing` are removed;

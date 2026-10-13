@@ -74,13 +74,24 @@ fn pcb_build(input: Value, ctx: ToolContext) -> ToolFuture {
     Box::pin(async move {
         let source = string(Some(input.get("source").filter(|v| !v.is_null()).unwrap_or(&json!(""))));
         let full = project_path(&ctx.project_dir, &source)?;
-        if !source.ends_with(".tsx") && !source.ends_with(".jsx") { return Err(ToolError::expected("source must be a .tsx file")); }
+        let native = source.ends_with(".pcb.json");
+        if !native && !source.ends_with(".tsx") && !source.ends_with(".jsx") { return Err(ToolError::expected("source must be a .pcb.json file")); }
         if !tokio::fs::metadata(&full).await.is_ok_and(|m| m.is_file()) { return Err(ToolError::expected(format!("{source} does not exist; write it with write_file first"))); }
         let name = input.get("name").map(|v| string(Some(v))).unwrap_or_else(|| {
             let basename = Path::new(&source).file_name().unwrap_or_default().to_string_lossy();
+            if native { return basename.strip_suffix(".pcb.json").unwrap().into(); }
             basename.rsplit_once('.').filter(|(_, ext)| !ext.is_empty()).map_or(basename.to_string(), |(base, _)| base.into())
         });
         if !valid_name(&name) { return Err(ToolError::expected("name may only use letters, digits, - and _")); }
+        if native {
+            let json = tokio::fs::read_to_string(&full).await?;
+            let board = tokio::task::spawn_blocking(move || super::pcb::prepare(&json)).await
+                .map_err(|e| ToolError::unexpected(e.to_string()))?.map_err(ToolError::expected)?;
+            return Ok(ToolResult {
+                text: format!("Validated {source}: {} part(s), {} named net(s). Native PCB outputs are not built yet.", board.parts.len(), board.nets.len()),
+                files: Vec::new(),
+            });
+        }
         let engine = pcb_engine(&ctx.app_dir).ok_or_else(|| ToolError::expected("Forge's PCB engine is not installed: run npm run pcb-engine in the Forge folder"))?;
         let looked_up = truthy(&input["lookup_parts"]);
         let root = project_path(&ctx.project_dir, "")?;

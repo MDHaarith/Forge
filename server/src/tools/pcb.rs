@@ -1,6 +1,14 @@
 use super::{exec::{report, run}, input_str, paths::project_path, Tool, ToolContext, ToolError, ToolFuture, ToolResult};
 use serde_json::{json, Value};
 
+mod footprint;
+mod place;
+mod spec;
+
+pub use footprint::{footprint, Footprint, Pad};
+pub use place::{place, PlacedPart};
+pub use spec::{parse, prepare, Board, Hole, Keepout, Kind, Layer, Net, NetClass, Part, Pin, Pour, PreparedBoard, Rules, Spec, Trace};
+
 pub fn tools() -> Vec<Tool> {
     vec![
         {

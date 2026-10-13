@@ -195,12 +195,10 @@ fn parse_numbers_with_unit(text: &str, unit: &str) -> Vec<f64> {
 // Step 2 Footprints (Reference bullets in 3.2)
 // -----------------------------------------------------------------------------
 
-#[cfg(any())] // step 2 removes this line
 mod fp {
     use forge_server::tools::pcb::footprint;
 
     #[test]
-    #[ignore = "stage 3 not built yet"]
     fn fp_0402() {
         let fp = footprint("0402").expect("footprint 0402 should be generated");
         assert_eq!(fp.pads.len(), 2);
@@ -214,7 +212,6 @@ mod fp {
     }
 
     #[test]
-    #[ignore = "stage 3 not built yet"]
     fn fp_0603() {
         let fp = footprint("0603").expect("footprint 0603 should be generated");
         assert_eq!(fp.pads.len(), 2);
@@ -228,7 +225,6 @@ mod fp {
     }
 
     #[test]
-    #[ignore = "stage 3 not built yet"]
     fn fp_soic8() {
         let fp = footprint("soic8").expect("footprint soic8 should be generated");
         assert_eq!(fp.pads.len(), 8);
@@ -242,7 +238,6 @@ mod fp {
     }
 
     #[test]
-    #[ignore = "stage 3 not built yet"]
     fn fp_qfn32() {
         let fp = footprint("qfn32").expect("footprint qfn32 should be generated");
         assert_eq!(fp.pads.len(), 33);
@@ -265,7 +260,6 @@ mod fp {
 // -----------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn spec_error_source_must_be_pcb_json() {
     let dir = project("spec_err1", &[("pcb/invalid.txt", "{}")]);
     let err = run("pcb_build", json!({"source": "pcb/invalid.txt"}), &dir.path)
@@ -275,7 +269,6 @@ async fn spec_error_source_must_be_pcb_json() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn spec_error_source_does_not_exist() {
     let dir = project("spec_err2", &[] as &[(&str, &str)]);
     let err = run("pcb_build", json!({"source": "pcb/missing.pcb.json"}), &dir.path)
@@ -285,7 +278,6 @@ async fn spec_error_source_does_not_exist() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn spec_error_invalid_name() {
     let dir = project("spec_err3", &[("pcb/bad space.pcb.json", "{}")]);
     let err = run("pcb_build", json!({"source": "pcb/bad space.pcb.json"}), &dir.path)
@@ -295,7 +287,6 @@ async fn spec_error_invalid_name() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn spec_error_unknown_pin() {
     let bad_board = r#"{
   "board": {"width": 30, "height": 20, "layers": 2, "thickness": 1.6},
@@ -312,7 +303,6 @@ async fn spec_error_unknown_pin() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn spec_error_unknown_footprint() {
     let bad_board = r#"{
   "board": {"width": 30, "height": 20, "layers": 2, "thickness": 1.6},
@@ -329,7 +319,6 @@ async fn spec_error_unknown_footprint() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn spec_error_part_off_board() {
     let bad_board = r#"{
   "board": {"width": 30, "height": 20, "layers": 2, "thickness": 1.6},
@@ -346,7 +335,6 @@ async fn spec_error_part_off_board() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn spec_error_parts_overlap() {
     let bad_board = r#"{
   "board": {"width": 30, "height": 20, "layers": 2, "thickness": 1.6},
