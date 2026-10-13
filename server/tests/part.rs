@@ -225,3 +225,10 @@ async fn errors_name_the_step() {
     let err = run("part_build", json!({"name":"t","steps":[{"id":"a","op":"box","size":[2,2,2]},{"op":"fillet","target":"a","radius":5,"edges":"all"}]}), &dir.path).await.unwrap_err();
     assert!(err.to_string().contains("step 1: fillet failed"), "{err}");
 }
+
+#[tokio::test]
+async fn documented_enclosure_example_builds() {
+    let (_dir, out) = build(json!({"name":"case","steps":[{"op":"enclosure","id":"box","size":[80,50,25],"wall":2,"floor":2},{"op":"standoffs","target":"box","points":{"corners":[80,50,6]},"size":"M3","base":2,"kind":"insert"},{"op":"lid","id":"cover","size":[80,50],"at":[90,0,2]}]})).await;
+    assert_eq!(out["bodies"].as_array().unwrap().len(), 2);
+    near(out["bodies"][1]["bbox"][0][2].as_f64().unwrap(), 0.0, 0.001);
+}

@@ -14,10 +14,31 @@ pub fn tools() -> Vec<Tool> {
     vec![Tool::new(
         "3d",
         "part_build",
-        "Build exact solids in millimetres, degrees, Z up. Writes models/<name>.step, binary STL and JSON. Steps run in order; shape ids default to s<step index>. box: size [x,y,z], minimum corner at at. cylinder: radius, height, base centre at at. sphere: radius, centre at at. cone: radius1 (bottom), radius2 (top, may be 0), height, base centre at at. at defaults to [0,0,0]. extrude: XY outline, height, at. revolve: XZ outline (x is nonnegative radius), angle (360), about Z from +X towards +Y. outline is {circle:[cx,cy,r]} or {start:[x,y],segments:[{line:[x,y]} or {arc:[x,y],through:[x,y]}]}; last point equals start. union/cut/intersect: target and tool body ids; changes target and consumes tool. fillet: target, radius, edges. chamfer: target, size, edges. edges is all, vertical (straight Z edges), or {at_z:number}. place: target, rotate [rx,ry,rz], move [x,y,z]; rotates X then Y then Z through origin, then moves. hole: target, points, size (M3), kind (clearance), fit (normal), optional depth; kinds clearance, tap, counterbore, countersink, insert. points is [[x,y],...] or {grid:[x0,y0,dx,dy,nx,ny]} or {corners:[length,width,inset]}. enclosure: size [x,y,z], wall (2), floor (2), radius (0). lid: size [x,y], thickness (2), wall (2), lip (2), gap (0.2), radius (0), at. standoffs: target, points, size (M3), height (5), base (0), kind (insert, tap or clearance). material must be a MATERIALS key. Exports all remaining bodies.",
+        r#"Build exact solids (STEP kernel, not meshes) from an ordered list of steps; writes models/<name>.step, models/<name>.stl (binary) and models/<name>.json (steps, per-body volume, bbox). Lengths are mm, angles degrees, Z up. Choose edges by selector, never by number: "all", "vertical" (straight edges parallel to Z) or {"at_z":z} (edges lying entirely at height z). Steps run in order. A shape step makes a body; id is optional and defaults to s<index> (index counts from 0 over all steps). An operation step names its target body. union/cut/intersect also name a tool body, which is consumed. Every body left at the end is exported. material is optional (used for mass): PLA, PETG, ABS, ASA, Nylon PA12, Polycarbonate, Acrylic, POM (Delrin), Aluminium 6061, Aluminium 7075, Steel, Stainless 304, Brass, Copper, Titanium Ti-6Al-4V or Plywood.
+Ops (at defaults to [0,0,0]):
+- box: size [x,y,z], at; minimum corner at at.
+- cylinder: radius, height, at; axis +Z, base centre at at.
+- sphere: radius, at; centre at at.
+- cone: radius1 (bottom), radius2 (top, may be 0), height, at; axis +Z.
+- extrude: outline, height, at; outline in XY, extruded +Z, then moved by at.
+- revolve: outline, angle (360); outline in XZ (x = radius >= 0), turned about Z from +X towards +Y.
+- union / cut / intersect: target, tool; an empty intersect is allowed (volume 0).
+- fillet: target, radius, edges. chamfer: target, size, edges (equal distance).
+- place: target, rotate [rx,ry,rz] (0,0,0), move [x,y,z] (0,0,0); rotates about X, then Y, then Z through the origin, then moves.
+- hole: target, points, size ("M3"), kind, fit ("normal"), depth (omit = through).
+- enclosure: size [x,y,z], wall (2), floor (2), radius (0); open-top box.
+- lid: size [x,y], thickness (2), wall (2), lip (2), gap (0.2), radius (0), at; plate from z=0 to thickness, lip from z=-lip to 0, then moved by at.
+- standoffs: target, points, size ("M3"), height (5), base (0), kind ("insert"); posts on the target, base = z where they start.
+outline: {"circle":[cx,cy,r]} or {"start":[x,y],"segments":[{"line":[x,y]} | {"arc":[x,y],"through":[x,y]}, ...]}; the last point must equal start.
+points: [[x,y],...] or {"grid":[x0,y0,dx,dy,nx,ny]} or {"corners":[length,width,inset]}.
+kind: "clearance", "tap", "counterbore", "countersink" or "insert".
+Limits: no sketcher constraints, loft, sweep, shell, threads or drawings (use freecad_drawing for drawings while it exists).
+Example, 80x50x25 enclosure with 2 mm walls, M3 insert standoffs, and a matching lid beside it at x=90 (at z=2 so its lip rests on the bed):
+{"name":"case","steps":[{"op":"enclosure","id":"box","size":[80,50,25],"wall":2,"floor":2},{"op":"standoffs","target":"box","points":{"corners":[80,50,6]},"size":"M3","base":2,"kind":"insert"},{"op":"lid","id":"cover","size":[80,50],"at":[90,0,2]}]}
+Errors: step <index>: unknown op "<op>"; step <index>: no body "<id>"; step <index>: fillet failed (or chamfer failed)."#,
         json!({"type":"object", "properties":{
             "name":{"type":"string", "description":"Lowercase letters, digits, - and _ only"},
-            "material":{"type":"string"},
+            "material":{"type":"string", "description":"Optional MATERIALS key, used for mass"},
             "steps":{"type":"array", "minItems":1, "items":{"type":"object", "properties":{
                 "op":{"type":"string"}, "id":{"type":"string"},
                 "size":{},

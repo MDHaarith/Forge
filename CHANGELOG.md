@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.1 — 2026-10-13
+
+- `part_build` and `part_inspect` descriptions now list every op with its defaults, the material names
+  and a worked enclosure example (covered by a test).
+
 ## 0.14.0 — 2026-10-13
 
 - `part_build` adds standard clearance, tap, counterbore, countersink and insert holes, point patterns,
