@@ -75,7 +75,7 @@ say "Setting up Forge on ${ID^} ${VERSION_ID} for: $DOMAINS"
 
 # --- 2. System packages --------------------------------------------------------------
 
-PACKAGES=(git rust cargo nodejs nodejs-npm curl xdg-utils)
+PACKAGES=(git rust cargo nodejs nodejs-npm curl xdg-utils cmake gcc-c++)
 want 3d && PACKAGES+=(blender python3-numpy openscad librsvg2-tools flatpak)
 want pcb && PACKAGES+=(kicad)
 want chip && PACKAGES+=(iverilog yosys)

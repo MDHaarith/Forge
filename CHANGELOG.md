@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 — 2026-10-13
+
+- New `part_build` tool: exact solids from Forge's own CAD kernel (OpenCASCADE via the cadrum crate),
+  no FreeCAD needed. Ops: box, cylinder, sphere, cone, union, cut, intersect. Writes
+  models/<name>.step, binary .stl and .json (steps plus volume and bounding box per body).
+
 ## 0.11.0 — 2026-10-13
 
 - Chat replies and .md files render as Markdown with LaTeX math ($…$, $$…$$, \(…\), \[…\]).

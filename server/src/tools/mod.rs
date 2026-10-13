@@ -12,6 +12,7 @@ pub mod exec;
 pub mod launch;
 pub mod mesh;
 pub mod paths;
+pub mod part;
 pub mod script3d;
 pub mod validate;
 pub mod vcs;
@@ -169,6 +170,7 @@ pub fn all_tools() -> Vec<Tool> {
     tools.extend(design::tools());
     tools.extend(pcb::tools());
     tools.extend(chip::tools());
+    tools.extend(part::tools());
     tools
 }
 

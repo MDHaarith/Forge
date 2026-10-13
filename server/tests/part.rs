@@ -25,28 +25,24 @@ fn near(a: f64, b: f64, tol: f64) {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn box_volume() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"box","size":[10,10,10]}]})).await;
     near(volume(&out, 0), 1000.0, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn cylinder_volume() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"cylinder","radius":5,"height":10}]})).await;
     near(volume(&out, 0), 785.398, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn sphere_volume() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"sphere","radius":5}]})).await;
     near(volume(&out, 0), 523.599, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn cone_volume() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"cone","radius1":5,"radius2":0,"height":10}]})).await;
     near(volume(&out, 0), 261.799, 0.01);
@@ -88,21 +84,18 @@ async fn revolve_ring() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn cut_cylinder_from_cube() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[20,20,20]},{"id":"b","op":"cylinder","radius":5,"height":20,"at":[10,10,0]},{"op":"cut","target":"a","tool":"b"}]})).await;
     near(volume(&out, 0), 6429.204, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn union_overlapping_cubes() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[10,10,10]},{"id":"b","op":"box","size":[10,10,10],"at":[5,0,0]},{"op":"union","target":"a","tool":"b"}]})).await;
     near(volume(&out, 0), 1500.0, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn intersect_overlapping_cubes() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[10,10,10]},{"id":"b","op":"box","size":[10,10,10],"at":[5,0,0]},{"op":"intersect","target":"a","tool":"b"}]})).await;
     near(volume(&out, 0), 500.0, 0.01);
