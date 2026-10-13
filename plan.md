@@ -216,7 +216,8 @@ experiment. Do NOT edit any file outside spikes/occt/. Do NOT add anything to th
    - on the cylindrical face, print the outward normal at its parameter midpoint; it must point
      towards the axis (the hole's centre), not away from it
    - tessellate the cut part (deflection 0.1) and print the triangle count and the summed downward
-     area of triangles whose normal z < -0.7071 (expected 0: the part has no overhang above its base)
+     area of triangles whose normal z < -0.7071 (expected 321.460 ±0.5: only the bottom face,
+     400 − 25π)
 4. Measure: time of a clean release build (`cargo clean && time cargo build --release`), and the size
    of target/release/<binary>.
 5. If a feature is not exposed by the crate, say exactly which, and whether the crate offers a way
