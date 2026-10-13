@@ -9,7 +9,7 @@ Each batch: Codex implements from an exact brief, Gemini writes black-box tests
 bumps the version and commits.
 
 - [x] Batch 2 (v0.20.0): wired schematic, ERC warnings, rounded SMD pads, 11 KiCad footprints.
-- [ ] Batch 3: router for 200-part boards. New 200-part / ~400-net 4-layer benchmark with inner
+- [x] Batch 3 (v0.21.0): router for 200-part boards. New 200-part / ~400-net 4-layer benchmark with inner
   GND/power planes; 100 % routed, 0 DRC errors, deterministic, < ~10 min release. Raise the 8M-cell
   grid limit (compact cells), plane vias for power pins, regional routing, multi-core, DRC spatial index.
 - [ ] Batch 4: differential pairs, length matching (meanders), impedance-driven widths from a stackup,

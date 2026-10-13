@@ -67,11 +67,11 @@ server/src/
     pcb/spec.rs                             strict native .pcb.json parser, pin aliases, netlist and rule overrides
     pcb/footprint.rs                        pure nominal/KiCad footprint dimensions, rounded SMD pads, courtyard, silk and body geometry
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
-    pcb/drc.rs                              saved-copper geometry, net connectivity and separate sorted DRC faults/ERC warnings
-    pcb/route.rs                            deterministic tree A*, local rip-up, PathFinder restarts, 2/4 layers, SMD escape and optional filled vias-in-pad
-    pcb/pour.rs                             i_overlay planar copper fills, thermals, clearance cuts and hole contours
+    pcb/drc.rs                              saved-copper geometry, 4 mm spatial index, pour/via connectivity and sorted DRC faults/ERC warnings
+    pcb/route.rs                            regional tree A*, shared bitsets, parallel obstacle preparation, PathFinder, inner-plane escapes and filled vias-in-pad
+    pcb/pour.rs                             i_overlay planar copper fills, pad/via thermals, foreign-via antipads and hole contours
     pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
-    pcb/gerber.rs                           all Gerber X2 layers, RoundRect flashes, 4-layer copper order and split PTH/NPTH Excellon
+    pcb/gerber.rs                           Gerber X2 layers, explicit clear pour-hole regions, RoundRect flashes and split PTH/NPTH Excellon
     pcb/svg.rs                              rounded PCB pads and connected grid schematics with orthogonal A*, junctions and power symbols
     pcb/export.rs                           rounded JS JSON, JLCPCB CSVs and shared-kernel STEP/GLB assemblies
     rf.rs rfmath.rs                          RF and PCB calculators (IPC-2221/B, Onderdonk, E-series); rf_antenna_sim (openEMS)
@@ -92,7 +92,8 @@ circuit JSON and board boxes, then collects every SVG, CAD and manufacturing exp
 are always available without an external program. CAD export shares
 `part.rs`'s kernel lock, held only inside the worker;
 GLB coordinates, normals and edges use `[x,z,-y]` for Forge's viewer. All output paths resolve through
-`project_path` before async writes. Routing grids are limited to eight million cells to bound memory use.
+`project_path` before async writes. Routing grids are limited to 65 million cells; obstacle bitsets
+and regional search arrays bound memory use.
 Only `.pcb.json` inputs are accepted; other formats fail with `source must be a .pcb.json file`.
 `pcb_drc {"board":"<name>"}` reads the saved native circuit and source rules, checks geometry and
 connectivity in `spawn_blocking`, and writes sorted faults to `fab/<name>/<name>-drc.txt`.
@@ -107,12 +108,28 @@ net's SMD pads; all other clearance checks remain active. The DRC report notes t
 vias-in-pad are required when this rule is enabled.
 Drill minima and annular-ring minima come from `rules.via` (drill and half the diameter/drill difference).
 Saved-coordinate checks allow 0.000001 mm rounding tolerance. Through-hole courtyards reserve both sides.
-Routing first reserves short SMD exits across three deterministic passes, then repairs missing nets
-by ripping up their blockers. Multi-pin branches grow from the whole connected tree. PathFinder uses
-soft routed-copper costs, retries failed nets, checks continuous clearance, and keeps the best legal
-result across deterministic orders. Static masks are cached within 128 MiB and computed per net
-beyond that budget, so large boards still negotiate. DRC uses saved component positions
-even when source rules change; it never re-places the board.
+Routing reserves short SMD exits across three deterministic passes, then repairs missing nets by
+ripping up their blockers. Multi-pin branches grow from the whole connected tree. Large-board A*
+starts within a 3 mm margin around the terminals/tree and doubles the window on failure, up to the
+whole board. Search costs and 32-bit parents occupy only that window. Static obstacle bitsets are
+shared by trace width/clearance with per-net exemptions and a 128 MiB cache budget. Independent
+rule-class masks are prepared with scoped standard-library threads; fixed net priorities and search
+ties make results independent of worker count. Negotiation uses 16-bit occupancy counts, computed
+lazily in visited 128 × 128 cell tiles on large grids, with sparse history, continuous clearance checks
+and deterministic restart orders. Large same-net via sets are indexed by grid column for layer changes.
+Blocked terminal cells fail before allocating search arrays.
+Inner pours reserve their layers for planes: signals stay on other layers, foreign through vias get
+antipads, and each plane terminal reaches copper through its plated hole or a short SMD escape/via.
+Outer pours retain trace-tree routing. Build diagnostics log routing duration, completion, vias and
+passes. Gerber pours emit clear-polarity hole regions before pads, tracks and vias, preserving antipads
+and thermal gaps in manufacturing copper. Pour thermals join both pads and vias; saved-copper DRC checks
+connectivity through the actual pour contours. DRC indexes copper bounds in 4 mm buckets before
+exact geometry checks and uses saved placements even when source rules change.
+`server/tests/pcb_native.rs` includes ignored 200-part tool-level benchmarks with a deterministic
+5 × 4 cluster layout, unique pins, 75% chip budgets, filled vias and budget-limited neighbour buses.
+The 4-layer benchmark requires every net routed and clean saved-copper DRC; the 2-layer variant
+requires at least 95% completion. Both print metrics and save copper/SVG review artifacts under
+`/tmp/batch3/board4` or `/tmp/batch3/board2`.
 `pcb_export_fab` is removed because native `pcb_build` writes every manufacturing artifact.
 
 Generated rectangular SMD pads use a 25% corner radius, capped at 0.25 mm; drilled rectangles stay

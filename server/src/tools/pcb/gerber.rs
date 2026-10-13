@@ -336,14 +336,17 @@ fn coord(p: route::Point, op: usize) -> String {
     )
 }
 fn region(out: &mut String, shape: &[pour::Contour]) {
-    out.push_str("G36*\n");
-    for ring in shape {
+    for (i, ring) in shape.iter().enumerate() {
+        // Gerber fills each contour; holes need separate clear-polarity regions.
+        if i == 1 { out.push_str("%LPC*%\n"); }
+        out.push_str("G36*\n");
         out.push_str(&coord(ring[0], 2));
         for p in ring.iter().skip(1).chain(std::iter::once(&ring[0])) {
             out.push_str(&coord(*p, 1));
         }
+        out.push_str("G37*\n");
     }
-    out.push_str("G37*\n");
+    if shape.len() > 1 { out.push_str("%LPD*%\n"); }
 }
 pub(super) fn attribute(s: &str) -> String {
     s.chars()
@@ -472,6 +475,42 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn holed_regions_clear_copper_and_restore_dark_polarity() {
+        let contains = |text: &str, at: route::Point| {
+            let (mut dark, mut copper) = (true, false);
+            let mut ring = vec![];
+            for line in text.lines() {
+                match line {
+                    "%LPC*%" => dark = false,
+                    "%LPD*%" => dark = true,
+                    "G36*" => ring.clear(),
+                    "G37*" => if super::super::place::inside(at, &ring) { copper = dark; },
+                    _ if line.starts_with('X') => {
+                        let (x, tail) = line[1..].split_once('Y').unwrap();
+                        let (y, op) = tail.split_once('D').unwrap();
+                        // Multiple contours in one region are a union, regardless of winding.
+                        if op == "02*" && !ring.is_empty() {
+                            if super::super::place::inside(at, &ring) { copper = dark; }
+                            ring.clear();
+                        }
+                        ring.push([x.parse::<f64>().unwrap() / 1e6, y.parse::<f64>().unwrap() / 1e6]);
+                    }
+                    _ => {}
+                }
+            }
+            copper
+        };
+        let mut out = String::new();
+        region(&mut out, &[pour::rect([0.; 2], [20.; 2]), pour::rect([0.; 2], [4.; 2]), pour::circle([5., 0.], 0.5)]);
+        assert!(contains(&out, [8., 0.]));
+        assert!(!contains(&out, [0.; 2]));
+        assert!(!contains(&out, [5., 0.]));
+        region(&mut out, &[pour::rect([0.; 2], [1.; 2])]);
+        assert!(contains(&out, [0.; 2]));
+        assert!(!contains(&out, [1., 0.]));
+    }
 
     #[test]
     fn rotated_roundrects_flash_and_expand_on_mask_and_paste() {

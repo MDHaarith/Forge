@@ -1841,3 +1841,232 @@ async fn route_exposed_pad_with_opt_in_filled_vias_and_drc() {
     assert!(drc.text.contains("via in pad: via GND in U1.33"), "{}", drc.text);
     assert!(!drc.text.contains("Filled/capped"));
 }
+
+
+fn nearest_benchmark_pin(pins: &mut Vec<(String, [f64; 2])>, target: [f64; 2]) -> String {
+    let index = (0..pins.len()).min_by(|&a, &b| {
+        let distance = |i: usize| (pins[i].1[0] - target[0]).powi(2) + (pins[i].1[1] - target[1]).powi(2);
+        distance(a).total_cmp(&distance(b)).then(a.cmp(&b))
+    }).unwrap();
+    pins.remove(index).0
+}
+
+fn benchmark_chip_pin(chip: usize, pins: &mut [Vec<(String, [f64; 2])>],
+    remaining: &mut [usize], target: [f64; 2]) -> Option<String> {
+    if remaining[chip] == 0 { return None; }
+    remaining[chip] -= 1;
+    Some(nearest_benchmark_pin(&mut pins[chip], target))
+}
+
+fn benchmark_200_part_spec(layers: usize) -> Value {
+    use forge_server::tools::pcb::footprint;
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut parts = vec![];
+    let mut nets = BTreeMap::<String, Vec<String>>::new();
+    let mut chip_pins = vec![];
+    let mut sot_pins = vec![];
+    let mut passives = vec![];
+    let mut positions = BTreeMap::new();
+    let mut remaining = vec![];
+    let mut centers = vec![];
+    let mut seed = 0x7351_b032u64;
+    for cluster in 0..20 {
+        let at = [-60. + (cluster % 5) as f64 * 30., -37.5 + (cluster / 5) as f64 * 25.];
+        centers.push(at);
+        let package = ["qfn32", "qfn48", "tssop20", "soic16", "msop10"][cluster % 5];
+        let fp = footprint(package).unwrap();
+        let reference = format!("U{}", cluster + 1);
+        parts.push(json!({"ref":reference,"kind":"chip","footprint":package,"at":at}));
+        let mut pins: Vec<_> = fp.pads.iter().map(|p| {
+            (format!("{reference}.{}", p.number), [at[0] + p.at[0], at[1] - p.at[1]])
+        }).collect();
+        positions.extend(pins.iter().cloned());
+        let n = if package.starts_with("qfn") { fp.pads.len() - 1 } else { fp.pads.len() };
+        let ground = if package.starts_with("qfn") { n + 1 } else { n / 2 };
+        for (pin, net) in [(1, "GND"), (ground, "GND"), (n, "3V3")] {
+            let name = format!("{reference}.{pin}");
+            let index = pins.iter().position(|p| p.0 == name).unwrap();
+            pins.remove(index);
+            nets.entry(net.into()).or_default().push(name);
+        }
+        remaining.push(fp.pads.len() * 3 / 4 - 3);
+        chip_pins.push(pins);
+        let reference = format!("Q{}", cluster + 1);
+        let sot_at = [at[0] + 11.8, at[1]];
+        parts.push(json!({"ref":reference,"kind":"chip","footprint":"sot23_6","at":sot_at}));
+        let pins: Vec<_> = footprint("sot23_6").unwrap().pads.iter().map(|p| {
+            (format!("{reference}.{}", p.number), [sot_at[0] + p.at[0], sot_at[1] - p.at[1]])
+        }).collect();
+        positions.extend(pins.iter().cloned());
+        sot_pins.push(pins);
+        let mut signal = vec![];
+        for k in 0..8 {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let decouple = k == 4 || k == 6;
+            let radius = if decouple { 6.5 } else { 7.8 + ((seed >> 32) % 7) as f64 / 10. };
+            let angle = k as f64 * std::f64::consts::FRAC_PI_4;
+            let (sin, cos) = angle.sin_cos();
+            let p_at = [at[0] + radius * cos, at[1] + radius * sin];
+            let package = if k % 2 == 0 { "0402" } else { "0603" };
+            let reference = if k < 4 { format!("R{}_{}", cluster + 1, k + 1) }
+                else { format!("C{}_{}", cluster + 1, k - 3) };
+            parts.push(json!({"ref":reference,"kind":if k < 4 {"resistor"} else {"capacitor"},
+                "footprint":package,"at":p_at,"rotation":angle.to_degrees()}));
+            let names = [format!("{reference}.1"), format!("{reference}.2")];
+            for pad in footprint(package).unwrap().pads {
+                positions.insert(format!("{reference}.{}", pad.number),
+                    [p_at[0] + cos * pad.at[0] + sin * pad.at[1], p_at[1] + sin * pad.at[0] - cos * pad.at[1]]);
+            }
+            if decouple {
+                nets.entry("3V3".into()).or_default().push(names[0].clone());
+                nets.entry("GND".into()).or_default().push(names[1].clone());
+            } else { signal.push(names); }
+        }
+        passives.push(signal);
+    }
+    // Reserve long-net pins before local wiring and neighbour buses spend the chip budgets.
+    for i in 0..10 {
+        let j = 19 - i;
+        let a = benchmark_chip_pin(i, &mut chip_pins, &mut remaining, centers[j])
+            .unwrap_or_else(|| nearest_benchmark_pin(&mut sot_pins[i], centers[j]));
+        let b = benchmark_chip_pin(j, &mut chip_pins, &mut remaining, centers[i])
+            .unwrap_or_else(|| nearest_benchmark_pin(&mut sot_pins[j], centers[i]));
+        nets.insert(format!("LONG_{i:02}"), vec![a, b]);
+    }
+    for i in 0..20 {
+        let signal = &passives[i];
+        for (k, passive) in signal.iter().enumerate() {
+            let pin = nearest_benchmark_pin(&mut sot_pins[i], positions[&passive[1]]);
+            nets.insert(format!("LOCAL_{i:02}_S{k}"), vec![pin, passive[1].clone()]);
+        }
+        let local = match i % 5 { 0 | 1 => 4, 4 => 1, _ => 2 };
+        if local == 1 {
+            for (k, (a, b)) in [(0, 1), (2, 4), (3, 5)].into_iter().enumerate() {
+                let mut pins = vec![signal[a][0].clone(), signal[b][0].clone()];
+                if k == 0 {
+                    pins.push(benchmark_chip_pin(i, &mut chip_pins, &mut remaining, positions[&pins[0]]).unwrap());
+                }
+                nets.insert(format!("LOCAL_{i:02}_C{k}"), pins);
+            }
+        } else {
+            for k in 0..local {
+                let passive = signal[k][0].clone();
+                let chip = benchmark_chip_pin(i, &mut chip_pins, &mut remaining, positions[&passive]).unwrap();
+                let mut pins = vec![chip, passive];
+                if local == 4 && k >= 2 { pins.push(signal[k + 2][0].clone()); }
+                nets.insert(format!("LOCAL_{i:02}_C{k}"), pins);
+            }
+            if local == 2 {
+                for (k, (a, b)) in [(2, 4), (3, 5)].into_iter().enumerate() {
+                    nets.insert(format!("LOCAL_{i:02}_P{k}"), vec![signal[a][0].clone(), signal[b][0].clone()]);
+                }
+            }
+        }
+    }
+    let mut bus_bits = 0;
+    let mut extras = 0;
+    for i in 0..20 {
+        for j in [((i % 5) < 4).then_some(i + 1), (i < 15).then_some(i + 5)].into_iter().flatten() {
+            let width = 8.min(remaining[i]).min(remaining[j]);
+            for bit in 0..width {
+                let a = benchmark_chip_pin(i, &mut chip_pins, &mut remaining, centers[j]).unwrap();
+                let b = benchmark_chip_pin(j, &mut chip_pins, &mut remaining, centers[i]).unwrap();
+                nets.insert(format!("BUS_{i:02}_{j:02}_{bit}"), vec![a, b]);
+            }
+            bus_bits += width;
+            for extra in 0..2.min(remaining[i]).min(remaining[j]) {
+                let a = benchmark_chip_pin(i, &mut chip_pins, &mut remaining, centers[j]).unwrap();
+                let b = benchmark_chip_pin(j, &mut chip_pins, &mut remaining, centers[i]).unwrap();
+                nets.insert(format!("EXTRA_{i:02}_{j:02}_{extra}"), vec![a, b]);
+                extras += 1;
+            }
+        }
+    }
+    let mut used = BTreeSet::new();
+    for pin in nets.values().flatten() { assert!(used.insert(pin.clone()), "pin used twice: {pin}"); }
+    let mut chip_used = 0;
+    for i in 0..20 {
+        let prefix = format!("U{}.", i + 1);
+        let count = used.iter().filter(|pin| pin.starts_with(&prefix)).count();
+        let pads = footprint(["qfn32", "qfn48", "tssop20", "soic16", "msop10"][i % 5]).unwrap().pads.len();
+        assert!(count * 4 <= pads * 3, "U{} exceeds 75% budget", i + 1);
+        chip_used += count;
+    }
+    assert_eq!(parts.len(), 200);
+    eprintln!("200-part generator: {} nets, {} connected pins, {chip_used}/512 chip pads used, {bus_bits} bus bits, {extras} extra neighbour nets",
+        nets.len(), used.len());
+    json!({"board":{"width":if layers == 4 {150} else {180},"height":if layers == 4 {100} else {120},"layers":layers},
+        "rules":{"trace":0.15,"clearance":0.15,"via":[0.5,0.25],"edge":0.3,"via_in_pad":true},
+        "parts":parts,"nets":nets,"pours":if layers == 4 {
+            json!([{"net":"GND","layer":"inner1"},{"net":"3V3","layer":"inner2"}])
+        } else { json!([]) }})
+}
+
+#[test]
+fn benchmark_200_part_generator_is_repeatable_and_respects_pin_budgets() {
+    let four = benchmark_200_part_spec(4);
+    assert_eq!(four, benchmark_200_part_spec(4));
+    let two = benchmark_200_part_spec(2);
+    assert_eq!(four["parts"], two["parts"]);
+    assert_eq!(four["nets"], two["nets"]);
+    let prepared = forge_server::tools::pcb::prepare(&four.to_string()).unwrap();
+    assert_eq!(prepared.parts.len(), 200);
+    assert_eq!(prepared.nets.len(), four["nets"].as_object().unwrap().len());
+}
+
+async fn benchmark_200_part_build(layers: usize) {
+    let input = benchmark_200_part_spec(layers);
+    let net_count = input["nets"].as_object().unwrap().len();
+    let dir = project("route_200", &[("pcb/route200.pcb.json", input.to_string())]);
+    let saved = std::env::temp_dir().join("batch3").join(format!("board{layers}"));
+    std::fs::create_dir_all(saved.join("pcb")).unwrap();
+    std::fs::copy(dir.path.join("pcb/route200.pcb.json"), saved.join("pcb/route200.pcb.json")).unwrap();
+    let start = std::time::Instant::now();
+    let out = match run("pcb_build", json!({"source":"pcb/route200.pcb.json"}), &dir.path).await {
+        Ok(out) => out,
+        Err(error) => {
+            let text = error.to_string();
+            let failed: Vec<_> = text.lines().filter(|l| l.starts_with("unroutable: net ")).collect();
+            assert!(!failed.is_empty(), "{text}");
+            let routed = net_count - failed.len();
+            eprintln!("200-part {layers}L: {routed}/{net_count} nets routed; build {:.3} s\n{text}", start.elapsed().as_secs_f64());
+            assert!(layers == 2 && routed * 100 >= net_count * 95, "{text}");
+            return;
+        }
+    };
+    let elapsed = start.elapsed();
+    assert!(out.text.contains("No errors: every connection is routed."), "{}", out.text);
+    for file in &out.files {
+        if file.ends_with(".gbr") || file.ends_with("-pcb.svg") || file.ends_with(".circuit.json") {
+            let target = saved.join(file);
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+            std::fs::copy(dir.path.join(file), target).unwrap();
+        }
+    }
+    let copper: Value = serde_json::from_slice(&std::fs::read(dir.path.join("pcb/route200.circuit.json")).unwrap()).unwrap();
+    let vias = copper.as_array().unwrap().iter().filter(|e| e["type"] == "pcb_via").count();
+    eprintln!("200-part {layers}L: {net_count}/{net_count} nets, {vias} vias; full build {:.3} s", elapsed.as_secs_f64());
+    let start = std::time::Instant::now();
+    let drc = run("pcb_drc", json!({"board":"route200"}), &dir.path).await.unwrap();
+    let drc_time = start.elapsed();
+    eprintln!("200-part {layers}L DRC: {:.3} s\n{}", drc_time.as_secs_f64(), drc.text);
+    std::fs::write(saved.join("drc.txt"), &drc.text).unwrap();
+    assert!(drc.text.ends_with("No DRC errors."), "{}", drc.text);
+    if layers == 4 {
+        // shortcut: 20 minute build budget (measured 644 s on 8 threads), tighten when routing gets faster.
+        assert!(elapsed.as_secs_f64() < 1200., "build took {elapsed:?}");
+        assert!(drc_time.as_secs_f64() < 30., "DRC took {drc_time:?}");
+    }
+}
+
+#[tokio::test]
+#[ignore = "200-part routing benchmark; run in release"]
+async fn route_200_part_board_completes_drc_clean() {
+    benchmark_200_part_build(4).await;
+}
+
+#[tokio::test]
+#[ignore = "200-part routing benchmark; run in release"]
+async fn two_layer_200_part_board_routes_at_least_95_percent() {
+    benchmark_200_part_build(2).await;
+}

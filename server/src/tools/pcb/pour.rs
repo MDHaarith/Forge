@@ -207,6 +207,12 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
                 b.via[0] / 2. + b.clearance(net).max(b.clearance(v.net)),
             ));
         }
+        if v.net == net {
+            gaps.push(circle(v.at, b.via[0] / 2. + b.clearance(net)));
+            reinforce.push(circle(v.at, b.via[0] / 2.));
+            let span = b.via[0] + 2. * (b.clearance(net) + 0.15);
+            for size in [[span, 0.3], [0.3, span]] { reinforce.push(rect(v.at, size)); }
+        }
         drills.push(circle(v.at, b.via[1] / 2.));
     }
     for &(at, size, layers) in &b.keepouts {
@@ -298,6 +304,24 @@ mod tests {
         island.edge = 0.6;
         island.pads.clear();
         assert!(pour(&island, &r, ground, 1).is_empty());
+    }
+
+    #[test]
+    fn via_thermals_touch_annuli_and_foreign_vias_get_antipads() {
+        let prepared = super::super::prepare(r#"{"board":{"width":20,"height":16,"layers":4},"pours":[{"net":"GND","layer":"inner1"}]}"#).unwrap();
+        let b = Board::from_prepared(&prepared).unwrap();
+        let r = Routes { tracks: vec![], vias: vec![super::super::route::Via { at: [-3., 0.], net: 0 },
+            super::super::route::Via { at: [3., 0.], net: usize::MAX }], routed: vec![true], passes: 1 };
+        let s = pour(&b, &r, 0, 2);
+        assert_eq!(s.len(), 1);
+        assert!(!contains(&s, [-3., 0.]));
+        for d in [b.via[1] / 2. + 0.05, b.via[0] / 2. + b.clearance / 2.] {
+            for [x, y] in [[d, 0.], [-d, 0.], [0., d], [0., -d]] {
+                assert!(contains(&s, [-3. + x, y]));
+            }
+        }
+        assert!(!contains(&s, [3. + b.via[0] / 2. + b.clearance - 0.01, 0.]));
+        assert!(contains(&s, [3. + b.via[0] / 2. + b.clearance + 0.01, 0.]));
     }
 
     #[test]

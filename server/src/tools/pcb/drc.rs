@@ -13,6 +13,18 @@ enum Shape {
     Region(pour::Shapes),
 }
 impl Shape {
+    fn bounds(&self) -> [f64; 4] {
+        match self {
+            Self::Disk(p, r) => [p[0] - r, p[1] - r, p[0] + r, p[1] + r],
+            Self::Stroke(a, b, r) => [a[0].min(b[0]) - r, a[1].min(b[1]) - r,
+                a[0].max(b[0]) + r, a[1].max(b[1]) + r],
+            Self::Region(shapes) => shapes.iter().flatten().flatten().fold(
+                [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY], |mut v, p| {
+                    v[0] = v[0].min(p[0]); v[1] = v[1].min(p[1]);
+                    v[2] = v[2].max(p[0]); v[3] = v[3].max(p[1]); v
+                }),
+        }
+    }
     fn contains(&self, p: Point) -> bool {
         match self {
             Self::Disk(at, radius) => distance(p, *at) <= radius + EPS,
@@ -128,6 +140,31 @@ impl Shape {
                 })
                 .fold(f64::INFINITY, f64::min),
         }
+    }
+}
+
+struct SpatialIndex {
+    buckets: BTreeMap<(i64, i64), Vec<usize>>,
+    large: Vec<usize>,
+}
+impl SpatialIndex {
+    fn cells(bounds: [f64; 4]) -> Option<[i64; 4]> {
+        let cells = bounds.map(|v| (v / 4.).floor() as i64);
+        let area = (cells[2] as i128 - cells[0] as i128 + 1).checked_mul(cells[3] as i128 - cells[1] as i128 + 1)?;
+        (area > 0 && area <= 4096).then_some(cells)
+    }
+    fn insert(&mut self, i: usize, bounds: [f64; 4]) {
+        if let Some([x0, y0, x1, y1]) = Self::cells(bounds) {
+            for y in y0..=y1 { for x in x0..=x1 { self.buckets.entry((x, y)).or_default().push(i); } }
+        } else { self.large.push(i); }
+    }
+    fn nearby(&self, bounds: [f64; 4], end: usize) -> Vec<usize> {
+        let Some([x0, y0, x1, y1]) = Self::cells(bounds) else { return (0..end).collect(); };
+        let mut found = self.large.clone();
+        for y in y0..=y1 { for x in x0..=x1 {
+            if let Some(items) = self.buckets.get(&(x, y)) { found.extend_from_slice(items); }
+        } }
+        found.sort_unstable(); found.dedup(); found
     }
 }
 
@@ -455,7 +492,9 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
         }
     }
     let mut parents: Vec<_> = (0..items.len()).collect();
-    // shortcut: pairwise copper checks, add a spatial index when large boards make DRC slow.
+    let mut index = SpatialIndex { buckets: BTreeMap::new(), large: vec![] };
+    let max_clearance = spec.netclasses.values().filter_map(|c| c.clearance).fold(rules.clearance, f64::max) + EPS;
+    let bounds: Vec<_> = items.iter().map(|i| i.shape.bounds()).collect();
     for (i, a) in items.iter().enumerate() {
         if !a.hole {
             let gap = a.shape.edge_gap(&outline);
@@ -468,7 +507,11 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                 ));
             }
         }
-        for (j, b) in items[..i].iter().enumerate() {
+        let [x0, y0, x1, y1] = bounds[i];
+        for j in index.nearby([x0 - max_clearance, y0 - max_clearance, x1 + max_clearance, y1 + max_clearance], i) {
+            let b = &items[j];
+            if bounds[j][0] > x1 + max_clearance || bounds[j][1] > y1 + max_clearance
+                || bounds[j][2] < x0 - max_clearance || bounds[j][3] < y0 - max_clearance { continue; }
             if a.layers & b.layers == 0 || (a.hole && b.hole) {
                 continue;
             }
@@ -506,6 +549,7 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                 }
             }
         }
+        index.insert(i, bounds[i]);
     }
     for net in &nets {
         let names: Vec<_> = net
@@ -603,6 +647,28 @@ mod tests {
         let routed = route::route(&board);
         super::super::circuit(&prepared, &board, &routed, &vec![])
     }
+    #[test]
+    fn spatial_index_keeps_every_close_pair_across_bucket_edges() {
+        let shapes: Vec<_> = (0..100).map(|i| {
+            let p = [(i * 37 % 101) as f64 / 5. - 10., (i * 61 % 103) as f64 / 5. - 10.];
+            match i % 3 {
+                0 => Shape::Disk(p, 0.3),
+                1 => Shape::Stroke(p, [p[0] + 8.1, p[1] + 4.2], 0.15),
+                _ => Shape::Region(vec![vec![pour::rect(p, [1.2, 0.8])]]),
+            }
+        }).collect();
+        let mut index = SpatialIndex { buckets: BTreeMap::new(), large: vec![] };
+        for (i, shape) in shapes.iter().enumerate() {
+            let [x0, y0, x1, y1] = shape.bounds();
+            let found = index.nearby([x0 - 0.8, y0 - 0.8, x1 + 0.8, y1 + 0.8], i);
+            for (j, other) in shapes[..i].iter().enumerate() {
+                if shape.gap(other) <= 0.8 { assert!(found.contains(&j), "missed {j} to {i}"); }
+            }
+            index.insert(i, shape.bounds());
+        }
+        assert!(SpatialIndex::cells([-1e100, -1e100, 1e100, 1e100]).is_none());
+    }
+
     #[test]
     fn deleted_copper_breaks_connectivity_and_reports_are_sorted() {
         let mut copper = circuit(SPEC);

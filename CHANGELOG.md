@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.21.0 — 2026-10-14
+
+- The autorouter finishes 200-part boards: a generated 200-part, 330-net board routes 330/330 and
+  passes DRC on 4 layers (644 s, 2.6 GB peak) and on 2 layers (33 min).
+- Inner layers with a pour are planes: no signal tracks, and plane-net SMD pads drop a via into the
+  plane instead of growing trace trees. Via thermals always touch the via annulus.
+- Routing grid limit raised from 8 to 65 million cells with bitset masks and sparse storage; A* searches
+  a window around each net that doubles on failure; obstacle masks are prepared on all cores with
+  thread-count-independent results.
+- DRC checks copper through a 4 mm spatial index (1 s on the 200-part board).
+- Fix: Gerber pours with holes now clear the holes (separate clear-polarity regions).
+
 ## 0.20.0 — 2026-10-14
 
 - Schematics draw real wires: grid-snapped symbols, orthogonal wires that avoid bodies and other nets,
