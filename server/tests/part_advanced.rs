@@ -686,7 +686,6 @@ async fn sheet_error_flanges_bends_mismatch() {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn inspect_center_of_mass_box() {
     let (dir, _out) = build(json!({
         "name": "box234",
@@ -701,7 +700,6 @@ async fn inspect_center_of_mass_box() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn inspect_cubes_overlapping() {
     let dir = project("part", &[] as &[(&str, &str)]);
     run(
@@ -744,7 +742,6 @@ async fn inspect_cubes_overlapping() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn inspect_cubes_clearance_3() {
     let dir = project("part", &[] as &[(&str, &str)]);
     run(
@@ -785,7 +782,6 @@ async fn inspect_cubes_clearance_3() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn inspect_cubes_clearance_5() {
     let dir = project("part", &[] as &[(&str, &str)]);
     run(
@@ -826,7 +822,6 @@ async fn inspect_cubes_clearance_5() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn inspect_stl_tetrahedron() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let facet = |a: &str, b: &str, c: &str| {
@@ -850,7 +845,6 @@ async fn inspect_stl_tetrahedron() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn inspect_error_against_not_step() {
     let (dir, _out) = build(json!({
         "name": "cube",
@@ -875,7 +869,6 @@ async fn inspect_error_against_not_step() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn inspect_error_overhang_range() {
     let (dir, _out) = build(json!({
         "name": "cube",

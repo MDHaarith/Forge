@@ -13,7 +13,7 @@ the phases, and keep the external version working until its native replacement p
 
 | Tool | Needs | Native replacement |
 |---|---|---|
-| freecad_build, freecad_inspect, freecad_drawing | FreeCAD | part_build/part_inspect cover solids, holes, mass and overhangs (v0.15.0), plus native loft, sweep, shell, mirror, patterns, threads and sheet metal (stage 2 in progress); still missing: interference checks, drawings |
+| freecad_build, freecad_inspect, freecad_drawing | FreeCAD | part_build/part_inspect cover solids, holes, mass and overhangs (v0.15.0), plus native loft, sweep, shell, mirror, patterns, threads, sheet metal, centre of mass and interference/clearance (stage 2 in progress); still missing: drawings |
 | blender_build | Blender | renderer and mesh modifiers |
 | openscad_render | OpenSCAD | fold into the CAD kernel, or drop |
 | pcb_build | Node + tscircuit engine | Rust PCB engine |
@@ -26,8 +26,8 @@ Already native: list_files, read_file, write_file, part_build, part_inspect, rf_
 
 CAD kernel (v0.15.0, stage 1 of `plan.md` done): `part_build` makes exact solids (primitives, extrude,
 revolve, booleans, fillet, chamfer, place, ISO holes, enclosure, lid, standoffs) → STEP/STL/JSON, and
-`part_inspect` reports size, volume, mass, holes and overhangs. `cad_model` is removed. The FreeCAD tools
-stay as a fallback until interference checks and drawings are
+`part_inspect` reports size, volume, centre of mass, mass, holes, configurable overhangs and STEP
+interference/clearance. `cad_model` is removed. The FreeCAD tools stay as a fallback until drawings are
 native.
 
 ## Phases (estimates include tests; ±50%)
