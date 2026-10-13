@@ -1,0 +1,36 @@
+Forge native PCB spike; units mm; release measurements exclude compilation.
+footprint 0402: IPC nominal pad=0.5900 x 0.6400 mm centres=0.9700 mm; KiCad pad=0.5400 x 0.6400 mm centres=1.0200 mm; max_delta=0.0500 mm within_0.05=true copper_pads=2
+  reference: /usr/share/kicad/footprints/Resistor_SMD.pretty/R_0402_1005Metric.kicad_mod
+footprint 0603: IPC nominal pad=0.8750 x 0.9500 mm centres=1.5750 mm; KiCad pad=0.8000 x 0.9500 mm centres=1.6500 mm; max_delta=0.0750 mm within_0.05=false copper_pads=2
+  reference: /usr/share/kicad/footprints/Resistor_SMD.pretty/R_0603_1608Metric.kicad_mod
+footprint soic8: IPC nominal pad=1.9500 x 0.6000 mm centres=4.9500 mm; KiCad pad=1.9500 x 0.6000 mm centres=4.9500 mm; max_delta=0.0000 mm within_0.05=true copper_pads=8
+footprint soic8: row pitch IPC=1.2700 KiCad=1.2700 mm
+  reference: /usr/share/kicad/footprints/Package_SO.pretty/SOIC-8_3.9x4.9mm_P1.27mm.kicad_mod
+footprint qfn32: IPC nominal pad=0.8750 x 0.2500 mm centres=4.8750 mm; KiCad pad=0.8750 x 0.2500 mm centres=4.8750 mm; max_delta=0.0000 mm within_0.05=true copper_pads=33
+footprint qfn32: row pitch IPC=0.5000 KiCad=0.5000 mm
+qfn32 exposed pad: IPC=[3.1, 3.1] KiCad=[3.1, 3.1] mm
+  reference: /usr/share/kicad/footprints/Package_DFN_QFN.pretty/QFN-32-1EP_5x5mm_P0.5mm_EP3.1x3.1mm.kicad_mod
+router LED: board=30 x 20 mm layers=2 parts=4 pads=14 nets=4 routed=4 unrouted=0 routed_multiterminal_nets=3 connection_links=4 vias=1 tracks=17 grid=0.100 mm passes=1 time_ms=9.196 clearance_violations=0 min_gap=0.225000 mm
+router LED: identical second run=true; unrouted=[]
+router generated-30: board=50 x 40 mm layers=2 parts=30 pads=430 nets=40 routed=26 unrouted=14 routed_multiterminal_nets=26 connection_links=26 vias=40 tracks=480 grid=0.100 mm passes=3 time_ms=3395.328 clearance_violations=0 min_gap=0.200000 mm
+router generated-30: identical second run=true; unrouted=["N03", "N04", "N07", "N08", "N11", "N13", "N19", "N22", "N24", "N26", "N31", "N34", "N36", "N38"]
+pour cadrum 2D attempt: Face has no public constructor/boolean; zero-thickness extrude='Extrude failed: direction is zero-length'; time_ms=0.125
+pour cadrum thin-solid proxy: operands=22 components=1 thickness=0.035 mm area=537.770513 mm2 top_face_area=537.770513 mm2 time_ms=1303.300 above_1s=true vs_polygon_area_delta=0.000000399 mm2 sample_mismatches=0/610
+pour i_overlay 4.5.2: area=537.770512 mm2 components=1 removed_islands=0 holes=19 clearance=0.2 mm thermal_pads=2 spokes=8 spoke_width=0.3 mm thermal_point_checks=10 time_ms=0.974
+polygon choice: i_overlay; public planar booleans, contour output, native holes/islands, no artificial thickness; cadrum remains STEP/GLB kernel
+fab: Gerber X2 mm 4.6 F_Cu flashes=7 draws=16; Edge_Cuts lines=4; Excellon tools=3 holes=4; B_Cu regions=1 polygon_area_roundtrip_delta=0.000009927 mm2 time_ms=1.467
+fab preview: gerber-preview.svg reads led-F_Cu.gbr + led-Edge_Cuts.gbr + led.drl; right panel also reads led-B_Cu.gbr
+3D slab: 30 x 20 x 1.6 mm drill_holes=4 volume=944.505665 expected=944.505665 mm3
+3D part R1: body=[1.0, 0.5, 0.4] mm at=[-6.0, 0.0] z=[0.800,1.200] volume=0.200000 mm3
+3D part LED1: body=[0.8, 1.6, 0.6] mm at=[6.0, 0.0] z=[0.800,1.400] volume=0.768000 mm3
+3D part J1: body=[2.54, 5.08, 8.5] mm at=[0.0, -6.0] z=[0.800,9.300] volume=109.677200 mm3
+3D part U1: body=[3.9, 4.9, 1.75] mm at=[0.0, 4.0] z=[-2.550,-0.800] volume=33.442500 mm3
+STEP: solids=5 bytes=90135 total_volume=1088.593365 mm3 imported_volume=1088.593365 mm3 delta=0.000000000004 mm3 build_ms=9.959 write_ms=8.244 read_ms=23.676
+GLB: reused cadrum::Mesh::write_gltf_binary (no Rust GLB writer in server/src); bytes=76000 vertices=2144 triangles=2092 primitives=4 chunk_lengths/indices/bounds=valid mesh_ms=31.411 write_ms=0.555
+GLB axes: Y-up file bounds=[-15.0, -2.549999952316284, -10.0]..[15.0, 9.300000190734863, 10.0]; Forge Z-up size=[30.0, 20.0, 11.850000143051147] mm; keep existing mm convention, no x1000 scale
+plan arithmetic: clearance/2 = 0.2/2 = 0.1 mm; LED grid = 301*201*2 = 121002 states; generated grid = 501*401*2 = 401802 states
+plan arithmetic: keepout [-3,16,32,8] spans x=[-19,13], y=[12,20]; board y=[-10,10]; intersection=0 mm2 (12 > 10)
+plan arithmetic: GND terminals = LED1.K + J1.2 + U1.8 = 3; needs 3-1 = 2 links; VCC has 1 terminal, so 0 links
+plan arithmetic: 0603 pad difference = 0.875-0.800 = 0.075 mm; centre difference = 1.650-1.575 = 0.075 mm; exceeds 0.05 by 0.025 mm; lock component tolerances before freezing tests
+plan limit: generated board has 30 < 60 parts, 430 pads and 14 unrouted nets; part count alone does not predict grid router success
+all spike geometry/export assertions passed; numerical contract mismatches and routing failures remain reported above

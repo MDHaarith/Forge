@@ -71,7 +71,7 @@ Units mm, degrees; origin at the board centre, +y up. Unknown keys are an error.
   "nets": {"IN": ["J1.1", "R1.1"], "A": ["R1.2", "LED1.A"], "GND": ["LED1.K", "J1.2"]},
   "holes": [{"at": [12, 7], "d": 3.2}],
   "pours": [{"net": "GND", "layer": "bottom"}],
-  "keepouts": [{"rect": [-3, 16, 32, 8], "layers": ["bottom"]}],
+  "keepouts": [{"rect": [-3, 6, 24, 6], "layers": ["bottom"]}],
   "traces": [{"net": "RF", "width": 1.1}]
 }
 ```
@@ -94,10 +94,19 @@ Units mm, degrees; origin at the board centre, +y up. Unknown keys are an error.
 `pinheader_2xN` (2.54 pitch), `crystal_hc49`, `crystal_3225`, `button_6x6`, `sod123`. Each has pads,
 courtyard, silkscreen outline, pin-1 mark, and a 3D body box (height per package).
 
-**Reference:** pad size and pad centre spacing of `0402`, `0603`, `soic8` and `qfn32` within 0.05 of
-KiCad's `Resistor_SMD.pretty/R_0402_1005Metric`, `R_0603_1608Metric`,
-`Package_SO.pretty/SOIC-8_3.9x4.9mm_P1.27mm` and `Package_DFN_QFN.pretty/QFN-32-1EP_5x5mm_P0.5mm*`.
-Step 0 prints these numbers; the tests store them.
+**Reference** (step 0, `spikes/pcb/README.md`; tests assert the calculated values exactly):
+
+| Footprint | Pad (mm) | Opposite-pad centres (mm) | KiCad pad / centres |
+|---|---|---|---|
+| `0402` | 0.59 × 0.64 | 0.97 | 0.54 × 0.64 / 1.02 |
+| `0603` | 0.875 × 0.95 | 1.575 | 0.80 × 0.95 / 1.65 |
+| `soic8` | 1.95 × 0.60 | 4.95 | same |
+| `qfn32` | 0.875 × 0.25, EP 3.1 × 3.1 | 4.875 | same (`QFN-32-1EP_5x5mm_P0.5mm_EP3.1x3.1mm`) |
+
+Every generated footprint stays within 0.1 mm of KiCad's matching footprint. Use the spike's
+formulas (README "Footprints"), including `CS = sqrt(CL² + 2*CT²)` for IC leads. Pads are
+rectangles: `shortcut: rectangular SMD pads, upgrade to rounded rectangles if a fab or paste
+stencil needs them`.
 
 ### 3.3 Outputs (names unchanged from today)
 
@@ -116,16 +125,23 @@ Step 0 prints these numbers; the tests store them.
 
 ### 3.4 Engine rules
 
-- Autorouter: grid A* (grid = clearance/2, min 0.05) over the copper layers with via cost, nets
-  ordered short-first, then rip-up-and-retry up to 3 passes. `shortcut: grid maze router, upgrade to
-  a shape-based router when boards over ~60 parts fail to route`.
-- Pours: polygon booleans (board − clearance-expanded foreign copper − keepouts), thermal relief
-  spokes for same-net pads, islands under 1 mm² removed. Step 0 picks cadrum 2D faces or one crate.
+- Autorouter: port `spikes/pcb/src/route.rs`: grid A* (grid = max(clearance/2, 0.05)), 4
+  neighbours + layer change, step cost 10, via cost 300, same-net through-holes change layer free,
+  nets short-first, failed nets promoted, up to 3 rip-up passes, best pass kept. Must be
+  deterministic. Bar: every realistic test board (LED, 555 blinker, antenna, 4-layer) routes 100 %;
+  the spike's random 30-part stress board must route at least 26/40 (no regression).
+  `shortcut: grid maze router, upgrade to a shape-based router when real boards leave nets unrouted`.
+- Pours: port `spikes/pcb/src/pour.rs` with the crate `i_overlay` 4.5 (planar booleans in ~1 ms;
+  cadrum has no 2D face booleans and its 3D workaround took 1.3 s). Board − clearance-expanded
+  foreign copper − keepouts − drills, 0.3 mm thermal spokes for same-net pads, subtract foreign
+  copper again after spokes, islands under 1 mm² removed, clearance arcs circumscribed (64 segments).
 - Placement: parts with `at` stay; others are packed on the free board area, connected parts near
   each other, courtyards not overlapping, `edge` from the outline.
 - Schematic SVG: `shortcut: grid of symbols with net labels instead of drawn wires, upgrade to
   wire routing when users ask for readable schematics`.
-- 3D: board slab + package boxes through cadrum → `.step`, mesh → `.glb`.
+- 3D: board slab + package boxes through cadrum → `.step`; mesh → `.glb` with cadrum's
+  `Mesh::write_gltf_binary` after mapping `[x,y,z]` to `[x,z,-y]` (positions and normals), in mm,
+  as `spikes/pcb/src/fab.rs` does. Gerber writer and readback also start from `fab.rs`.
 - Never hold the cadrum `kernel()` lock across `.await`. Long CPU work runs in `spawn_blocking`.
 
 ### 3.5 Errors (word for word)
@@ -153,7 +169,7 @@ the findings and the agent's previous report.
 
 ## 5. Work order
 
-- [ ] Step 0: spike (GPT)
+- [x] Step 0: spike (GPT)
 - [ ] Step 1: reference tests (Gemini)
 - [ ] Step 2: spec parser, footprints, netlist check, placement (GPT)
 - [ ] Step 3: autorouter, pours, keepouts, antennas (GPT)
@@ -196,7 +212,8 @@ the polygon decision and any new crate (with its reason) in section 3.4; copy pi
 > table B, E96). Build boards by writing `pcb/<name>.pcb.json` and calling `pcb_build`. Include the
 > LED board, a ground-pour board (`fab/<name>/<name>-B_Cu.gbr` contains `G36`), the antenna board
 > from `pcb_build_accepts_a_printed_antennas_open_arm…` translated to JSON (same max-y assertion),
-> a 4-layer board, an auto-placed board with no `at`, and `pcb_drc` on a clean and on a broken board.
+> a 555 LED blinker (soic8 NE555, 3 resistors, 2 capacitors, LED, 2-pin header) that must route with
+> no errors, a 4-layer board, an auto-placed board with no `at`, and `pcb_drc` on a clean and on a broken board.
 > Parse Gerber/Excellon text directly; check every JSON number the UI reads is JS-formatted.
 > Mark every test `#[ignore = "stage 3 not built yet"]`, with name prefixes `spec_`, `fp_`, `route_`,
 > `pour_`, `out_`, `drc_`, `calc_` so each step un-ignores its group. No network, no Node, no KiCad.
