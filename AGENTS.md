@@ -3,6 +3,7 @@
 Forge is edited by AI agents. Read this file, then `docs/ARCHITECTURE.md` (map of every file and how a
 chat flows), then `docs/ROADMAP.md` (what to build next and the rule that Forge must not depend on
 FreeCAD, KiCad, Blender or other installed programs).
+If `plan.md` exists at the repo root, it is the current work plan: follow it and tick its boxes.
 
 ## Before you commit
 - Run `cargo test --workspace` and `npm run typecheck`. Both must pass with no warnings.
