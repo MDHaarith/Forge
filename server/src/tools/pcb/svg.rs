@@ -82,8 +82,34 @@ pub(super) fn board(
         }
     }
     for p in &b.pads {
+        if !p.plated {
+            continue;
+        }
         if p.round {
-            circle(&mut out, p.at, p.size[0] / 2., "#e8c66a");
+            if (p.size[0] - p.size[1]).abs() > 1e-6 {
+                let (w, h) = (p.size[0], p.size[1]);
+                let rad = p.rotation.to_radians();
+                let cos = rad.cos();
+                let sin = rad.sin();
+                let (a, b, r) = if w >= h {
+                    let half = (w - h) / 2.;
+                    (
+                        [p.at[0] - half * cos, p.at[1] - half * sin],
+                        [p.at[0] + half * cos, p.at[1] + half * sin],
+                        h / 2.,
+                    )
+                } else {
+                    let half = (h - w) / 2.;
+                    (
+                        [p.at[0] + half * sin, p.at[1] - half * cos],
+                        [p.at[0] - half * sin, p.at[1] + half * cos],
+                        w / 2.,
+                    )
+                };
+                line(&mut out, a, b, r * 2., "#e8c66a");
+            } else {
+                circle(&mut out, p.at, p.size[0] / 2., "#e8c66a");
+            }
         } else {
             let ring = pour::rect([0.; 2], p.size)
                 .into_iter()
@@ -111,11 +137,15 @@ pub(super) fn board(
         let mark = p.footprint.pin1;
         circle(&mut out, p.point([mark[0], -mark[1]]), 0.15, "#f8fafc");
     }
-    for (at, d) in gerber::drills(b, r, true)
+    for hole in gerber::drills(b, r, true)
         .into_iter()
         .chain(gerber::drills(b, r, false))
     {
-        circle(&mut out, at, d / 2., "#101923");
+        if let Some([p1, p2]) = hole.slot {
+            line(&mut out, p1, p2, hole.tool, "#101923");
+        } else {
+            circle(&mut out, hole.at, hole.tool / 2., "#101923");
+        }
     }
     out.push_str("</g>");
     for p in &prepared.parts {

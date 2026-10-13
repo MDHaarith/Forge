@@ -458,7 +458,7 @@ fn resolve_pins(part: &Part, fp: &Footprint, name: &str) -> Result<Vec<String>, 
         (Kind::Led | Kind::Diode, "K") => Some("2"),
         _ => None,
     };
-    let numbers = if fp.pads.iter().any(|p| p.number == name) {
+    let mut numbers = if fp.pads.iter().any(|p| p.number == name) {
         vec![name.to_owned()]
     } else if let Some(number) = alias {
         vec![number.to_owned()]
@@ -469,6 +469,23 @@ fn resolve_pins(part: &Part, fp: &Footprint, name: &str) -> Result<Vec<String>, 
             .map(|(number, _)| number.clone())
             .collect()
     };
+    if part.footprint.as_deref() == Some("usb_c_16") {
+        let pairs = [
+            ("A1", "B12"),
+            ("B12", "A1"),
+            ("A4", "B9"),
+            ("B9", "A4"),
+            ("A9", "B4"),
+            ("B4", "A9"),
+            ("A12", "B1"),
+            ("B1", "A12"),
+        ];
+        for (a, b) in pairs {
+            if numbers.iter().any(|n| n == a) && !numbers.iter().any(|n| n == b) {
+                numbers.push(b.to_string());
+            }
+        }
+    }
     if numbers.is_empty()
         || numbers
             .iter()

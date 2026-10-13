@@ -232,10 +232,16 @@ fn circuit(prepared: &PreparedBoard, b: &route::Board, r: &route::Routes, pours:
         let prefix = format!("{}.", spec.reference);
         for pad in b.pads.iter().filter(|pad| pad.name.starts_with(&prefix)) {
             let pin = pad.name.strip_prefix(&prefix).unwrap();
-            if pad.drill > 0. {
-                elements.push(json!({"type":"pcb_plated_hole","pcb_plated_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"shape":"circle","outer_diameter":pad.size[0],"hole_diameter":pad.drill,"layers":(0..b.layers).map(|i|Layer::from_index(i).name()).collect::<Vec<_>>(),"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
+            if let Some(drill) = pad.drill {
+                if !pad.plated {
+                    elements.push(json!({"type":"pcb_hole","pcb_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"hole_diameter":drill[0],"hole_width":drill[0],"hole_height":drill[1]}));
+                } else if pad.round && (pad.size[0] != pad.size[1] || drill[0] != drill[1]) {
+                    elements.push(json!({"type":"pcb_plated_hole","pcb_plated_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"shape":"oval","outer_diameter":pad.size[0].max(pad.size[1]),"outer_width":pad.size[0],"outer_height":pad.size[1],"hole_diameter":drill[0].min(drill[1]),"hole_width":drill[0],"hole_height":drill[1],"rotation":pad.rotation,"layers":(0..b.layers).map(|i|Layer::from_index(i).name()).collect::<Vec<_>>(),"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
+                } else {
+                    elements.push(json!({"type":"pcb_plated_hole","pcb_plated_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"shape":if pad.round { "circle" } else { "rect" },"outer_diameter":pad.size[0],"hole_diameter":drill[0],"layers":(0..b.layers).map(|i|Layer::from_index(i).name()).collect::<Vec<_>>(),"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
+                }
             } else {
-                elements.push(json!({"type":"pcb_smtpad","pcb_smtpad_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"width":pad.size[0],"height":pad.size[1],"rotation":pad.rotation,"layer":p.side.name(),"shape":"rect","port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
+                elements.push(json!({"type":"pcb_smtpad","pcb_smtpad_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"width":pad.size[0],"height":pad.size[1],"rotation":pad.rotation,"layer":p.side.name(),"shape":if pad.round { "circle" } else { "rect" },"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
             }
         }
     }

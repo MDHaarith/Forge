@@ -13,7 +13,8 @@ pub struct Pad {
     pub rotation: f64,
     pub round: bool,
     pub layers: u8,
-    pub drill: f64,
+    pub drill: Option<[f64; 2]>,
+    pub plated: bool,
     pub net: usize,
 }
 #[derive(Clone, Debug)]
@@ -129,6 +130,26 @@ impl Pad {
             s.abs() * self.size[0] + c.abs() * self.size[1],
         ]
     }
+    pub fn effective_size(&self) -> Point {
+        let (_s, c) = self.rotation.to_radians().sin_cos();
+        if c.abs() < 1e-6 {
+            [self.size[1], self.size[0]]
+        } else {
+            [self.size[0], self.size[1]]
+        }
+    }
+}
+
+pub fn obround_distance(p: Point, size: Point) -> f64 {
+    if size[1] >= size[0] {
+        let half = (size[1] - size[0]) / 2.0;
+        let cy = p[1].clamp(-half, half);
+        p[0].hypot(p[1] - cy) - size[0] / 2.0
+    } else {
+        let half = (size[0] - size[1]) / 2.0;
+        let cx = p[0].clamp(-half, half);
+        (p[0] - cx).hypot(p[1]) - size[1] / 2.0
+    }
 }
 
 impl Board {
@@ -176,19 +197,23 @@ impl Board {
         };
         for p in &prepared.parts {
             for pad in &p.footprint.pads {
+                let layers = if !pad.plated {
+                    0
+                } else if pad.drill.is_some() {
+                    (1 << b.layers) - 1
+                } else {
+                    1 << p.side.index()
+                };
                 b.pads.push(Pad {
                     name: format!("{}.{}", spec.parts[p.part].reference, pad.number),
                     // KiCad footprints have y down; the board and every output have y up.
                     at: p.point([pad.at[0], -pad.at[1]]),
                     size: pad.size,
                     rotation: p.rotation,
-                    round: pad.drill.is_some(),
-                    drill: pad.drill.unwrap_or(0.0),
-                    layers: if pad.drill.is_some() {
-                        (1 << b.layers) - 1
-                    } else {
-                        1 << p.side.index()
-                    },
+                    round: pad.round,
+                    drill: pad.drill,
+                    layers,
+                    plated: pad.plated,
                     net: usize::MAX,
                 });
             }
@@ -291,7 +316,7 @@ impl Grid {
         let fanouts = b
             .pads
             .iter()
-            .filter(|p| p.drill == 0. && p.net != usize::MAX)
+            .filter(|p| p.drill.is_none() && p.net != usize::MAX)
             .filter_map(|p| {
                 let (sum, count) = centers[p.name.split('.').next().unwrap()];
                 let center = p.local([sum[0] / count as f64, sum[1] / count as f64]);
@@ -421,9 +446,17 @@ impl Grid {
                 clearance + radius
             };
             let ext = [p.bounds()[0] + 2.0 * pad_c, p.bounds()[1] + 2.0 * pad_c];
-            self.mark(&mut blocked, p.at, ext, p.layers, |q| {
-                if p.round {
-                    distance(q, p.at) < p.size[0] / 2.0 + pad_c
+            let layers = if !p.plated {
+                (1 << self.layers) - 1
+            } else {
+                p.layers
+            };
+            self.mark(&mut blocked, p.at, ext, layers, |q| {
+                if !p.plated {
+                    p.drill
+                        .is_some_and(|d| obround_distance(p.local(q), d) < pad_c)
+                } else if p.round {
+                    obround_distance(p.local(q), p.size) < pad_c
                 } else if !segments {
                     rect_distance(p.local(q), [0.; 2], p.size) < pad_c
                 } else {
@@ -528,7 +561,7 @@ impl Grid {
         let blocked = self.obstacles(b, r, net, b.nets[net].width / 2.0, true);
         let mut via_blocked = self.obstacles(b, r, net, b.via[0] / 2.0, false);
         // Open vias need a fanout stub even when the SMD pad belongs to this net.
-        for p in b.pads.iter().filter(|p| p.drill == 0.) {
+        for p in b.pads.iter().filter(|p| p.drill.is_none()) {
             let margin = b.clearance(net).max(b.clearance(p.net)) + b.via[0] / 2.0;
             self.mark(
                 &mut via_blocked,
@@ -541,7 +574,7 @@ impl Grid {
         let source = &b.pads[a];
         let target = &b.pads[bb];
         let target_xy = self.xyz(self.node(target.at, 0));
-        let free_layer_change = b.pads.iter().any(|p| p.net == net && p.drill > 0.)
+        let free_layer_change = b.pads.iter().any(|p| p.net == net && p.drill.is_some())
             || r.vias.iter().any(|v| v.net == net);
         let heuristic = |i| {
             let (x, y, z) = self.xyz(i);
@@ -600,7 +633,8 @@ impl Grid {
                     && (b.pads.iter().any(|p| {
                         p.layers == (1 << b.layers) - 1
                             && p.net == net
-                            && distance(self.at(i), p.at) < p.drill / 2.
+                            && p.drill
+                                .is_some_and(|d| obround_distance(p.local(self.at(i)), d) <= 0.)
                     }) || r
                         .vias
                         .iter()
@@ -633,7 +667,8 @@ impl Grid {
                 let through = b.pads.iter().any(|p| {
                     p.layers == (1 << b.layers) - 1
                         && p.net == net
-                        && distance(a, p.at) < p.drill / 2.0
+                        && p.drill
+                            .is_some_and(|d| obround_distance(p.local(a), d) <= 0.)
                 });
                 if !through
                     && !r
@@ -893,7 +928,8 @@ mod tests {
                 rotation: 0.,
                 round: false,
                 layers: 1,
-                drill: 0.,
+                drill: None,
+                plated: true,
                 net: 0,
             });
         }
@@ -977,7 +1013,8 @@ mod tests {
                     rotation: 0.,
                     round: false,
                     layers: if bottom { 2 } else { 1 },
-                    drill: 0.,
+                    drill: None,
+                    plated: true,
                     net: usize::MAX,
                 });
             }

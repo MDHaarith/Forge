@@ -1,6 +1,33 @@
 use super::{pour, route, Layer, Pours, PreparedBoard};
 use crate::jsfmt::fixed_string;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Aperture {
+    Circle(i64),
+    Obround(i64, i64),
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct DrillHole {
+    pub at: route::Point,
+    pub tool: f64,
+    pub slot: Option<[route::Point; 2]>,
+}
+
+/// Flash aperture for a round or oval pad; None when the pad must be drawn as a region.
+fn flash(p: &route::Pad, expansion: f64) -> Option<Aperture> {
+    let [w, h] = p
+        .effective_size()
+        .map(|v| ((v + 2. * expansion) * 1e6).round() as i64);
+    // Obround apertures cannot rotate, so ovals off the 90 degree grid stay regions.
+    let square = (p.rotation / 90.).fract().abs() < 1e-9;
+    match (p.round, w == h) {
+        (true, true) => Some(Aperture::Circle(w)),
+        (true, false) if square => Some(Aperture::Obround(w, h)),
+        _ => None,
+    }
+}
+
 fn header(function: &str) -> String {
     // Mask geometry describes openings, so its file polarity is negative; drawing polarity stays dark.
     let polarity = if function.starts_with("Soldermask,") {
@@ -14,7 +41,16 @@ fn header(function: &str) -> String {
 fn pad(out: &mut String, p: &route::Pad, expansion: f64) {
     let size = p.size.map(|v| v + 2. * expansion);
     let ring = if p.round {
-        pour::circle(p.at, size[0] / 2.)
+        let [w, h] = size;
+        if (w - h).abs() < 1e-9 {
+            pour::circle(p.at, w / 2.)
+        } else if h > w {
+            let half = (h - w) / 2.;
+            pour::capsule(p.point([0., -half]), p.point([0., half]), w / 2.)
+        } else {
+            let half = (w - h) / 2.;
+            pour::capsule(p.point([-half, 0.]), p.point([half, 0.]), h / 2.)
+        }
     } else {
         pour::rect([0.; 2], size)
             .into_iter()
@@ -25,23 +61,65 @@ fn pad(out: &mut String, p: &route::Pad, expansion: f64) {
 }
 
 fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool) -> String {
+    use std::collections::BTreeMap;
     let side = if layer == Layer::Top { "Top" } else { "Bot" };
     let mut out = header(&format!(
         "{},{side}",
         if paste { "Paste" } else { "Soldermask" }
     ));
-    out.push_str("%ADD10C,0.1*%\nD10*\n");
     let expansion = if paste { 0. } else { 0.05 };
+    let mut apertures = BTreeMap::new();
+    if !paste {
+        apertures.insert(
+            Aperture::Circle(((b.via[0] + 2. * expansion) * 1e6).round() as i64),
+            0,
+        );
+    }
     for p in b
         .pads
         .iter()
-        .filter(|p| p.layers & (1 << layer.index()) != 0 && (!paste || p.drill == 0.))
+        .filter(|p| p.layers & (1 << layer.index()) != 0 && (!paste || p.drill.is_none()))
+        .filter_map(|p| flash(p, expansion))
     {
-        pad(&mut out, p, expansion);
+        apertures.insert(p, 0);
+    }
+    out.push_str("%ADD10C,0.1*%\n");
+    for (i, (aper, id)) in apertures.iter_mut().enumerate() {
+        *id = i + 11;
+        match aper {
+            Aperture::Circle(width) => {
+                out.push_str(&format!(
+                    "%ADD{id}C,{}*%\n",
+                    crate::jsfmt::fixed_string(*width as f64 / 1e6, 6)
+                ));
+            }
+            Aperture::Obround(w, h) => {
+                out.push_str(&format!(
+                    "%ADD{id}O,{}X{}*%\n",
+                    crate::jsfmt::fixed_string(*w as f64 / 1e6, 6),
+                    crate::jsfmt::fixed_string(*h as f64 / 1e6, 6)
+                ));
+            }
+        }
+    }
+    out.push_str("D10*\n");
+    for p in b
+        .pads
+        .iter()
+        .filter(|p| p.layers & (1 << layer.index()) != 0 && (!paste || p.drill.is_none()))
+    {
+        if let Some(aper) = flash(p, expansion) {
+            out.push_str(&format!("D{}*\n", apertures[&aper]));
+            out.push_str(&coord(p.at, 3));
+        } else {
+            pad(&mut out, p, expansion);
+        }
     }
     if !paste {
+        let via_aper = Aperture::Circle(((b.via[0] + 2. * expansion) * 1e6).round() as i64);
+        out.push_str(&format!("D{}*\n", apertures[&via_aper]));
         for v in &r.vias {
-            region(&mut out, &[pour::circle(v.at, b.via[0] / 2. + expansion)]);
+            out.push_str(&coord(v.at, 3));
         }
     }
     out.push_str("M02*\n");
@@ -93,20 +171,44 @@ fn edge(b: &route::Board) -> String {
     out
 }
 
-pub(super) fn drills(
-    b: &route::Board,
-    r: &route::Routes,
-    plated: bool,
-) -> Vec<(route::Point, f64)> {
+/// A round hole, or a slot drilled with its narrow width along its long axis.
+fn pad_hole(p: &route::Pad) -> Option<DrillHole> {
+    let [w, h] = p.drill?;
+    let half = (w - h).abs() / 2.;
+    let slot = (half > 1e-9).then(|| {
+        let axis = if h > w { [0., half] } else { [half, 0.] };
+        [p.point(axis.map(|v| -v)), p.point(axis)]
+    });
+    Some(DrillHole {
+        at: p.at,
+        tool: w.min(h),
+        slot,
+    })
+}
+
+pub(super) fn drills(b: &route::Board, r: &route::Routes, plated: bool) -> Vec<DrillHole> {
+    let pads = b
+        .pads
+        .iter()
+        .filter(|p| p.plated == plated)
+        .filter_map(pad_hole);
     if plated {
-        b.pads
-            .iter()
-            .filter(|p| p.drill > 0.)
-            .map(|p| (p.at, p.drill))
-            .chain(r.vias.iter().map(|v| (v.at, b.via[1])))
-            .collect()
+        pads.chain(r.vias.iter().map(|v| DrillHole {
+            at: v.at,
+            tool: b.via[1],
+            slot: None,
+        }))
+        .collect()
     } else {
-        b.holes.clone()
+        b.holes
+            .iter()
+            .map(|&(at, tool)| DrillHole {
+                at,
+                tool,
+                slot: None,
+            })
+            .chain(pads)
+            .collect()
     }
 }
 
@@ -115,7 +217,7 @@ fn drill(b: &route::Board, r: &route::Routes, plated: bool) -> String {
     let holes = drills(b, r, plated);
     let mut tools: BTreeMap<_, usize> = holes
         .iter()
-        .map(|(_, d)| ((d * 1e6).round() as i64, 0))
+        .map(|h| ((h.tool * 1e6).round() as i64, 0))
         .collect();
     let mut out = format!(
         "M48\n; #@! TF.FileFunction,{}Plated,1,{},{}\nMETRIC\n",
@@ -131,22 +233,28 @@ fn drill(b: &route::Board, r: &route::Routes, plated: bool) -> String {
         ));
     }
     out.push_str("%\nG90\nM71\n");
+    let decimal = |v| {
+        let text = fixed_string(v, 6);
+        if text.contains('.') {
+            text
+        } else {
+            format!("{text}.0")
+        }
+    };
     for (d, tool) in tools {
         out.push_str(&format!("T{tool:02}\n"));
-        for (p, _) in holes
-            .iter()
-            .filter(|(_, size)| (size * 1e6).round() as i64 == d)
-        {
-            // Excellon coordinates need an explicit decimal point, even for whole millimetres.
-            let decimal = |v| {
-                let text = fixed_string(v, 6);
-                if text.contains('.') {
-                    text
-                } else {
-                    format!("{text}.0")
-                }
-            };
-            out.push_str(&format!("X{}Y{}\n", decimal(p[0]), decimal(p[1])));
+        for h in holes.iter().filter(|h| (h.tool * 1e6).round() as i64 == d) {
+            if let Some([p1, p2]) = h.slot {
+                out.push_str(&format!(
+                    "X{}Y{}G85X{}Y{}\n",
+                    decimal(p1[0]),
+                    decimal(p1[1]),
+                    decimal(p2[0]),
+                    decimal(p2[1])
+                ));
+            } else {
+                out.push_str(&format!("X{}Y{}\n", decimal(h.at[0]), decimal(h.at[1])));
+            }
         }
     }
     out.push_str("M30\n");
@@ -232,28 +340,40 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
     };
     let mut out = header(&function);
     let mut apertures = BTreeMap::new();
-    apertures.insert((b.via[0] * 1e6).round() as i64, 0);
+    apertures.insert(Aperture::Circle((b.via[0] * 1e6).round() as i64), 0);
     for t in r
         .tracks
         .iter()
         .chain(b.fixed.iter().map(|f| &f.track))
         .filter(|t| t.layer == index)
     {
-        apertures.insert((t.width * 1e6).round() as i64, 0);
+        apertures.insert(Aperture::Circle((t.width * 1e6).round() as i64), 0);
     }
     for p in b
         .pads
         .iter()
-        .filter(|p| p.round && p.layers & (1 << index) != 0)
+        .filter(|p| p.layers & (1 << index) != 0)
+        .filter_map(|p| flash(p, 0.))
     {
-        apertures.insert((p.size[0] * 1e6).round() as i64, 0);
+        apertures.insert(p, 0);
     }
-    for (i, (width, id)) in apertures.iter_mut().enumerate() {
+    for (i, (aper, id)) in apertures.iter_mut().enumerate() {
         *id = i + 10;
-        out.push_str(&format!(
-            "%TA.AperFunction,Conductor*%\n%ADD{id}C,{}*%\n%TD*%\n",
-            crate::jsfmt::fixed_string(*width as f64 / 1e6, 6)
-        ));
+        match aper {
+            Aperture::Circle(width) => {
+                out.push_str(&format!(
+                    "%TA.AperFunction,Conductor*%\n%ADD{id}C,{}*%\n%TD*%\n",
+                    crate::jsfmt::fixed_string(*width as f64 / 1e6, 6)
+                ));
+            }
+            Aperture::Obround(w, h) => {
+                out.push_str(&format!(
+                    "%TA.AperFunction,Conductor*%\n%ADD{id}O,{}X{}*%\n%TD*%\n",
+                    crate::jsfmt::fixed_string(*w as f64 / 1e6, 6),
+                    crate::jsfmt::fixed_string(*h as f64 / 1e6, 6)
+                ));
+            }
+        }
     }
     out.push_str("D10*\n");
     let net_attribute = |net: usize| {
@@ -278,11 +398,8 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
             "%TO.C,{}*%\n",
             attribute(p.name.split('.').next().unwrap())
         ));
-        if p.round {
-            out.push_str(&format!(
-                "D{}*\n",
-                apertures[&((p.size[0] * 1e6).round() as i64)]
-            ));
+        if let Some(aper) = flash(p, 0.) {
+            out.push_str(&format!("D{}*\n", apertures[&aper]));
             out.push_str(&coord(p.at, 3));
         } else {
             pad(&mut out, p, 0.);
@@ -298,7 +415,7 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
         out.push_str(&net_attribute(t.net));
         out.push_str(&format!(
             "D{}*\n",
-            apertures[&((t.width * 1e6).round() as i64)]
+            apertures[&Aperture::Circle((t.width * 1e6).round() as i64)]
         ));
         out.push_str(&coord(t.a, 2));
         out.push_str(&coord(t.b, 1));
@@ -308,7 +425,7 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
         out.push_str(&net_attribute(v.net));
         out.push_str(&format!(
             "D{}*\n",
-            apertures[&((b.via[0] * 1e6).round() as i64)]
+            apertures[&Aperture::Circle((b.via[0] * 1e6).round() as i64)]
         ));
         out.push_str(&coord(v.at, 3));
         out.push_str("%TD*%\n");

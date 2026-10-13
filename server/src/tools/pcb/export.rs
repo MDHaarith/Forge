@@ -82,12 +82,25 @@ pub(super) fn model(
             .map(|p| DVec3::new(p[0], p[1], -t / 2.))
             .collect();
         let mut slab = Solid::extrude(&Edge::polygon(&polygon)?, DVec3::Z * t)?;
-        for (at, d) in gerber::drills(board, r, true)
+        for hole in gerber::drills(board, r, true)
             .into_iter()
             .chain(gerber::drills(board, r, false))
         {
-            let drill =
-                Solid::cylinder(d / 2., DVec3::Z * t).translate(DVec3::new(at[0], at[1], -t / 2.));
+            let drill = if let Some([p1, p2]) = hole.slot {
+                // shortcut: bounding cylinder for slot in 3D export, upgrade when CAD kernel adds slot primitives
+                let len = (p1[0] - p2[0]).hypot(p1[1] - p2[1]) + hole.tool;
+                Solid::cylinder(len / 2., DVec3::Z * t).translate(DVec3::new(
+                    hole.at[0],
+                    hole.at[1],
+                    -t / 2.,
+                ))
+            } else {
+                Solid::cylinder(hole.tool / 2., DVec3::Z * t).translate(DVec3::new(
+                    hole.at[0],
+                    hole.at[1],
+                    -t / 2.,
+                ))
+            };
             slab = (&slab - &drill).build()?;
         }
         let mut solids = vec![slab.color("#246c47")];
@@ -188,7 +201,15 @@ mod tests {
         let holes: f64 = gerber::drills(&board, &r, true)
             .into_iter()
             .chain(gerber::drills(&board, &r, false))
-            .map(|(_, d)| std::f64::consts::PI * (d / 2.).powi(2) * b.spec.board.thickness)
+            .map(|h| {
+                if let Some([p1, p2]) = h.slot {
+                    let len = (p1[0] - p2[0]).hypot(p1[1] - p2[1]);
+                    (std::f64::consts::PI * (h.tool / 2.).powi(2) + h.tool * len)
+                        * b.spec.board.thickness
+                } else {
+                    std::f64::consts::PI * (h.tool / 2.).powi(2) * b.spec.board.thickness
+                }
+            })
             .sum();
         assert!(
             (solids.iter().map(|s| s.volume()).sum::<f64>()

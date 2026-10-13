@@ -256,7 +256,8 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     rotation: num(e, "rotation")?,
                     round: false,
                     layers: layers(e)?,
-                    drill: 0.,
+                    drill: None,
+                    plated: true,
                     net: usize::MAX,
                 };
                 let corners = pour::rect([0.; 2], p.size)
@@ -283,14 +284,38 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                         .to_owned()
                 };
                 let at = point(e)?;
-                let diameter = positive(e, "outer_diameter")?;
-                let drill = positive(e, "hole_diameter")?;
-                let i = add(
-                    name.clone(),
-                    Shape::Disk(at, diameter / 2.),
-                    layers(e)?,
-                    false,
-                );
+                let is_oval = e.get("shape").and_then(Value::as_str) == Some("oval");
+                let (diameter, drill, shape) = if is_oval {
+                    let ow = positive(e, "outer_width")?;
+                    let oh = positive(e, "outer_height")?;
+                    let hw = positive(e, "hole_width")?;
+                    let hh = positive(e, "hole_height")?;
+                    let rot = num(e, "rotation").unwrap_or(0.);
+                    let rad = rot.to_radians();
+                    let cos = rad.cos();
+                    let sin = rad.sin();
+                    let (a, b, r) = if ow >= oh {
+                        let half = (ow - oh) / 2.;
+                        (
+                            [at[0] - half * cos, at[1] - half * sin],
+                            [at[0] + half * cos, at[1] + half * sin],
+                            oh / 2.,
+                        )
+                    } else {
+                        let half = (oh - ow) / 2.;
+                        (
+                            [at[0] + half * sin, at[1] - half * cos],
+                            [at[0] - half * sin, at[1] + half * cos],
+                            ow / 2.,
+                        )
+                    };
+                    (ow.min(oh), hw.min(hh), Shape::Stroke(a, b, r))
+                } else {
+                    let d = positive(e, "outer_diameter")?;
+                    let dr = positive(e, "hole_diameter")?;
+                    (d, dr, Shape::Disk(at, d / 2.))
+                };
+                let i = add(name.clone(), shape, layers(e)?, false);
                 let annulus = (diameter - drill) / 2.;
                 let minimum = (rules.via[0] - rules.via[1]) / 2.;
                 if annulus + EPS < minimum {
@@ -312,6 +337,24 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                 } else {
                     pads.insert(name, i);
                 }
+            }
+            Some("pcb_hole") => {
+                let name = e["pcb_hole_id"].as_str().unwrap_or("hole").to_owned();
+                let at = point(e)?;
+                let drill = positive(e, "hole_diameter")?;
+                if drill + EPS < rules.via[1] {
+                    faults.push(format!(
+                        "drill size: {name} is {} mm, needs {} mm",
+                        fmt(drill),
+                        fmt(rules.via[1])
+                    ));
+                }
+                add(
+                    name,
+                    Shape::Disk(at, drill / 2.),
+                    (1 << spec.board.layers) - 1,
+                    true,
+                );
             }
             Some("pcb_trace") => {
                 let points = e["route"].as_array().ok_or("invalid trace route")?;
@@ -434,6 +477,13 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     parents[ra] = rb;
                 }
             } else {
+                let same_comp = !a.name.is_empty()
+                    && !b.name.is_empty()
+                    && a.name.split('.').next() == b.name.split('.').next()
+                    && (a.net == b.net || a.net.is_none() || b.net.is_none());
+                if same_comp && gap <= EPS {
+                    continue;
+                }
                 let rule = if a.hole {
                     clearance(b.net.as_deref())
                 } else if b.hole {

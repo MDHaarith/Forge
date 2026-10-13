@@ -106,11 +106,45 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
     }
     for p in &b.pads {
         if p.layers & (1 << layer) == 0 {
+            if !p.plated {
+                if let Some(drill) = p.drill {
+                    let extra = b.clearance(net);
+                    let [dw, dh] = drill;
+                    let c = if (dw - dh).abs() < 1e-9 {
+                        circle(p.at, dw / 2. + extra)
+                    } else if dh > dw {
+                        let half = (dh - dw) / 2.;
+                        capsule(p.point([0., -half]), p.point([0., half]), dw / 2. + extra)
+                    } else {
+                        let half = (dw - dh) / 2.;
+                        capsule(p.point([-half, 0.]), p.point([half, 0.]), dh / 2. + extra)
+                    };
+                    foreign.push(c);
+                    if (dw - dh).abs() < 1e-9 {
+                        drills.push(circle(p.at, dw / 2.));
+                    } else if dh > dw {
+                        let half = (dh - dw) / 2.;
+                        drills.push(capsule(p.point([0., -half]), p.point([0., half]), dw / 2.));
+                    } else {
+                        let half = (dw - dh) / 2.;
+                        drills.push(capsule(p.point([-half, 0.]), p.point([half, 0.]), dh / 2.));
+                    }
+                }
+            }
             continue;
         }
         let contour = |extra: f64| {
             if p.round {
-                circle(p.at, p.size[0] / 2. + extra)
+                let [w, h] = p.size;
+                if (w - h).abs() < 1e-9 {
+                    circle(p.at, w / 2. + extra)
+                } else if h > w {
+                    let half = (h - w) / 2.;
+                    capsule(p.point([0., -half]), p.point([0., half]), w / 2. + extra)
+                } else {
+                    let half = (w - h) / 2.;
+                    capsule(p.point([-half, 0.]), p.point([half, 0.]), h / 2. + extra)
+                }
             } else {
                 rounded_rect([0.; 2], p.size, extra)
                     .into_iter()
@@ -135,8 +169,17 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
                 );
             }
         }
-        if p.drill > 0. {
-            drills.push(circle(p.at, p.drill / 2.));
+        if let Some(drill) = p.drill {
+            let [dw, dh] = drill;
+            if (dw - dh).abs() < 1e-9 {
+                drills.push(circle(p.at, dw / 2.));
+            } else if dh > dw {
+                let half = (dh - dw) / 2.;
+                drills.push(capsule(p.point([0., -half]), p.point([0., half]), dw / 2.));
+            } else {
+                let half = (dw - dh) / 2.;
+                drills.push(capsule(p.point([-half, 0.]), p.point([half, 0.]), dh / 2.));
+            }
         }
     }
     for t in &r.tracks {

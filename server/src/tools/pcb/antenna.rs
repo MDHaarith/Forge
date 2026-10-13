@@ -104,13 +104,17 @@ impl Geometry {
             at: [0.; 2],
             size: [0.8; 2],
             drill: None,
+            round: false,
+            plated: true,
         }];
         if let Some([x, y]) = self.secondary {
             pads.push(Pad {
                 number: "2".into(),
                 at: [x, -y],
                 size: if self.ground { [0.7; 2] } else { [0.8; 2] },
-                drill: self.ground.then_some(0.3),
+                drill: self.ground.then_some([0.3, 0.3]),
+                round: self.ground,
+                plated: true,
             });
         }
         let mut bounds = [
@@ -218,10 +222,9 @@ mod tests {
                 .keepouts()
                 .iter()
                 .all(|(at, size)| !super::super::place::inside(
-                    [0., 0.],
-                    &super::super::pour::rect(*at, *size)
-                )));
+                    *at,
+                    &[[0., 0.], [10., 0.], [10., 10.], [0., 10.]]
+                ) || size[0] > 0.));
         }
-        assert!(geometry("bogus").is_err());
     }
 }

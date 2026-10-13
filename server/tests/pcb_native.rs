@@ -304,6 +304,209 @@ mod fp {
             ep.size[1]
         );
     }
+
+    #[test]
+    fn fp_usb_c_16() {
+        let fp = footprint("usb_c_16").expect("footprint usb_c_16 should be generated");
+        assert_eq!(fp.pads.len(), 22);
+        let p_a1 = fp.pads.iter().find(|p| p.number == "A1").unwrap();
+        assert!((p_a1.at[0] - (-3.25)).abs() < 1e-4);
+        assert!((p_a1.at[1] - (-4.045)).abs() < 1e-4);
+        assert!((p_a1.size[0] - 0.6).abs() < 1e-4);
+        assert!((p_a1.size[1] - 1.45).abs() < 1e-4);
+        assert!(p_a1.drill.is_none());
+        assert!(!p_a1.round);
+        assert!(p_a1.plated);
+
+        let p_a5 = fp.pads.iter().find(|p| p.number == "A5").unwrap();
+        assert!((p_a5.at[0] - (-1.25)).abs() < 1e-4);
+        assert!((p_a5.size[0] - 0.3).abs() < 1e-4);
+
+        let p_b12 = fp.pads.iter().find(|p| p.number == "B12").unwrap();
+        assert!((p_b12.at[0] - (-3.25)).abs() < 1e-4);
+        assert!((p_b12.at[1] - (-4.045)).abs() < 1e-4);
+
+        let s1_pads: Vec<_> = fp.pads.iter().filter(|p| p.number == "S1").collect();
+        assert_eq!(s1_pads.len(), 4);
+        let s1 = s1_pads
+            .iter()
+            .find(|p| (p.at[0] - (-4.32)).abs() < 1e-4 && (p.at[1] - (-3.13)).abs() < 1e-4)
+            .unwrap();
+        assert!((s1.size[0] - 1.0).abs() < 1e-4);
+        assert!((s1.size[1] - 2.1).abs() < 1e-4);
+        assert_eq!(s1.drill, Some([0.6, 1.7]));
+        assert!(s1.round);
+        assert!(s1.plated);
+
+        let npth = fp.pads.iter().find(|p| !p.plated).unwrap();
+        assert!((npth.at[0].abs() - 2.89).abs() < 1e-4);
+        assert!((npth.at[1] - (-2.6)).abs() < 1e-4);
+        assert_eq!(npth.drill, Some([0.65, 0.65]));
+        assert!(!npth.plated);
+
+        for p in &fp.pads {
+            assert!(
+                p.at[0] - p.size[0] / 2.0 >= fp.courtyard[0] - 1e-4,
+                "pad {} xmin outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[1] - p.size[1] / 2.0 >= fp.courtyard[1] - 1e-4,
+                "pad {} ymin outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[0] + p.size[0] / 2.0 <= fp.courtyard[2] + 1e-4,
+                "pad {} xmax outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[1] + p.size[1] / 2.0 <= fp.courtyard[3] + 1e-4,
+                "pad {} ymax outside courtyard",
+                p.number
+            );
+        }
+    }
+
+    #[test]
+    fn fp_usb_micro_b() {
+        let fp = footprint("usb_micro_b").expect("footprint usb_micro_b should be generated");
+        assert_eq!(fp.pads.len(), 13);
+        let p1 = fp.pads.iter().find(|p| p.number == "1").unwrap();
+        assert!((p1.at[0] - (-1.3)).abs() < 1e-4);
+        assert!((p1.at[1] - (-1.4625)).abs() < 1e-4);
+        assert!((p1.size[0] - 0.4).abs() < 1e-4);
+        assert!((p1.size[1] - 1.35).abs() < 1e-4);
+        assert!(p1.drill.is_none());
+
+        let p5 = fp.pads.iter().find(|p| p.number == "5").unwrap();
+        assert!((p5.at[0] - 1.3).abs() < 1e-4);
+
+        let p6_pads: Vec<_> = fp.pads.iter().filter(|p| p.number == "6").collect();
+        assert_eq!(p6_pads.len(), 8);
+        let slot = p6_pads
+            .iter()
+            .find(|p| (p.at[0] - (-3.5)).abs() < 1e-4)
+            .unwrap();
+        assert_eq!(slot.drill, Some([0.6, 1.3]));
+        assert!((slot.size[0] - 1.2).abs() < 1e-4);
+        assert!((slot.size[1] - 1.9).abs() < 1e-4);
+
+        for p in &fp.pads {
+            assert!(
+                p.at[0] - p.size[0] / 2.0 >= fp.courtyard[0] - 1e-4,
+                "pad {} xmin outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[1] - p.size[1] / 2.0 >= fp.courtyard[1] - 1e-4,
+                "pad {} ymin outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[0] + p.size[0] / 2.0 <= fp.courtyard[2] + 1e-4,
+                "pad {} xmax outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[1] + p.size[1] / 2.0 <= fp.courtyard[3] + 1e-4,
+                "pad {} ymax outside courtyard",
+                p.number
+            );
+        }
+    }
+
+    #[test]
+    fn fp_jst_ph() {
+        for n in 2..=16 {
+            let name = format!("jst_ph_{n}");
+            let fp = footprint(&name).expect("footprint should exist");
+            assert_eq!(fp.pads.len(), n);
+            let p1 = fp.pads.iter().find(|p| p.number == "1").unwrap();
+            assert!(!p1.round, "pin 1 of {name} should be rectangular-marked");
+            assert_eq!(p1.drill, Some([0.75, 0.75]));
+            assert!((p1.size[0] - 1.2).abs() < 1e-4);
+            assert!((p1.size[1] - 1.75).abs() < 1e-4);
+
+            let p2 = fp.pads.iter().find(|p| p.number == "2").unwrap();
+            assert!(p2.round, "pin 2 of {name} should be round");
+            assert_eq!(p2.drill, Some([0.75, 0.75]));
+            assert!((p2.size[0] - 1.2).abs() < 1e-4);
+            assert!((p2.size[1] - 1.75).abs() < 1e-4);
+            assert!((p2.at[0] - p1.at[0] - 2.0).abs() < 1e-4);
+
+            for p in &fp.pads {
+                assert!(
+                    p.at[0] - p.size[0] / 2.0 >= fp.courtyard[0] - 1e-4,
+                    "pad {} xmin outside courtyard for {name}",
+                    p.number
+                );
+                assert!(
+                    p.at[1] - p.size[1] / 2.0 >= fp.courtyard[1] - 1e-4,
+                    "pad {} ymin outside courtyard for {name}",
+                    p.number
+                );
+                assert!(
+                    p.at[0] + p.size[0] / 2.0 <= fp.courtyard[2] + 1e-4,
+                    "pad {} xmax outside courtyard for {name}",
+                    p.number
+                );
+                assert!(
+                    p.at[1] + p.size[1] / 2.0 <= fp.courtyard[3] + 1e-4,
+                    "pad {} ymax outside courtyard for {name}",
+                    p.number
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fp_barrel_jack() {
+        let fp = footprint("barrel_jack").expect("footprint barrel_jack should be generated");
+        assert_eq!(fp.pads.len(), 3);
+        let p1 = fp.pads.iter().find(|p| p.number == "1").unwrap();
+        assert!(!p1.round, "pin 1 should be rectangular-marked");
+        assert_eq!(p1.drill, Some([1.6, 1.6]));
+        assert!((p1.at[0] - 0.0).abs() < 1e-4);
+        assert!((p1.at[1] - 0.0).abs() < 1e-4);
+        assert!((p1.size[0] - 2.6).abs() < 1e-4);
+        assert!((p1.size[1] - 2.6).abs() < 1e-4);
+
+        let p2 = fp.pads.iter().find(|p| p.number == "2").unwrap();
+        assert!(p2.round);
+        assert_eq!(p2.drill, Some([1.6, 1.6]));
+        assert!((p2.at[0] - 0.0).abs() < 1e-4);
+        assert!((p2.at[1] - 6.0).abs() < 1e-4);
+
+        let p3 = fp.pads.iter().find(|p| p.number == "3").unwrap();
+        assert!(p3.round);
+        assert_eq!(p3.drill, Some([1.6, 1.6]));
+        assert!((p3.at[0] - 4.7).abs() < 1e-4);
+        assert!((p3.at[1] - 3.0).abs() < 1e-4);
+
+        for p in &fp.pads {
+            assert!(
+                p.at[0] - p.size[0] / 2.0 >= fp.courtyard[0] - 1e-4,
+                "pad {} xmin outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[1] - p.size[1] / 2.0 >= fp.courtyard[1] - 1e-4,
+                "pad {} ymin outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[0] + p.size[0] / 2.0 <= fp.courtyard[2] + 1e-4,
+                "pad {} xmax outside courtyard",
+                p.number
+            );
+            assert!(
+                p.at[1] + p.size[1] / 2.0 <= fp.courtyard[3] + 1e-4,
+                "pad {} ymax outside courtyard",
+                p.number
+            );
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -1487,5 +1690,85 @@ async fn calc_rejects_invalid_pcb_inputs() {
                 .is_err(),
             "{input}"
         );
+    }
+}
+
+#[tokio::test]
+async fn route_connector_board_with_usb_c_barrel_jack_jst_ph() {
+    let board_json = json!({
+        "board": { "width": 60, "height": 40, "layers": 2, "thickness": 1.6 },
+        "rules": { "trace": 0.25, "clearance": 0.2, "via": [0.6, 0.3], "edge": 0.3 },
+        "parts": [
+            { "ref": "J1", "kind": "header", "footprint": "usb_c_16", "at": [-15, 0] },
+            { "ref": "J2", "kind": "header", "footprint": "barrel_jack", "at": [15, -4] },
+            { "ref": "J3", "kind": "header", "footprint": "jst_ph_2", "at": [0, 10] },
+            { "ref": "D1", "kind": "led", "footprint": "0603", "at": [0, -10] },
+            { "ref": "R1", "kind": "resistor", "footprint": "0603", "at": [0, 0] }
+        ],
+        "nets": {
+            "VBUS": ["J1.A4", "J1.B9", "J2.1", "J3.2", "R1.1"],
+            "LED_ANODE": ["R1.2", "D1.A"],
+            "GND": ["D1.K", "J1.A1", "J1.B12", "J1.S1", "J2.2", "J3.1"]
+        }
+    })
+    .to_string();
+
+    let dir = project("connector_board", &[("pcb/conn.pcb.json", &board_json)]);
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/conn.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        out.text.contains("No errors: every connection is routed."),
+        "Routing output: {}",
+        out.text
+    );
+
+    // Excellon contains G85 (slotted routed holes)
+    let pth_drill = std::fs::read_to_string(dir.path.join("fab/conn/conn-PTH.drl")).unwrap();
+    assert!(
+        pth_drill.contains("G85"),
+        "PTH Excellon drill file must contain G85 routed slot commands"
+    );
+
+    // Gerber copper contains obround aperture definition: %ADD...O,...X...*%
+    let f_cu = std::fs::read_to_string(dir.path.join("fab/conn/conn-F_Cu.gbr")).unwrap();
+    assert!(
+        f_cu.lines()
+            .any(|l| l.starts_with("%ADD") && l.contains('O') && l.ends_with("*%")),
+        "F_Cu Gerber must define an obround aperture with %ADD...O,...X...*%"
+    );
+
+    // pcb_drc reports clean
+    let drc_out = run("pcb_drc", json!({"board": "conn"}), &dir.path)
+        .await
+        .unwrap();
+    assert!(
+        drc_out.text.contains("No DRC errors."),
+        "DRC report: {}",
+        drc_out.text
+    );
+}
+
+#[tokio::test]
+async fn oval_pads_flash_on_the_right_angle_grid_and_stay_regions_otherwise() {
+    for (rotation, expected) in [(90, Some("O,1.75X1.2*%")), (45, None)] {
+        let board_json = json!({
+            "board": { "width": 20, "height": 20, "layers": 2, "thickness": 1.6 },
+            "parts": [{ "ref": "J1", "kind": "header", "footprint": "jst_ph_2", "at": [0, 0], "rotation": rotation }],
+            "nets": {}
+        })
+        .to_string();
+        let dir = project("oval_rotation", &[("pcb/oval.pcb.json", &board_json)]);
+        run("pcb_build", json!({"source": "pcb/oval.pcb.json"}), &dir.path)
+            .await
+            .unwrap();
+        let f_cu = std::fs::read_to_string(dir.path.join("fab/oval/oval-F_Cu.gbr")).unwrap();
+        let oval = f_cu.lines().find(|l| l.starts_with("%ADD") && l.contains("O,"));
+        assert_eq!(oval.map(|l| &l[l.find("O,").unwrap()..]), expected, "{rotation}");
     }
 }
