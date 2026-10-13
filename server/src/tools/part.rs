@@ -4,6 +4,7 @@ use cadrum::{Boolean, DVec3, Solid, Tessellation};
 use serde_json::{json, Value};
 use std::fs;
 
+mod drawing;
 mod holes;
 mod inspect;
 mod kit;
@@ -116,7 +117,7 @@ Ops (at defaults to [0,0,0]):
 outline: {"circle":[cx,cy,r]} or {"start":[x,y],"segments":[{"line":[x,y]} | {"arc":[x,y],"through":[x,y]}, ...]}; the last point must equal start.
 points: [[x,y],...] or {"grid":[x0,y0,dx,dy,nx,ny]} or {"corners":[length,width,inset]}.
 kind: "clearance", "tap", "counterbore", "countersink", "insert" or "thread" (holes only; tap drill plus ISO internal thread, down from the target's top; omitted depth means through).
-Limits: no sketcher constraints. Drawings use freecad_drawing while part_drawing is being built.
+Limits: no sketcher constraints. Drawings use part_drawing.
 Example, 80x50x25 enclosure with 2 mm walls, M3 insert standoffs, and a matching lid beside it at x=90 (at z=2 so its lip rests on the bed):
 {"name":"case","steps":[{"op":"enclosure","id":"box","size":[80,50,25],"wall":2,"floor":2},{"op":"standoffs","target":"box","points":{"corners":[80,50,6]},"size":"M3","base":2,"kind":"insert"},{"op":"lid","id":"cover","size":[80,50],"at":[90,0,2]}]}
 Errors: step <index>: unknown op "<op>"; step <index>: no body "<id>"; step <index>: fillet failed (or chamfer failed)."#,
@@ -124,6 +125,7 @@ Errors: step <index>: unknown op "<op>"; step <index>: no body "<id>"; step <ind
             part_build,
         ),
         inspect::tool(),
+        drawing::tool(),
     ]
 }
 

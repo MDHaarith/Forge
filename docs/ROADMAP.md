@@ -13,7 +13,7 @@ the phases, and keep the external version working until its native replacement p
 
 | Tool | Needs | Native replacement |
 |---|---|---|
-| freecad_build, freecad_inspect, freecad_drawing | FreeCAD | part_build/part_inspect cover solids, holes, mass and overhangs (v0.15.0), plus native loft, sweep, shell, mirror, patterns, threads, sheet metal, centre of mass and interference/clearance (stage 2 in progress); still missing: drawings |
+| freecad_build, freecad_inspect, freecad_drawing | FreeCAD | part_build/part_inspect/part_drawing cover solids, holes, mass, overhangs, loft, sweep, shell, mirror, patterns, threads, sheet metal, centre of mass, interference/clearance and SVG/DXF drawings (stage 2); retiring the FreeCAD tools is next |
 | blender_build | Blender | renderer and mesh modifiers |
 | openscad_render | OpenSCAD | fold into the CAD kernel, or drop |
 | pcb_build | Node + tscircuit engine | Rust PCB engine |
@@ -22,13 +22,14 @@ the phases, and keep the external version working until its native replacement p
 | rf_antenna_sim | openEMS | FDTD solver |
 | git_status, git_commit, git_log | git | built-in git library (gitoxide) |
 
-Already native: list_files, read_file, write_file, part_build, part_inspect, rf_calc, design_assemble.
+Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble.
 
 CAD kernel (v0.15.0, stage 1 of `plan.md` done): `part_build` makes exact solids (primitives, extrude,
 revolve, booleans, fillet, chamfer, place, ISO holes, enclosure, lid, standoffs) → STEP/STL/JSON, and
 `part_inspect` reports size, volume, centre of mass, mass, holes, configurable overhangs and STEP
-interference/clearance. `cad_model` is removed. The FreeCAD tools stay as a fallback until drawings are
-native.
+interference/clearance. `part_drawing` writes scaled SVG drawings with hidden lines, dimensions,
+hole tables and title blocks, plus top-outline DXF. `cad_model` is removed. Retiring the FreeCAD tools
+is the next stage 2 step; PDF drawings remain planned.
 
 ## Phases (estimates include tests; ±50%)
 

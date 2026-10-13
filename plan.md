@@ -341,7 +341,7 @@ the findings and the agent's previous report.
 - [x] Step 2: loft, sweep, shell, mirror, pattern (GPT)
 - [x] Step 3: threads and sheet metal (GPT)
 - [x] Step 4: part_inspect interference, centre of mass, overhang (GPT)
-- [ ] Step 5: part_drawing (GPT)
+- [x] Step 5: part_drawing (GPT)
 - [ ] Step 6: retire FreeCAD (GPT)
 - [ ] Step 7: release 0.16.0 and finish line (orchestrator)
 
@@ -360,7 +360,7 @@ the findings and the agent's previous report.
 >    API. Report the time taken.
 > 2. Internal M6 thread through a 20×20×10 box: removed volume within 3 % of 224.84.
 > 3. Sheet metal L bracket per plan.md 3.1 `sheet`: volume 1094.248, bbox [[0,0,0],[34,10,24]].
-> 4. The sweep path with a line, an arc and a line from plan.md 3.1 `sweep`: volume 448.719.
+> 4. The sweep path with a line, an arc and a line from plan.md 3.1 `sweep`: volume 448.720.
 > 5. Polar pattern of 6 cylinders r2 h10 at radius 10: volume 753.982.
 > 6. Mesh clearance between cubes at [0,0,0] and [13,14,0]: 5.000.
 > 7. An SVG with front, top, right and iso views of a 40×30×20 box with a blind r4 hole, depth 10,

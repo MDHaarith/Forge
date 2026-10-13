@@ -99,6 +99,23 @@ fn dxf_coord_spans(dxf: &str) -> (f64, f64, f64, f64) {
     (min_x, max_x, min_y, max_y)
 }
 
+fn view_bounds(svg: &str, name: &str) -> [f64; 4] {
+    let tag = format!("<g id=\"view-{name}\">");
+    let group = svg.split(&tag).nth(1).unwrap().split("</g>").next().unwrap();
+    let mut bounds = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    for path in group.split("<path class=\"visible\" d=\"").skip(1) {
+        let coords: Vec<f64> = path.split('"').next().unwrap().split_whitespace()
+            .filter_map(|value| value.parse().ok()).collect();
+        for p in coords.chunks_exact(2) {
+            bounds[0] = bounds[0].min(p[0]);
+            bounds[1] = bounds[1].min(p[1]);
+            bounds[2] = bounds[2].max(p[0]);
+            bounds[3] = bounds[3].max(p[1]);
+        }
+    }
+    bounds
+}
+
 // =========================================================================
 // 3.1 loft
 // =========================================================================
@@ -896,7 +913,6 @@ async fn inspect_error_overhang_range() {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn drawing_box_scale_1_1() {
     let (dir, _out) = build(json!({
         "name": "box403020",
@@ -919,10 +935,15 @@ async fn drawing_box_scale_1_1() {
     assert!(texts.iter().any(|t| t == "40"), "expected '40' in texts: {texts:?}");
     assert!(texts.iter().any(|t| t == "30"), "expected '30' in texts: {texts:?}");
     assert!(texts.iter().any(|t| t == "20"), "expected '20' in texts: {texts:?}");
+    let front = view_bounds(&svg, "front");
+    let top = view_bounds(&svg, "top");
+    let right = view_bounds(&svg, "right");
+    near(front[0] - right[2], 20.0, 0.001);
+    near(top[1] - front[3], 20.0, 0.001);
+    near(top[0], front[0], 0.001);
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn drawing_box_with_hole_hidden_lines_and_table() {
     let (dir, _out) = build(json!({
         "name": "box_hole",
@@ -949,7 +970,6 @@ async fn drawing_box_with_hole_hidden_lines_and_table() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn drawing_large_box_scale_1_2_a2() {
     let (dir, _out) = build(json!({
         "name": "box400300200",
@@ -969,7 +989,6 @@ async fn drawing_large_box_scale_1_2_a2() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn drawing_small_box_scale_5_1_a4() {
     let (dir, _out) = build(json!({
         "name": "box10105",
@@ -989,7 +1008,6 @@ async fn drawing_small_box_scale_5_1_a4() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn drawing_dxf_export() {
     let (dir, _out) = build(json!({
         "name": "box_dxf",
@@ -1019,7 +1037,6 @@ async fn drawing_dxf_export() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn drawing_error_path_not_step() {
     let dir = project("part", &[] as &[(&str, &str)]);
     std::fs::write(dir.path.join("file.txt"), "hello").unwrap();
@@ -1037,7 +1054,6 @@ async fn drawing_error_path_not_step() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn drawing_error_name_invalid_chars() {
     let (dir, _out) = build(json!({
         "name": "box",
@@ -1058,7 +1074,6 @@ async fn drawing_error_name_invalid_chars() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn drawing_error_part_does_not_fit() {
     let (dir, _out) = build(json!({
         "name": "huge_box",
@@ -1076,4 +1091,47 @@ async fn drawing_error_part_does_not_fit() {
         err.to_string().contains("part does not fit on A2 at 1:50"),
         "{err}"
     );
+}
+
+#[tokio::test]
+async fn drawing_translated_through_hole_third_angle_and_escaped_title() {
+    let (dir, _) = build(json!({"name":"translated","steps":[
+        {"op":"box","id":"plate","size":[40,30,20],"at":[-10,25,7]},
+        {"op":"hole","target":"plate","points":[[10,40]],"size":"M6","kind":"clearance"}
+    ]})).await;
+    std::fs::copy(dir.path.join("models/translated.step"), dir.path.join("plate.stp")).unwrap();
+    let result = run("part_drawing", json!({"path":"plate.stp","name":"custom",
+        "title":"A & B <plate>","material":"PLA","projection":"third","sheet":"A3","dxf":true}), &dir.path).await.unwrap();
+    let output: Value = serde_json::from_str(&result.text).unwrap();
+    assert_eq!(output.as_object().unwrap().keys().map(String::as_str).collect::<Vec<_>>(),
+        ["svg","dxf","sheet","scale","views","holes"]);
+    assert_eq!(output["holes"], 1);
+    assert_eq!(output["scale"], "2:1");
+    assert_eq!(output["sheet"], "A3");
+    assert_eq!(result.files, ["drawings/custom.svg", "drawings/custom-top.dxf"]);
+    let svg = std::fs::read_to_string(dir.path.join("drawings/custom.svg")).unwrap();
+    assert!(svg.contains("width=\"420mm\" height=\"297mm\" viewBox=\"0 0 420 297\""));
+    assert!(svg.contains("A &amp; B &lt;plate&gt;"));
+    assert!(svg.contains("third angle"));
+    assert!(svg.contains("Material: PLA"));
+    assert!(svg.contains("Mass: 28.912 g"));
+    assert!(svg.contains(">THRU</text>"));
+    assert!(svg.contains(">20</text>"));
+    assert!(svg.contains(">15</text>"));
+    let front = view_bounds(&svg, "front");
+    let top = view_bounds(&svg, "top");
+    let right = view_bounds(&svg, "right");
+    near(right[0] - front[2], 20.0, 0.001);
+    near(front[1] - top[3], 20.0, 0.001);
+    near(top[0], front[0], 0.001);
+    let iso = svg.split("<g id=\"view-iso\">").nth(1).unwrap().split("</g>").next().unwrap();
+    assert!(!iso.contains("class=\"hidden\""));
+    let dxf = std::fs::read_to_string(dir.path.join("drawings/custom-top.dxf")).unwrap();
+    let (min_x, max_x, min_y, max_y) = dxf_coord_spans(&dxf);
+    near(min_x, 0.0, 0.01);
+    near(max_x, 40.0, 0.01);
+    near(min_y, 0.0, 0.01);
+    near(max_y, 30.0, 0.01);
+    assert!(run("part_drawing", json!({"path":"../escape.step"}), &dir.path)
+        .await.unwrap_err().to_string().contains("outside the project"));
 }

@@ -61,6 +61,7 @@ server/src/
     part/standards.rs                        ISO hole/head/insert/pitch tables and material densities
     part/holes.rs                            analytic STEP hole grouping and standard diameter descriptions
     part/inspect.rs                          part_inspect: STEP/STP/STL size, volume, centre of mass, holes, configurable overhangs and STEP pair interference/clearance
+    part/drawing.rs                          part_drawing: scaled landscape SVG views, hidden lines, dimensions, hole table/title block and top-outline R12 DXF
     script3d.rs freecad.rs                   blender_build, freecad_build/inspect/drawing
     board.rs pcb.rs design.rs fit.rs         PCB engine, DRC, fab export, board-in-enclosure fit
     rf.rs rfmath.rs                          rf_calc, rf_antenna_sim (openEMS)
