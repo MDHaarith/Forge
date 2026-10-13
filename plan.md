@@ -195,7 +195,7 @@ the findings and the agent's previous report.
 - [x] Step 2: spec parser, footprints, netlist check, placement (GPT)
 - [x] Step 3: autorouter, pours, keepouts, antennas (GPT)
 - [x] Step 4: outputs: Gerber, drill, pnp, BOM, SVGs, circuit.json, board.json, GLB, STEP (GPT)
-- [ ] Step 5: native pcb_drc, delete pcb_export_fab, rf_calc calculators (GPT)
+- [x] Step 5: native pcb_drc, delete pcb_export_fab, rf_calc calculators (GPT)
 - [ ] Step 6: retire the Node engine and the .tsx format (GPT)
 - [ ] Step 7: release 0.17.0 and finish line (orchestrator)
 

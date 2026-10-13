@@ -67,13 +67,14 @@ server/src/
     pcb/spec.rs                             strict native .pcb.json parser, pin aliases, netlist and rule overrides
     pcb/footprint.rs                        pure nominal footprint generator, pads, courtyard, silk and body geometry
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
-    pcb/route.rs                            deterministic grid A*, 2/4 layers, through vias, rip-up passes and keepouts
+    pcb/drc.rs                              saved-copper geometry, net connectivity and sorted native DRC reports
+    pcb/route.rs                            deterministic grid A*, 2/4 layers, SMD fanout, through vias, net-class gaps and rip-up
     pcb/pour.rs                             i_overlay planar copper fills, thermals, clearance cuts and hole contours
     pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
     pcb/gerber.rs                           all Gerber X2 layers, 4-layer copper order and split PTH/NPTH Excellon
     pcb/svg.rs                              PCB copper/silk/drill view and grid schematic symbols with net labels
     pcb/export.rs                           rounded JS JSON, JLCPCB CSVs and shared-kernel STEP/GLB assemblies
-    rf.rs rfmath.rs                          rf_calc, rf_antenna_sim (openEMS)
+    rf.rs rfmath.rs                          RF and PCB calculators (IPC-2221/B, Onderdonk, E-series); rf_antenna_sim (openEMS)
     chip.rs                                  Verilog simulate/synthesize
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
@@ -94,6 +95,15 @@ execute without Node; the legacy tool availability gate stays until step 6. CAD 
 GLB coordinates, normals and edges use `[x,z,-y]` for Forge's viewer. All output paths resolve through
 `project_path` before async writes. Routing grids are limited to eight million cells to bound memory use.
 The existing `.tsx`/`.jsx` path still runs the Node engine and writes its usual outputs.
+`pcb_drc {"board":"<name>"}` reads the saved native circuit and source rules, checks geometry and
+connectivity in `spawn_blocking`, and writes sorted faults to `fab/<name>/<name>-drc.txt`.
+Net classes may override clearance as well as trace width; the router, pours and DRC share those rules.
+Drill minima and annular-ring minima come from `rules.via` (drill and half the diameter/drill difference).
+Saved-coordinate checks allow 0.000001 mm rounding tolerance. Through-hole courtyards reserve both sides.
+Routing reserves short SMD exits, includes layer-change cost in its A* heuristic, and preserves
+learned net priority across three deterministic rip-up passes. DRC uses saved component positions
+even when source rules change; it never re-places the board.
+`pcb_export_fab` is removed because native `pcb_build` writes every manufacturing artifact.
 
 ## HTTP API (all under /api, localhost only)
 

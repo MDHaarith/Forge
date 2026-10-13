@@ -16,10 +16,12 @@ the phases, and keep the external version working until its native replacement p
 | blender_build | Blender | renderer and mesh modifiers |
 | openscad_render | OpenSCAD | fold into the CAD kernel, or drop |
 | pcb_build (legacy inputs and availability gate) | Node + tscircuit engine | Native .pcb.json execution works; retire legacy inputs and gate |
-| pcb_drc, pcb_export_fab | kicad-cli | native DRC, Gerber/Excellon writer |
+| pcb_drc | none (native) | saved-copper DRC complete; pcb_build writes Gerber/Excellon files |
 | chip_simulate, chip_synthesize | iverilog, yosys | Verilog simulator and synthesis |
 | rf_antenna_sim | openEMS | FDTD solver |
 | git_status, git_commit, git_log | git | built-in git library (gitoxide) |
+
+Stage 3 step 5 is complete: native DRC, SMD via fanout and PCB calculators. Next: retire the legacy Node engine.
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble.
 

@@ -268,3 +268,92 @@ pub fn link_budget(o: &LinkOptions) -> LinkBudget {
     let rx_dbm = o.distance_m.map(|d| o.tx_dbm + o.tx_gain_dbi + o.rx_gain_dbi - loss - path_loss(d));
     LinkBudget { budget_db: budget, range_m, rx_dbm, margin_at_distance_db: rx_dbm.map(|rx| rx - o.sensitivity_dbm) }
 }
+
+// IPC-2221 copper area is in square mils; all public dimensions are mm.
+pub fn track_width(current: f64, rise: f64, copper: f64, internal: bool) -> f64 {
+    let k: f64 = if internal { 0.024 } else { 0.048 };
+    (current / (k * rise.powf(0.44))).powf(1. / 0.725) * 0.0254_f64.powi(2) / copper
+}
+pub fn via_properties(drill: f64, length: f64, plating: f64, rise: f64) -> (f64, f64) {
+    let area = PI * (drill + plating) * plating;
+    (1.72e-5 * length / area, 0.048 * rise.powf(0.44) * (area / 0.0254_f64.powi(2)).powf(0.725))
+}
+// Onderdonk's adiabatic copper model, area in circular mils, ambient 20 C and melting point 1083 C.
+pub fn fusing_current(width: f64, copper: f64, seconds: f64) -> f64 {
+    let circular_mils = width * copper / (PI / 4. * 0.0254_f64.powi(2));
+    circular_mils * ((1. + 1063_f64 / 254.).log10() / (33. * seconds)).sqrt()
+}
+
+pub const E12: &[f64] = &[1., 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 3.9, 4.7, 5.6, 6.8, 8.2];
+pub const E96: &[f64] = &[
+    1.00,1.02,1.05,1.07,1.10,1.13,1.15,1.18,1.21,1.24,1.27,1.30,
+    1.33,1.37,1.40,1.43,1.47,1.50,1.54,1.58,1.62,1.65,1.69,1.74,
+    1.78,1.82,1.87,1.91,1.96,2.00,2.05,2.10,2.15,2.21,2.26,2.32,
+    2.37,2.43,2.49,2.55,2.61,2.67,2.74,2.80,2.87,2.94,3.01,3.09,
+    3.16,3.24,3.32,3.40,3.48,3.57,3.65,3.74,3.83,3.92,4.02,4.12,
+    4.22,4.32,4.42,4.53,4.64,4.75,4.87,4.99,5.11,5.23,5.36,5.49,
+    5.62,5.76,5.90,6.04,6.19,6.34,6.49,6.65,6.81,6.98,7.15,7.32,
+    7.50,7.68,7.87,8.06,8.25,8.45,8.66,8.87,9.09,9.31,9.53,9.76,
+];
+
+/// Find the closest unloaded divider ratio; fixing one resistor decade removes equivalent scaled pairs.
+pub fn divider(vin: f64, target: f64, series: &[f64]) -> (f64, f64, f64) {
+    let mut best = (0.,0.,0.);
+    let mut error = f64::INFINITY;
+    for value in series {
+        let bottom = value * 10_000.;
+        let ideal = bottom * (vin - target) / target;
+        let decade = 10_f64.powf(ideal.log10().floor());
+        for d in [decade / 10.,decade,decade * 10.] {
+            for v in series {
+                let top = v * d;
+                let output = vin * bottom / (top + bottom);
+                let e = (output - target).abs();
+                if e < error { error = e; best = (top,bottom,output); }
+            }
+        }
+    }
+    best
+}
+
+/// IPC-2221B table 6-1, B1/B2/B4. Above 500 V add each column's per-volt increment.
+pub fn conductor_spacing(voltage: f64, column: usize) -> f64 {
+    const LIMITS: [f64;7] = [15.,30.,50.,100.,150.,300.,500.];
+    const SPACING: [[f64;3];7] = [
+        [0.05,0.1,0.05],[0.05,0.1,0.05],[0.1,0.6,0.13],[0.1,0.6,0.13],
+        [0.2,0.6,0.4],[0.2,1.25,0.4],[0.25,2.5,0.8],
+    ];
+    let row = LIMITS.iter().position(|&v| voltage <= v).unwrap_or(6);
+    SPACING[row][column] + (voltage-500.).max(0.) * [0.0025,0.005,0.00305][column]
+}
+
+#[cfg(test)]
+mod pcb_calculator_tests {
+    use super::*;
+    #[test]
+    fn copper_models_and_spacing_boundaries() {
+        let external = track_width(1.,10.,0.035,false);
+        assert!((external-0.300).abs() < 0.001);
+        assert!((track_width(0.5,10.,0.035,true)-external).abs() < 1e-12);
+        let (resistance,current) = via_properties(0.3,1.6,0.018,10.);
+        assert!((resistance*1000.-1.53).abs() < 0.01);
+        assert!(current > 1.);
+        assert!((fusing_current(0.5,0.035,1.)-5.08).abs() < 0.01);
+        assert!((fusing_current(0.5,0.035,4.)*2.-fusing_current(0.5,0.035,1.)).abs() < 1e-12);
+        assert_eq!(conductor_spacing(30.,1),0.1);
+        assert_eq!(conductor_spacing(30.001,1),0.6);
+        assert_eq!(conductor_spacing(250.,2),0.4);
+        assert_eq!(conductor_spacing(600.,0),0.5);
+    }
+    #[test]
+    fn standard_values_and_divider_ratios() {
+        assert_eq!(nearest_standard(5000.,E96),4990.);
+        assert_eq!(nearest_standard(9.9,E12),10.);
+        for series in [E12,E24,E96] {
+            let (top,bottom,output) = divider(5.,3.3,series);
+            assert!(top > 0. && bottom > 0.);
+            assert_eq!(output,5.*bottom/(top+bottom));
+            assert!((output-3.3).abs()/3.3 < if series == E12 { 0.03 } else { 0.01 });
+        }
+    }
+}

@@ -66,6 +66,7 @@ impl Default for Rules {
 pub struct NetClass {
     pub nets: Vec<String>,
     pub trace: f64,
+    pub clearance: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -219,6 +220,10 @@ impl Board {
 }
 
 impl Spec {
+    pub fn clearance(&self, net: &str) -> f64 {
+        self.netclasses.values().find(|c| c.nets.iter().any(|n| n == net))
+            .and_then(|c| c.clearance).unwrap_or(self.rules.clearance)
+    }
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(self.board.layers, 2 | 4) {
             return Err("board.layers must be 2 or 4".into());
@@ -313,6 +318,9 @@ impl Spec {
         for (name, class) in &self.netclasses {
             net_name(name)?;
             positive(class.trace, "netclass.trace")?;
+            if let Some(clearance) = class.clearance {
+                nonnegative(clearance, "netclass.clearance")?;
+            }
             for net in &class.nets {
                 net_name(net)?;
                 if !classes.insert(net) {

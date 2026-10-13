@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.4 — 2026-10-13
+
+- Native `pcb_drc` checks saved circuit copper, net-class clearance and track widths, drills,
+  annular rings, board edges, connectivity, courtyards and vias in SMD pads. Reports are sorted
+  and saved to `fab/<name>/<name>-drc.txt`; no KiCad program is needed.
+- Removed `pcb_export_fab`: native `pcb_build` already writes every manufacturing file.
+- Added IPC-2221 track width and via estimates, Onderdonk fusing current, IPC-2221B conductor
+  spacing and E12/E24/E96 nearest-value and unloaded-divider calculations to `rf_calc`.
+- Vias now fan out from SMD pads. Short exits remain available during routing, and rip-up
+  passes retain learned net priority. The stress board still routes 26/40 nets with no clearance
+  violations; the 555 board routes all nets and passes DRC. Placement reserves through-hole
+  courtyards on both sides, preventing bottom pads from overlapping header copper. No new dependencies.
+
 ## 0.16.3 — 2026-10-13
 
 - Native `.pcb.json` builds now write PCB and schematic SVGs, GLB and STEP board assemblies,

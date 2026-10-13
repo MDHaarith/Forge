@@ -81,7 +81,7 @@ async fn status_lists_every_capability() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect::<Vec<_>>();
-    for n in ["write_file", "git_commit", "part_build", "part_inspect", "part_drawing", "pcb_export_fab", "chip_synthesize"] {
+    for n in ["write_file", "git_commit", "part_build", "part_inspect", "part_drawing", "chip_synthesize"] {
         assert!(names.contains(&n), "{n}");
     }
     assert_eq!(

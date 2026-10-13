@@ -779,7 +779,6 @@ async fn out_report_line_errors_summary() {
 // -----------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn drc_error_board_not_built() {
     let dir = project("drc_unbuilt", &[] as &[(&str, &str)]);
     let err = run("pcb_drc", json!({"board": "unbuilt"}), &dir.path)
@@ -789,7 +788,6 @@ async fn drc_error_board_not_built() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn drc_clean_board() {
     let dir = project("drc_clean", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -807,7 +805,6 @@ async fn drc_clean_board() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn drc_broken_board_reports_violations() {
     let dir = project("drc_broken", &[("pcb/broken.pcb.json", TWO_RESISTOR_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/broken.pcb.json"}), &dir.path)
@@ -848,7 +845,6 @@ async fn drc_broken_board_reports_violations() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn drc_track_width_violation() {
     let dir = project("drc_width", &[("pcb/width.pcb.json", TWO_RESISTOR_BOARD_JSON)]);
     run("pcb_build", json!({"source": "pcb/width.pcb.json"}), &dir.path)
@@ -894,7 +890,6 @@ async fn drc_track_width_violation() {
 // -----------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn calc_track_width_ipc2152() {
     // IPC-2221 (k=0.048, b=0.44, c=0.725, as KiCad's calculator):
     // Arithmetic:
@@ -925,7 +920,6 @@ async fn calc_track_width_ipc2152() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn calc_via_current_and_resistance() {
     // KiCad via resistance model:
     // drill = 0.3 mm, length = 1.6 mm, plating = 0.018 mm
@@ -960,7 +954,6 @@ async fn calc_via_current_and_resistance() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn calc_fusing_onderdonk() {
     // Onderdonk formula (Tm 1083 °C, Ta 20 °C):
     // 0.5 × 0.035 mm = 34.54 circular mils
@@ -987,7 +980,6 @@ async fn calc_fusing_onderdonk() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn calc_spacing_ipc2221b() {
     // Source: IPC-2221B Table 6-1 (Table B) 151-300 V external coated conductor (B4) requires 0.4 mm clearance
     let out = run(
@@ -1019,7 +1011,6 @@ async fn calc_spacing_ipc2221b() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn calc_e_series_nearest_and_divider() {
     // 5000 Ω -> nearest E96 standard value is 4.99k (4990 Ω)
     let out = run(
@@ -1089,4 +1080,51 @@ async fn calc_e_series_nearest_and_divider() {
         "reported output voltage {vout} V is not within 1% of 3.3 V (error: {:.2}%)",
         diff * 100.0
     );
+}
+
+#[tokio::test]
+async fn route_555_vias_fan_out_clear_of_smd_pads_and_pass_drc() {
+    let dir = project("route_555_fanout", &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)]);
+    run("pcb_build", json!({"source":"pcb/blinker.pcb.json"}), &dir.path).await.unwrap();
+    let circuit: Value = serde_json::from_str(&std::fs::read_to_string(dir.path.join("pcb/blinker.circuit.json")).unwrap()).unwrap();
+    let elements = circuit.as_array().unwrap();
+    let vias: Vec<_> = elements.iter().filter(|e| e["type"] == "pcb_via").collect();
+    assert!(!vias.is_empty(), "555 board must exercise layer changes");
+    for via in vias {
+        let x = via["x"].as_f64().unwrap();
+        let y = via["y"].as_f64().unwrap();
+        eprintln!("555 via {}: [{x}, {y}] mm", via["net"]);
+        let margin = via["outer_diameter"].as_f64().unwrap()/2. + 0.2;
+        for pad in elements.iter().filter(|e| e["type"] == "pcb_smtpad") {
+            let dx = x - pad["x"].as_f64().unwrap();
+            let dy = y - pad["y"].as_f64().unwrap();
+            let (s,c) = pad["rotation"].as_f64().unwrap().to_radians().sin_cos();
+            let local_x = c*dx+s*dy;
+            let local_y = -s*dx+c*dy;
+            let half_width = pad["width"].as_f64().unwrap()/2.;
+            let half_height = pad["height"].as_f64().unwrap()/2.;
+            assert!(local_x.abs() > half_width + 0.2 || local_y.abs() > half_height + 0.2,
+                "via {} lies inside expanded SMD pad {}", via["pcb_via_id"], pad["pcb_smtpad_id"]);
+            let gap = (local_x.abs()-half_width).max(0.).hypot((local_y.abs()-half_height).max(0.));
+            assert!(gap >= margin - 1e-6,
+                "via {} copper crowds SMD pad {}",via["pcb_via_id"],pad["pcb_smtpad_id"]);
+        }
+    }
+    let drc = run("pcb_drc", json!({"board":"blinker"}), &dir.path).await.unwrap();
+    assert_eq!(drc.text, "No DRC errors.");
+}
+
+#[tokio::test]
+async fn calc_rejects_invalid_pcb_inputs() {
+    for input in [
+        json!({"calc":"track_width","current_a":-1,"temp_rise_c":10,"copper_mm":0.035}),
+        json!({"calc":"track_width","current_a":1,"temp_rise_c":10,"copper_mm":0.035,"layer":"external_coated"}),
+        json!({"calc":"via","drill_mm":0.3,"length_mm":1.6,"plating_mm":0,"temp_rise_c":10}),
+        json!({"calc":"fusing","width_mm":0.5,"copper_mm":0.035,"time_s":0}),
+        json!({"calc":"spacing","voltage_v":-1}),
+        json!({"calc":"e_series","value":0,"series":"E96"}),
+        json!({"calc":"e_series","vin_v":5,"vout_v":5,"series":"E96"}),
+    ] {
+        assert!(run("rf_calc", input.clone(), Path::new("/nonexistent")).await.is_err(), "{input}");
+    }
 }

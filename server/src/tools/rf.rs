@@ -10,7 +10,13 @@ pub fn tools() -> Vec<Tool> {
 - calc "line": impedance of a microstrip, grounded coplanar waveguide (cpwg), stripline or differential microstrip pair, or the trace width for a target impedance (target_ohms; e.g. 50 for an antenna feed, 90 differential for USB, 100 for Ethernet). Use a fab stackup (jlc-2layer-1.6, jlc-4layer-1.6-7628, jlc-4layer-1.6-3313) or height_mm and er. Gives the wavelength and quarter-wave length on the line too.
 - calc "match": L matching networks that bring a load impedance (load_re + j load_im, e.g. a measured or simulated antenna) to 50 ohm, with ideal and E24 part values.
 - calc "link": link budget and range from transmit power, antenna gains and receiver sensitivity.
-Use the trace width it gives in pcb_build (<trace thickness="...mm" />) and keep RF traces short with ground on both sides."#, json!({"type":"object", "additionalProperties": false,"properties":{"calc":{"type":"string","enum":["line","match","link"],"description":"Calculation: transmission line, matching network or link budget"},"line":{"type":"string","enum":["microstrip","cpwg","stripline","diff_microstrip"],"description":"line: geometry (default microstrip)"},"stackup":{"type":"string","enum":["jlc-2layer-1.6","jlc-4layer-1.6-7628","jlc-4layer-1.6-3313"],"description":"line: fab stackup"},"height_mm":{"type":"number","description":"line: dielectric height to the reference plane (stripline: plane-to-plane)"},"er":{"type":"number","description":"line: relative permittivity of the dielectric"},"copper_mm":{"type":"number","description":"line: copper thickness (default 0.035 = 1 oz)"},"width_mm":{"type":"number","description":"line: trace width to analyse"},"target_ohms":{"type":"number","description":"line: impedance to find the width for (differential for diff_microstrip)"},"gap_mm":{"type":"number","description":"line: cpwg gap to side ground, or diff pair spacing"},"frequency_mhz":{"type":"number","description":"Frequency in MHz (line: default 2450)"},"load_re":{"type":"number","description":"match: load resistance in ohm"},"load_im":{"type":"number","description":"match: load reactance in ohm (negative = capacitive)"},"source_ohms":{"type":"number","description":"match: impedance to match to (default 50)"},"tx_dbm":{"type":"number","description":"link: transmit power"},"tx_gain_dbi":{"type":"number","description":"link: transmit antenna gain in dBi (default 0)"},"rx_gain_dbi":{"type":"number","description":"link: receive antenna gain in dBi (default 0)"},"sensitivity_dbm":{"type":"number","description":"link: receiver sensitivity"},"distance_m":{"type":"number","description":"link: distance to evaluate"},"loss_db":{"type":"number","description":"link: extra losses (cables, enclosure)"},"margin_db":{"type":"number","description":"link: fade margin for the range (default 10)"},"environment":{"type":"string","enum":["free_space","outdoor","indoor"],"description":"link: propagation environment (default free_space)"},"path_loss_exponent":{"type":"number","description":"link: overrides environment"}},"required":["calc"]}), rf_calc)
+- calc "track_width": IPC-2221 copper width from current_a, temp_rise_c, copper_mm and layer (external/internal).
+- calc "via": copper via resistance and current from drill_mm, length_mm, plating_mm and temp_rise_c.
+- calc "fusing": Onderdonk adiabatic copper fusing current from width_mm, copper_mm and time_s (20 C ambient).
+- calc "spacing": IPC-2221B spacing from voltage_v and layer (internal/external/external_coated).
+- calc "e_series": nearest E12/E24/E96 value, or best unloaded divider from vin_v and vout_v.
+
+Use the trace width it gives in pcb/<name>.pcb.json and keep RF traces short with ground on both sides."#, json!({"type":"object", "additionalProperties": false,"properties":{"calc":{"type":"string","enum":["line","match","link","track_width","via","fusing","spacing","e_series"],"description":"Calculation: RF lines, matching, link budgets or PCB calculators"},"line":{"type":"string","enum":["microstrip","cpwg","stripline","diff_microstrip"],"description":"line: geometry (default microstrip)"},"stackup":{"type":"string","enum":["jlc-2layer-1.6","jlc-4layer-1.6-7628","jlc-4layer-1.6-3313"],"description":"line: fab stackup"},"height_mm":{"type":"number","description":"line: dielectric height to the reference plane (stripline: plane-to-plane)"},"er":{"type":"number","description":"line: relative permittivity of the dielectric"},"copper_mm":{"type":"number","description":"line/track_width/fusing: copper thickness in mm (line default 0.035)"},"width_mm":{"type":"number","description":"line/fusing: trace width in mm"},"target_ohms":{"type":"number","description":"line: impedance to find the width for (differential for diff_microstrip)"},"gap_mm":{"type":"number","description":"line: cpwg gap to side ground, or diff pair spacing"},"frequency_mhz":{"type":"number","description":"Frequency in MHz (line: default 2450)"},"load_re":{"type":"number","description":"match: load resistance in ohm"},"load_im":{"type":"number","description":"match: load reactance in ohm (negative = capacitive)"},"source_ohms":{"type":"number","description":"match: impedance to match to (default 50)"},"tx_dbm":{"type":"number","description":"link: transmit power"},"tx_gain_dbi":{"type":"number","description":"link: transmit antenna gain in dBi (default 0)"},"rx_gain_dbi":{"type":"number","description":"link: receive antenna gain in dBi (default 0)"},"sensitivity_dbm":{"type":"number","description":"link: receiver sensitivity"},"distance_m":{"type":"number","description":"link: distance to evaluate"},"loss_db":{"type":"number","description":"link: extra losses (cables, enclosure)"},"margin_db":{"type":"number","description":"link: fade margin for the range (default 10)"},"environment":{"type":"string","enum":["free_space","outdoor","indoor"],"description":"link: propagation environment (default free_space)"},"path_loss_exponent":{"type":"number","description":"link: overrides environment"},"current_a":{"type":"number","description":"track_width: required current in amperes"},"temp_rise_c":{"type":"number","description":"track_width/via: permitted temperature rise in degrees C"},"layer":{"type":"string","enum":["internal","external","external_coated"],"description":"track_width: internal/external; spacing: internal/external/external_coated"},"drill_mm":{"type":"number","description":"via: finished drill diameter in mm"},"length_mm":{"type":"number","description":"via: barrel length in mm"},"plating_mm":{"type":"number","description":"via: copper plating thickness in mm"},"time_s":{"type":"number","description":"fusing: time to melt in seconds"},"voltage_v":{"type":"number","description":"spacing: DC or AC peak voltage"},"value":{"type":"number","description":"e_series: value to round to a preferred value"},"series":{"type":"string","enum":["E12","E24","E96"],"description":"e_series: preferred-value series, default E24"},"vin_v":{"type":"number","description":"e_series: divider input voltage"},"vout_v":{"type":"number","description":"e_series: desired unloaded output voltage"}},"required":["calc"]}), rf_calc)
         },
         {
             let mut tool = Tool::new("pcb", "rf_antenna_sim", r#"Simulates a board's antenna with openEMS (a full-wave FDTD field solver), from the board pcb_build made. Reports the resonance, S11 and -10 dB bandwidth, the input impedance at the target frequency, radiation efficiency and peak gain, and writes rf/<board>/<antenna>-s11.svg, <antenna>-pattern.svg (gain in three planes), <antenna>.s1p (Touchstone, for a VNA comparison or a circuit simulator) and <antenna>.json.
@@ -140,10 +146,66 @@ fn calc_link(input: &Value) -> Result<String, ToolError> {
     Ok(lines.join("\n"))
 }
 
+fn calc_pcb(input: &Value, calc: &str) -> Result<String, ToolError> {
+    let required = |key, min, max| num(input.get(key), key, min, max);
+    match calc {
+        "track_width" => {
+            let current = required("current_a", 1e-6, 1e6)?;
+            let rise = required("temp_rise_c", 1e-6, 1000.)?;
+            let copper = required("copper_mm", 1e-6, 10.)?;
+            let layer = input["layer"].as_str().unwrap_or("external");
+            if !["internal", "external"].contains(&layer) {
+                return Err(ToolError::expected("track_width layer must be external or internal"));
+            }
+            Ok(format!("IPC-2221 {layer} track width: {} mm for {} A, {} C rise.\nEmpirical copper estimate; verify the fab stackup and thermal conditions.",
+                r(track_width(current, rise, copper, layer == "internal"), 6), number(current), number(rise)))
+        }
+        "via" => {
+            let drill = required("drill_mm", 1e-6, 100.)?;
+            let length = required("length_mm", 1e-6, 100.)?;
+            let plating = required("plating_mm", 1e-6, 10.)?;
+            let rise = required("temp_rise_c", 1e-6, 1000.)?;
+            let (resistance, current) = via_properties(drill, length, plating, rise);
+            Ok(format!("Copper via resistance: {} mΩ.\nIPC-2221 estimated current: {} A at {} C rise.",r(resistance * 1000.,6),r(current,6),number(rise)))
+        }
+        "fusing" => {
+            let width = required("width_mm", 1e-6, 1000.)?;
+            let copper = required("copper_mm", 1e-6, 10.)?;
+            let time = required("time_s", 1e-6, 1e6)?;
+            Ok(format!("Onderdonk fusing current: {} A for {} s (copper, 20 C ambient, 1083 C melting point).\nAdiabatic estimate; excludes heat loss and latent heat.",r(fusing_current(width,copper,time),6),number(time)))
+        }
+        "spacing" => {
+            let voltage = required("voltage_v",0.,1e6)?;
+            let layer = input["layer"].as_str().unwrap_or("external");
+            let (column, class) = match layer {
+                "internal" => (0,"B1 internal"), "external" => (1,"B2 external uncoated, up to 3050 m"),
+                "external_coated" => (2,"B4 permanent polymer coating"),
+                _ => return Err(ToolError::expected("spacing layer must be internal, external or external_coated")),
+            };
+            Ok(format!("IPC-2221B {class} spacing: {} mm at {} V (DC or AC peak).",number(conductor_spacing(voltage,column)),number(voltage)))
+        }
+        "e_series" => {
+            let series_name = input["series"].as_str().unwrap_or("E24");
+            let series = match series_name { "E12" => E12, "E24" => E24, "E96" => E96,
+                _ => return Err(ToolError::expected("series must be E12, E24 or E96")), };
+            if input.get("value").is_some() {
+                let value = required("value",1e-12,1e12)?;
+                return Ok(format!("Nearest {series_name} value: {} Ω.",number(nearest_standard(value,series))));
+            }
+            let vin = required("vin_v",1e-6,1e6)?;
+            let target = required("vout_v",1e-6,1e6)?;
+            if target >= vin { return Err(ToolError::expected("vout_v must be smaller than vin_v")); }
+            let (top,bottom,output) = divider(vin,target,series);
+            Ok(format!("{series_name} divider: top {} Ω, bottom {} Ω.\nOutput: {} V; error {} % (unloaded).",number(precision(top,6)),number(precision(bottom,6)),r(output,8),r((output/target-1.)*100.,6)))
+        }
+        _ => unreachable!(),
+    }
+}
+
 fn rf_calc(input: Value, _ctx: ToolContext) -> ToolFuture {
     Box::pin(async move {
         let calc = string(Some(input.get("calc").filter(|v| !v.is_null()).unwrap_or(&json!(""))));
-        let text = match calc.as_str() { "line" => calc_line(&input)?, "match" => calc_match(&input)?, "link" => calc_link(&input)?, _ => return Err(ToolError::expected("calc must be \"line\", \"match\" or \"link\"")) };
+        let text = match calc.as_str() { "line" => calc_line(&input)?, "match" => calc_match(&input)?, "link" => calc_link(&input)?, "track_width" | "via" | "fusing" | "spacing" | "e_series" => calc_pcb(&input, &calc)?, _ => return Err(ToolError::expected("calc must be \"line\", \"match\" or \"link\"")) };
         Ok(ToolResult::text(text))
     })
 }

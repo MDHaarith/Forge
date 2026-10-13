@@ -1,5 +1,8 @@
 use super::{antenna, place, Layer, PreparedBoard};
-use std::{cmp::Reverse, collections::BinaryHeap};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, BinaryHeap},
+};
 
 pub type Point = [f64; 2];
 #[derive(Clone, Debug)]
@@ -18,6 +21,7 @@ pub struct Net {
     pub name: String,
     pub pads: Vec<usize>,
     pub width: f64,
+    pub clearance: f64,
 }
 #[derive(Clone, Debug)]
 pub struct Board {
@@ -128,6 +132,12 @@ impl Pad {
 }
 
 impl Board {
+    pub fn clearance(&self, net: usize) -> f64 {
+        self.nets
+            .get(net)
+            .map(|n| n.clearance)
+            .unwrap_or(self.clearance)
+    }
     pub fn from_prepared(prepared: &PreparedBoard) -> Result<Self, String> {
         let spec = &prepared.spec;
         let bounds = spec.board.bounds();
@@ -203,6 +213,7 @@ impl Board {
                 name: n.name.clone(),
                 pads,
                 width: n.trace,
+                clearance: spec.clearance(&n.name),
             });
         }
         // A pour can declare a net without terminals (for example an antenna reference plane).
@@ -212,6 +223,7 @@ impl Board {
                     name: pour.net.clone(),
                     pads: vec![],
                     width: spec.rules.trace,
+                    clearance: spec.clearance(&pour.net),
                 });
             }
         }
@@ -257,6 +269,7 @@ impl Board {
 }
 
 struct Grid {
+    fanouts: Vec<Track>,
     nx: usize,
     ny: usize,
     g: f64,
@@ -266,7 +279,40 @@ struct Grid {
 impl Grid {
     fn new(b: &Board) -> Self {
         let g = (b.clearance / 2.0).max(0.05);
+        let mut centers: BTreeMap<&str, (Point, usize)> = BTreeMap::new();
+        for p in &b.pads {
+            let (sum, count) = centers
+                .entry(p.name.split('.').next().unwrap())
+                .or_default();
+            sum[0] += p.at[0];
+            sum[1] += p.at[1];
+            *count += 1;
+        }
+        let fanouts = b
+            .pads
+            .iter()
+            .filter(|p| p.drill == 0. && p.net != usize::MAX)
+            .filter_map(|p| {
+                let (sum, count) = centers[p.name.split('.').next().unwrap()];
+                let center = p.local([sum[0] / count as f64, sum[1] / count as f64]);
+                let axis = if p.size[0] >= p.size[1] { 0 } else { 1 };
+                if center[axis].abs() < 1e-9 {
+                    return None;
+                }
+                let mut end = [0.; 2];
+                end[axis] = -center[axis].signum()
+                    * (p.size[axis] / 2. + b.via[0] / 2. + b.clearance(p.net) + g);
+                Some(Track {
+                    a: p.at,
+                    b: p.point(end),
+                    layer: p.layers.trailing_zeros() as usize,
+                    width: b.nets[p.net].width,
+                    net: p.net,
+                })
+            })
+            .collect();
         Self {
+            fanouts,
             nx: (b.size[0] / g).floor() as usize + 1,
             ny: (b.size[1] / g).floor() as usize + 1,
             g,
@@ -330,10 +376,17 @@ impl Grid {
             }
         }
     }
-    fn obstacles(&self, b: &Board, r: &Routes, net: usize, radius: f64) -> Vec<bool> {
+    fn obstacles(
+        &self,
+        b: &Board,
+        r: &Routes,
+        net: usize,
+        radius: f64,
+        segments: bool,
+    ) -> Vec<bool> {
         let mut blocked = vec![false; self.nx * self.ny * self.layers];
         // Half-cell guard covers the complete orthogonal segment, not only each sample point.
-        let guard = self.g / 2.0;
+        let guard = if segments { self.g / 2.0 } else { 0. };
         let margin = b.edge + radius + guard;
         let rectangular = b.outline.len() == 4
             && b.outline.iter().all(|p| {
@@ -355,21 +408,24 @@ impl Grid {
                         .any(|(a, bb)| segment_distance(p, *a, *bb) < margin)
             };
         }
-        let c = b.clearance + radius + guard;
+        let c = b.clearance(net) + radius + guard;
         for p in &b.pads {
             if p.net == net {
                 continue;
             }
+            let clearance = b.clearance(net).max(b.clearance(p.net));
             // Square expansion is conservative along an entire orthogonal edge, without an extra half-cell pad penalty.
             let pad_c = if p.round || p.rotation.rem_euclid(90.).abs() > 1e-9 {
-                c
+                clearance + radius + guard
             } else {
-                b.clearance + radius
+                clearance + radius
             };
             let ext = [p.bounds()[0] + 2.0 * pad_c, p.bounds()[1] + 2.0 * pad_c];
             self.mark(&mut blocked, p.at, ext, p.layers, |q| {
                 if p.round {
                     distance(q, p.at) < p.size[0] / 2.0 + pad_c
+                } else if !segments {
+                    rect_distance(p.local(q), [0.; 2], p.size) < pad_c
                 } else {
                     p.local(q)[0].abs() < p.size[0] / 2.0 + pad_c
                         && p.local(q)[1].abs() < p.size[1] / 2.0 + pad_c
@@ -431,7 +487,8 @@ impl Grid {
                 },
             );
         }
-        for t in r.tracks.iter().chain(
+        // Reserve short SMD exits so earlier nets cannot trap later pads before they can place a via.
+        for t in r.tracks.iter().chain(self.fanouts.iter()).chain(
             b.fixed
                 .iter()
                 .filter(|f| !f.nets.contains(&net))
@@ -440,7 +497,7 @@ impl Grid {
             if t.net == net && t.net != usize::MAX {
                 continue;
             }
-            let radius = t.width / 2.0 + c;
+            let radius = t.width / 2.0 + radius + guard + b.clearance(net).max(b.clearance(t.net));
             let center = [(t.a[0] + t.b[0]) / 2.0, (t.a[1] + t.b[1]) / 2.0];
             let size = [
                 (t.a[0] - t.b[0]).abs() + 2.0 * radius,
@@ -454,7 +511,7 @@ impl Grid {
             if v.net == net {
                 continue;
             }
-            let radius = b.via[0] / 2.0 + c;
+            let radius = b.via[0] / 2.0 + radius + guard + b.clearance(net).max(b.clearance(v.net));
             self.mark(
                 &mut blocked,
                 v.at,
@@ -468,14 +525,32 @@ impl Grid {
 
     // shortcut: grid maze router, upgrade to a shape-based router when real boards leave nets unrouted.
     fn astar(&self, b: &Board, r: &Routes, net: usize, a: usize, bb: usize) -> Option<Vec<usize>> {
-        let blocked = self.obstacles(b, r, net, b.nets[net].width / 2.0);
-        let via_blocked = self.obstacles(b, r, net, b.via[0] / 2.0);
+        let blocked = self.obstacles(b, r, net, b.nets[net].width / 2.0, true);
+        let mut via_blocked = self.obstacles(b, r, net, b.via[0] / 2.0, false);
+        // Open vias need a fanout stub even when the SMD pad belongs to this net.
+        for p in b.pads.iter().filter(|p| p.drill == 0.) {
+            let margin = b.clearance(net).max(b.clearance(p.net)) + b.via[0] / 2.0;
+            self.mark(
+                &mut via_blocked,
+                p.at,
+                [p.bounds()[0] + 2. * margin, p.bounds()[1] + 2. * margin],
+                (1 << b.layers) - 1,
+                |q| rect_distance(p.local(q), [0.; 2], p.size) <= margin + 1e-9,
+            );
+        }
         let source = &b.pads[a];
         let target = &b.pads[bb];
         let target_xy = self.xyz(self.node(target.at, 0));
+        let free_layer_change = b.pads.iter().any(|p| p.net == net && p.drill > 0.)
+            || r.vias.iter().any(|v| v.net == net);
         let heuristic = |i| {
-            let (x, y, _) = self.xyz(i);
+            let (x, y, z) = self.xyz(i);
             ((x.abs_diff(target_xy.0) + y.abs_diff(target_xy.1)) * 10) as u32
+                + if !free_layer_change && target.layers & (1 << z) == 0 {
+                    300
+                } else {
+                    0
+                }
         };
         let mut cost = vec![u32::MAX; blocked.len()];
         let mut parent = vec![usize::MAX; blocked.len()];
@@ -485,11 +560,11 @@ impl Grid {
                 let i = self.node(source.at, z);
                 if !blocked[i] {
                     cost[i] = 0;
-                    queue.push(Reverse((heuristic(i), 0, i)));
+                    queue.push(Reverse((heuristic(i), Reverse(0), i)));
                 }
             }
         }
-        while let Some(Reverse((_, g, i))) = queue.pop() {
+        while let Some(Reverse((_, Reverse(g), i))) = queue.pop() {
             if cost[i] != g {
                 continue;
             }
@@ -542,7 +617,7 @@ impl Grid {
                 if nc < cost[next] {
                     cost[next] = nc;
                     parent[next] = i;
-                    queue.push(Reverse((nc + heuristic(next), nc, next)));
+                    queue.push(Reverse((nc + heuristic(next), Reverse(nc), next)));
                 }
             }
         }
@@ -643,8 +718,9 @@ pub fn route(b: &Board) -> Routes {
                             .then((a, bb).cmp(&(c, d)))
                     })
                     .unwrap();
-                if let Some(path) = grid.astar(b, &r, net, a, bb) {
-                    grid.commit(b, &mut r, net, a, bb, &path);
+                let (start, end) = if pass > 1 { (bb, a) } else { (a, bb) };
+                if let Some(path) = grid.astar(b, &r, net, start, end) {
+                    grid.commit(b, &mut r, net, start, end, &path);
                     connected.push(bb);
                     remaining.retain(|&p| p != bb);
                 } else {
@@ -665,20 +741,14 @@ pub fn route(b: &Board) -> Routes {
         if count == b.nets.len() {
             return r;
         }
-        // Rip up all tracks and retry, moving failures ahead while retaining short-first ordering within groups.
-        order.sort_by(|&a, &bb| {
-            r.routed[a]
-                .cmp(&r.routed[bb])
-                .then(net_length(a).total_cmp(&net_length(bb)))
-                .then(a.cmp(&bb))
-        });
+        // Stable promotion preserves priority gained by difficult nets in earlier passes.
+        order.sort_by_key(|&net| r.routed[net]);
     }
     best.passes = 3;
     best
 }
 
-#[cfg(test)]
-fn segment_segment(a: Point, b: Point, c: Point, d: Point) -> f64 {
+pub(super) fn segment_segment(a: Point, b: Point, c: Point, d: Point) -> f64 {
     let cross = |a: Point, b: Point, c: Point| {
         (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
     };
@@ -813,6 +883,7 @@ mod tests {
             name: "N".into(),
             pads: vec![0, 1, 2],
             width: 0.2,
+            clearance: 0.2,
         });
         for (i, at) in [[0., 0.], [2., 0.], [1., 0.]].into_iter().enumerate() {
             b.pads.push(Pad {
@@ -926,6 +997,7 @@ mod tests {
                 name: format!("N{i:02}"),
                 pads,
                 width: 0.2,
+                clearance: 0.2,
             });
         }
         let blinker = Board::from_prepared(&super::super::prepare(BLINKER).unwrap()).unwrap();

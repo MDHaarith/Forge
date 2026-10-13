@@ -144,8 +144,12 @@ fn on_board(part: &PlacedPart, polygon: &[[f64; 2]], edge: f64) -> bool {
     true
 }
 
-fn overlap(a: &PlacedPart, b: &PlacedPart) -> bool {
-    if a.side != b.side {
+pub(super) fn overlap(a: &PlacedPart, b: &PlacedPart) -> bool {
+    // Through-hole courtyards also reserve the opposite side's copper area.
+    if a.side != b.side
+        && a.footprint.pads.iter().all(|p| p.drill.is_none())
+        && b.footprint.pads.iter().all(|p| p.drill.is_none())
+    {
         return false;
     }
     let a = a.courtyard();

@@ -119,13 +119,13 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
             }
         };
         if p.net != net {
-            foreign.push(contour(b.clearance));
+            foreign.push(contour(b.clearance(net).max(b.clearance(p.net))));
         } else {
-            gaps.push(contour(b.clearance));
+            gaps.push(contour(b.clearance(net)));
             reinforce.push(contour(0.));
             for size in [
-                [p.size[0] + 2. * (b.clearance + 0.15), 0.3],
-                [0.3, p.size[1] + 2. * (b.clearance + 0.15)],
+                [p.size[0] + 2. * (b.clearance(net) + 0.15), 0.3],
+                [0.3, p.size[1] + 2. * (b.clearance(net) + 0.15)],
             ] {
                 reinforce.push(
                     rect([0.; 2], size)
@@ -141,7 +141,7 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
     }
     for t in &r.tracks {
         if t.layer == layer && t.net != net {
-            foreign.push(capsule(t.a, t.b, t.width / 2. + b.clearance));
+            foreign.push(capsule(t.a, t.b, t.width / 2. + b.clearance(net).max(b.clearance(t.net))));
         }
     }
     for t in &b.fixed {
@@ -149,13 +149,13 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
             foreign.push(capsule(
                 t.track.a,
                 t.track.b,
-                t.track.width / 2. + b.clearance,
+                t.track.width / 2. + b.clearance(net).max(b.clearance(t.track.net)),
             ));
         }
     }
     for v in &r.vias {
         if v.net != net {
-            foreign.push(circle(v.at, b.via[0] / 2. + b.clearance));
+            foreign.push(circle(v.at, b.via[0] / 2. + b.clearance(net).max(b.clearance(v.net))));
         }
         drills.push(circle(v.at, b.via[1] / 2.));
     }
@@ -166,7 +166,7 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
     }
     foreign.extend(b.antenna_keepouts.iter().cloned());
     for &(at, d) in &b.holes {
-        foreign.push(circle(at, d / 2. + b.clearance));
+        foreign.push(circle(at, d / 2. + b.clearance(net)));
     }
     // Mirroring bottom antennas reverses winding; normalize cuts so overlaps remain a union.
     for contour in &mut foreign {

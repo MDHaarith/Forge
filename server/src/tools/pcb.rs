@@ -1,7 +1,8 @@
-use super::{exec::{report, run}, input_str, paths::project_path, Tool, ToolContext, ToolError, ToolFuture, ToolResult};
+use super::{input_str, paths::project_path, Tool, ToolContext, ToolError, ToolFuture, ToolResult};
 use serde_json::{json, Value};
 
 mod antenna;
+mod drc;
 mod gerber;
 mod svg;
 mod export;
@@ -16,41 +17,32 @@ pub use place::{place, PlacedPart};
 pub use spec::{parse, prepare, Board, Hole, Keepout, Kind, Layer, Net, NetClass, Part, Pin, Pour, PreparedBoard, Rules, Spec, Trace};
 
 pub fn tools() -> Vec<Tool> {
-    vec![
-        {
-            let mut tool = Tool::new("pcb", "pcb_drc", r#"Run KiCad's design rule check on a board and write the report to fab/drc.rpt."#, json!({"type":"object", "additionalProperties": false,"properties":{"board":{"type":"string","description":"Project-relative .kicad_pcb file"}},"required":["board"]}), pcb_drc);
-            tool.requires = vec!["kicad-cli".into()];
-            tool.install = Some(serde_json::from_value(json!({"dnf":"kicad","apt":"kicad","brew":"--cask kicad","url":"https://www.kicad.org/download/"})).unwrap());
-            tool
-        },
-        {
-            let mut tool = Tool::new("pcb", "pcb_export_fab", r#"Export manufacturing files for a board: Gerbers and drill files into fab/, ready to zip and upload to a PCB fab such as JLCPCB or PCBWay."#, json!({"type":"object", "additionalProperties": false,"properties":{"board":{"type":"string","description":"Project-relative .kicad_pcb file"}},"required":["board"]}), pcb_export_fab);
-            tool.requires = vec!["kicad-cli".into()];
-            tool.install = Some(serde_json::from_value(json!({"dnf":"kicad","apt":"kicad","brew":"--cask kicad","url":"https://www.kicad.org/download/"})).unwrap());
-            tool
-        },
-    ]
+    vec![Tool::new("pcb", "pcb_drc", "Check a built native board for copper clearance, track width, drills, annular rings, edge clearance, unrouted nets, courtyard overlaps and vias in SMD pads. Reads pcb/<board>.circuit.json and pcb/<board>.pcb.json; writes fab/<board>/<board>-drc.txt. Fix every fault and rebuild before ordering.", json!({"type":"object", "additionalProperties":false,"properties":{"board":{"type":"string","description":"Name of the board built with pcb_build"}},"required":["board"]}), pcb_drc)]
 }
 
 fn pcb_drc(input: Value, ctx: ToolContext) -> ToolFuture {
     Box::pin(async move {
-        let board = input_str(&input, "board")?;
-        project_path(&ctx.project_dir, board)?;
-        project_path(&ctx.project_dir, "fab/drc.rpt")?;
-        let r = run("kicad-cli", &["pcb".into(), "drc".into(), "--output".into(), "fab/drc.rpt".into(), board.into()], &ctx.project_dir, 120_000, &[]).await;
-        Ok(ToolResult { text: report(&r), files: vec!["fab/drc.rpt".into()] })
-    })
-}
-
-fn pcb_export_fab(input: Value, ctx: ToolContext) -> ToolFuture {
-    Box::pin(async move {
-        let board = input_str(&input, "board")?;
-        project_path(&ctx.project_dir, board)?;
-        project_path(&ctx.project_dir, "fab/")?;
-        let gerbers = run("kicad-cli", &["pcb".into(), "export".into(), "gerbers".into(), "--output".into(), "fab/".into(), board.into()], &ctx.project_dir, 120_000, &[]).await;
-        if gerbers.code != 0 { return Err(ToolError::expected(report(&gerbers))); }
-        let drill = run("kicad-cli", &["pcb".into(), "export".into(), "drill".into(), "--output".into(), "fab/".into(), board.into()], &ctx.project_dir, 120_000, &[]).await;
-        Ok(ToolResult { text: format!("gerbers:\n{}\n\ndrill:\n{}", report(&gerbers), report(&drill)), files: vec!["fab/".into()] })
+        let name = input_str(&input, "board")?;
+        if !super::script3d::valid_name(name) {
+            return Err(ToolError::expected("name may only use letters, digits, - and _"));
+        }
+        let circuit_path = project_path(&ctx.project_dir, &format!("pcb/{name}.circuit.json"))?;
+        let spec_path = project_path(&ctx.project_dir, &format!("pcb/{name}.pcb.json"))?;
+        let output = format!("fab/{name}/{name}-drc.txt");
+        let output_path = project_path(&ctx.project_dir, &output)?;
+        let missing = || ToolError::expected(format!("board {name} is not built; run pcb_build first"));
+        let circuit = tokio::fs::read_to_string(circuit_path).await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound { missing() } else { ToolError::from(e) }
+        })?;
+        let spec = tokio::fs::read_to_string(spec_path).await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound { missing() } else { ToolError::from(e) }
+        })?;
+        let text = tokio::task::spawn_blocking(move || drc::check(&spec, &circuit))
+            .await.map_err(|e| ToolError::expected(e.to_string()))?
+            .map_err(ToolError::expected)?;
+        tokio::fs::create_dir_all(output_path.parent().unwrap()).await?;
+        tokio::fs::write(output_path, format!("{text}\n")).await?;
+        Ok(ToolResult { text, files: vec![output] })
     })
 }
 
