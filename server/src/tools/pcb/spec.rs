@@ -221,8 +221,11 @@ impl Board {
 
 impl Spec {
     pub fn clearance(&self, net: &str) -> f64 {
-        self.netclasses.values().find(|c| c.nets.iter().any(|n| n == net))
-            .and_then(|c| c.clearance).unwrap_or(self.rules.clearance)
+        self.netclasses
+            .values()
+            .find(|c| c.nets.iter().any(|n| n == net))
+            .and_then(|c| c.clearance)
+            .unwrap_or(self.rules.clearance)
     }
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(self.board.layers, 2 | 4) {

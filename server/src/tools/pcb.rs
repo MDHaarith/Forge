@@ -3,18 +3,21 @@ use serde_json::{json, Value};
 
 mod antenna;
 mod drc;
-mod gerber;
-mod svg;
 mod export;
-mod route;
-mod pour;
 mod footprint;
+mod gerber;
 mod place;
+mod pour;
+mod route;
 mod spec;
+mod svg;
 
 pub use footprint::{footprint, Footprint, Pad};
 pub use place::{place, PlacedPart};
-pub use spec::{parse, prepare, Board, Hole, Keepout, Kind, Layer, Net, NetClass, Part, Pin, Pour, PreparedBoard, Rules, Spec, Trace};
+pub use spec::{
+    parse, prepare, Board, Hole, Keepout, Kind, Layer, Net, NetClass, Part, Pin, Pour,
+    PreparedBoard, Rules, Spec, Trace,
+};
 
 pub fn tools() -> Vec<Tool> {
     vec![Tool::new("pcb", "pcb_drc", "Check a built native board for copper clearance, track width, drills, annular rings, edge clearance, unrouted nets, courtyard overlaps and vias in SMD pads. Reads pcb/<board>.circuit.json and pcb/<board>.pcb.json; writes fab/<board>/<board>-drc.txt. Fix every fault and rebuild before ordering.", json!({"type":"object", "additionalProperties":false,"properties":{"board":{"type":"string","description":"Name of the board built with pcb_build"}},"required":["board"]}), pcb_drc)]
@@ -24,28 +27,42 @@ fn pcb_drc(input: Value, ctx: ToolContext) -> ToolFuture {
     Box::pin(async move {
         let name = input_str(&input, "board")?;
         if !super::script3d::valid_name(name) {
-            return Err(ToolError::expected("name may only use letters, digits, - and _"));
+            return Err(ToolError::expected(
+                "name may only use letters, digits, - and _",
+            ));
         }
         let circuit_path = project_path(&ctx.project_dir, &format!("pcb/{name}.circuit.json"))?;
         let spec_path = project_path(&ctx.project_dir, &format!("pcb/{name}.pcb.json"))?;
         let output = format!("fab/{name}/{name}-drc.txt");
         let output_path = project_path(&ctx.project_dir, &output)?;
-        let missing = || ToolError::expected(format!("board {name} is not built; run pcb_build first"));
+        let missing =
+            || ToolError::expected(format!("board {name} is not built; run pcb_build first"));
         let circuit = tokio::fs::read_to_string(circuit_path).await.map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound { missing() } else { ToolError::from(e) }
+            if e.kind() == std::io::ErrorKind::NotFound {
+                missing()
+            } else {
+                ToolError::from(e)
+            }
         })?;
         let spec = tokio::fs::read_to_string(spec_path).await.map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound { missing() } else { ToolError::from(e) }
+            if e.kind() == std::io::ErrorKind::NotFound {
+                missing()
+            } else {
+                ToolError::from(e)
+            }
         })?;
         let text = tokio::task::spawn_blocking(move || drc::check(&spec, &circuit))
-            .await.map_err(|e| ToolError::expected(e.to_string()))?
+            .await
+            .map_err(|e| ToolError::expected(e.to_string()))?
             .map_err(ToolError::expected)?;
         tokio::fs::create_dir_all(output_path.parent().unwrap()).await?;
         tokio::fs::write(output_path, format!("{text}\n")).await?;
-        Ok(ToolResult { text, files: vec![output] })
+        Ok(ToolResult {
+            text,
+            files: vec![output],
+        })
     })
 }
-
 
 pub struct NativeBuild {
     pub report: String,
@@ -73,7 +90,11 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         })
         .collect();
     if !errors.is_empty() {
-        return Err(format!("{} ERROR(S), fix them and rebuild:\n{}", errors.len(), errors.join("\n")));
+        return Err(format!(
+            "{} ERROR(S), fix them and rebuild:\n{}",
+            errors.len(),
+            errors.join("\n")
+        ));
     }
     let pours: Vec<_> = prepared
         .spec
@@ -104,8 +125,14 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         ),
     ];
     files.extend(gerber::files(&prepared, &board, &routed, &pours, name));
-    files.push((format!("pcb/{name}-pcb.svg"), svg::board(&prepared, &board, &routed, &pours)));
-    files.push((format!("pcb/{name}-schematic.svg"), svg::schematic(&prepared)));
+    files.push((
+        format!("pcb/{name}-pcb.svg"),
+        svg::board(&prepared, &board, &routed, &pours),
+    ));
+    files.push((
+        format!("pcb/{name}-schematic.svg"),
+        svg::schematic(&prepared),
+    ));
     files.push((format!("fab/{name}/{name}-pnp.csv"), export::pnp(&prepared)));
     files.push((format!("fab/{name}/{name}-bom.csv"), export::bom(&prepared)));
     let (step, glb) = export::model(&prepared, &board, &routed)?;
@@ -134,7 +161,11 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         format!(
             "{} net(s) routed as {} trace(s) with {} via(s); {} hole(s).",
             board.nets.len(),
-            board.nets.iter().map(|net| net.pads.len().saturating_sub(1)).sum::<usize>(),
+            board
+                .nets
+                .iter()
+                .map(|net| net.pads.len().saturating_sub(1))
+                .sum::<usize>(),
             routed.vias.len(),
             board.holes.len()
         ),

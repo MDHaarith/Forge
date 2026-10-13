@@ -141,7 +141,11 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
     }
     for t in &r.tracks {
         if t.layer == layer && t.net != net {
-            foreign.push(capsule(t.a, t.b, t.width / 2. + b.clearance(net).max(b.clearance(t.net))));
+            foreign.push(capsule(
+                t.a,
+                t.b,
+                t.width / 2. + b.clearance(net).max(b.clearance(t.net)),
+            ));
         }
     }
     for t in &b.fixed {
@@ -155,7 +159,10 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
     }
     for v in &r.vias {
         if v.net != net {
-            foreign.push(circle(v.at, b.via[0] / 2. + b.clearance(net).max(b.clearance(v.net))));
+            foreign.push(circle(
+                v.at,
+                b.via[0] / 2. + b.clearance(net).max(b.clearance(v.net)),
+            ));
         }
         drills.push(circle(v.at, b.via[1] / 2.));
     }

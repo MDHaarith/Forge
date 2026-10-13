@@ -107,11 +107,7 @@ fn assert_gerber_syntax(path: &Path) {
         "missing %FSLA in {}",
         path.display()
     );
-    assert!(
-        content.contains("%MO"),
-        "missing %MO in {}",
-        path.display()
-    );
+    assert!(content.contains("%MO"), "missing %MO in {}", path.display());
     assert!(
         content.contains("M02*"),
         "missing M02* EOF in {}",
@@ -146,7 +142,10 @@ fn assert_js_formatted_json(path: &Path) {
                 assert_ne!(t, "-0", "Found -0 in JSON: {line}");
                 assert_ne!(t, "-0.0", "Found -0.0 in JSON: {line}");
                 if t.contains('.') {
-                    assert!(!t.ends_with(".0"), "Found redundant .0 in number '{t}': {line}");
+                    assert!(
+                        !t.ends_with(".0"),
+                        "Found redundant .0 in number '{t}': {line}"
+                    );
                 }
             }
         }
@@ -205,8 +204,16 @@ mod fp {
         let p1 = fp.pads.iter().find(|p| p.number == "1").unwrap();
         let p2 = fp.pads.iter().find(|p| p.number == "2").unwrap();
         // 0402 nominal pad: 0.59 x 0.64 mm, opposite-pad centres: 0.97 mm
-        assert!((p1.size[0] - 0.59).abs() < 1e-4, "pad size x {} != 0.59", p1.size[0]);
-        assert!((p1.size[1] - 0.64).abs() < 1e-4, "pad size y {} != 0.64", p1.size[1]);
+        assert!(
+            (p1.size[0] - 0.59).abs() < 1e-4,
+            "pad size x {} != 0.59",
+            p1.size[0]
+        );
+        assert!(
+            (p1.size[1] - 0.64).abs() < 1e-4,
+            "pad size y {} != 0.64",
+            p1.size[1]
+        );
         let centres = (p2.at[0] - p1.at[0]).abs();
         assert!((centres - 0.97).abs() < 1e-4, "centres {} != 0.97", centres);
     }
@@ -218,10 +225,22 @@ mod fp {
         let p1 = fp.pads.iter().find(|p| p.number == "1").unwrap();
         let p2 = fp.pads.iter().find(|p| p.number == "2").unwrap();
         // 0603 nominal pad: 0.875 x 0.95 mm, opposite-pad centres: 1.575 mm
-        assert!((p1.size[0] - 0.875).abs() < 1e-4, "pad size x {} != 0.875", p1.size[0]);
-        assert!((p1.size[1] - 0.95).abs() < 1e-4, "pad size y {} != 0.95", p1.size[1]);
+        assert!(
+            (p1.size[0] - 0.875).abs() < 1e-4,
+            "pad size x {} != 0.875",
+            p1.size[0]
+        );
+        assert!(
+            (p1.size[1] - 0.95).abs() < 1e-4,
+            "pad size y {} != 0.95",
+            p1.size[1]
+        );
         let centres = (p2.at[0] - p1.at[0]).abs();
-        assert!((centres - 1.575).abs() < 1e-4, "centres {} != 1.575", centres);
+        assert!(
+            (centres - 1.575).abs() < 1e-4,
+            "centres {} != 1.575",
+            centres
+        );
     }
 
     #[test]
@@ -231,8 +250,16 @@ mod fp {
         let p1 = fp.pads.iter().find(|p| p.number == "1").unwrap();
         let p8 = fp.pads.iter().find(|p| p.number == "8").unwrap();
         // soic8 nominal pad: 1.95 x 0.60 mm, opposite-pad centres: 4.95 mm
-        assert!((p1.size[0] - 1.95).abs() < 1e-4, "pad size x {} != 1.95", p1.size[0]);
-        assert!((p1.size[1] - 0.60).abs() < 1e-4, "pad size y {} != 0.60", p1.size[1]);
+        assert!(
+            (p1.size[0] - 1.95).abs() < 1e-4,
+            "pad size x {} != 1.95",
+            p1.size[0]
+        );
+        assert!(
+            (p1.size[1] - 0.60).abs() < 1e-4,
+            "pad size y {} != 0.60",
+            p1.size[1]
+        );
         let centres = (p8.at[0] - p1.at[0]).abs();
         assert!((centres - 4.95).abs() < 1e-4, "centres {} != 4.95", centres);
     }
@@ -244,14 +271,38 @@ mod fp {
         let p1 = fp.pads.iter().find(|p| p.number == "1").unwrap();
         let p24 = fp.pads.iter().find(|p| p.number == "24").unwrap();
         // qfn32 nominal perimeter pad: 0.875 x 0.25 mm, opposite-pad centres: 4.875 mm
-        assert!((p1.size[0] - 0.875).abs() < 1e-4, "pad size x {} != 0.875", p1.size[0]);
-        assert!((p1.size[1] - 0.25).abs() < 1e-4, "pad size y {} != 0.25", p1.size[1]);
+        assert!(
+            (p1.size[0] - 0.875).abs() < 1e-4,
+            "pad size x {} != 0.875",
+            p1.size[0]
+        );
+        assert!(
+            (p1.size[1] - 0.25).abs() < 1e-4,
+            "pad size y {} != 0.25",
+            p1.size[1]
+        );
         let centres = (p24.at[0] - p1.at[0]).abs();
-        assert!((centres - 4.875).abs() < 1e-4, "centres {} != 4.875", centres);
+        assert!(
+            (centres - 4.875).abs() < 1e-4,
+            "centres {} != 4.875",
+            centres
+        );
         // Exposed pad (EP): 3.1 x 3.1 mm
-        let ep = fp.pads.iter().find(|p| p.number == "33" || p.number == "EP").unwrap();
-        assert!((ep.size[0] - 3.1).abs() < 1e-4, "EP size x {} != 3.1", ep.size[0]);
-        assert!((ep.size[1] - 3.1).abs() < 1e-4, "EP size y {} != 3.1", ep.size[1]);
+        let ep = fp
+            .pads
+            .iter()
+            .find(|p| p.number == "33" || p.number == "EP")
+            .unwrap();
+        assert!(
+            (ep.size[0] - 3.1).abs() < 1e-4,
+            "EP size x {} != 3.1",
+            ep.size[0]
+        );
+        assert!(
+            (ep.size[1] - 3.1).abs() < 1e-4,
+            "EP size y {} != 3.1",
+            ep.size[1]
+        );
     }
 }
 
@@ -271,19 +322,31 @@ async fn spec_error_source_must_be_pcb_json() {
 #[tokio::test]
 async fn spec_error_source_does_not_exist() {
     let dir = project("spec_err2", &[] as &[(&str, &str)]);
-    let err = run("pcb_build", json!({"source": "pcb/missing.pcb.json"}), &dir.path)
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("pcb/missing.pcb.json does not exist; write it with write_file first"));
+    let err = run(
+        "pcb_build",
+        json!({"source": "pcb/missing.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("pcb/missing.pcb.json does not exist; write it with write_file first"));
 }
 
 #[tokio::test]
 async fn spec_error_invalid_name() {
     let dir = project("spec_err3", &[("pcb/bad space.pcb.json", "{}")]);
-    let err = run("pcb_build", json!({"source": "pcb/bad space.pcb.json"}), &dir.path)
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("name may only use letters, digits, - and _"));
+    let err = run(
+        "pcb_build",
+        json!({"source": "pcb/bad space.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("name may only use letters, digits, - and _"));
 }
 
 #[tokio::test]
@@ -296,9 +359,13 @@ async fn spec_error_unknown_pin() {
   "nets": {"IN": ["R1.3"]}
 }"#;
     let dir = project("spec_err4", &[("pcb/bad_pin.pcb.json", bad_board)]);
-    let err = run("pcb_build", json!({"source": "pcb/bad_pin.pcb.json"}), &dir.path)
-        .await
-        .unwrap_err();
+    let err = run(
+        "pcb_build",
+        json!({"source": "pcb/bad_pin.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap_err();
     assert!(err.to_string().contains("R1.3: R1 (0402) has pins 1, 2"));
 }
 
@@ -312,10 +379,16 @@ async fn spec_error_unknown_footprint() {
   "nets": {}
 }"#;
     let dir = project("spec_err5", &[("pcb/bad_fp.pcb.json", bad_board)]);
-    let err = run("pcb_build", json!({"source": "pcb/bad_fp.pcb.json"}), &dir.path)
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("unknown footprint nonexistent_fp_xyz; use one of:"));
+    let err = run(
+        "pcb_build",
+        json!({"source": "pcb/bad_fp.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("unknown footprint nonexistent_fp_xyz; use one of:"));
 }
 
 #[tokio::test]
@@ -328,9 +401,13 @@ async fn spec_error_part_off_board() {
   "nets": {}
 }"#;
     let dir = project("spec_err6", &[("pcb/off_board.pcb.json", bad_board)]);
-    let err = run("pcb_build", json!({"source": "pcb/off_board.pcb.json"}), &dir.path)
-        .await
-        .unwrap_err();
+    let err = run(
+        "pcb_build",
+        json!({"source": "pcb/off_board.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap_err();
     assert!(err.to_string().contains("R1 is off the board"));
 }
 
@@ -345,9 +422,13 @@ async fn spec_error_parts_overlap() {
   "nets": {}
 }"#;
     let dir = project("spec_err7", &[("pcb/overlap.pcb.json", bad_board)]);
-    let err = run("pcb_build", json!({"source": "pcb/overlap.pcb.json"}), &dir.path)
-        .await
-        .unwrap_err();
+    let err = run(
+        "pcb_build",
+        json!({"source": "pcb/overlap.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap_err();
     assert!(err.to_string().contains("parts overlap: R1 and R2"));
 }
 
@@ -368,29 +449,51 @@ async fn route_error_unroutable() {
   ],
   "nets": {"SIG": ["R1.1", "R2.1"]}
 }"#;
-    let dir = project("route_unroutable", &[("pcb/unroutable.pcb.json", unroutable_board)]);
-    let err = run("pcb_build", json!({"source": "pcb/unroutable.pcb.json"}), &dir.path)
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("unroutable: net SIG (R1.1 to R2.1)"));
+    let dir = project(
+        "route_unroutable",
+        &[("pcb/unroutable.pcb.json", unroutable_board)],
+    );
+    let err = run(
+        "pcb_build",
+        json!({"source": "pcb/unroutable.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("unroutable: net SIG (R1.1 to R2.1)"));
 }
 
 #[tokio::test]
 async fn route_led_board() {
     let dir = project("route_led", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("No errors: every connection is routed."));
-    assert!(out.text.contains("board 30 × 20 mm, 1.6 mm thick, 2 copper layers."));
+    assert!(out
+        .text
+        .contains("board 30 × 20 mm, 1.6 mm thick, 2 copper layers."));
 }
 
 #[tokio::test]
 async fn route_555_blinker_no_errors() {
-    let dir = project("route_555", &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/blinker.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let dir = project(
+        "route_555",
+        &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)],
+    );
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/blinker.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("No errors: every connection is routed."));
     assert!(!out.text.contains("ERROR"));
 }
@@ -398,53 +501,83 @@ async fn route_555_blinker_no_errors() {
 #[tokio::test]
 async fn route_4layer_board() {
     let dir = project("route_4l", &[("pcb/four.pcb.json", FOUR_LAYER_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/four.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/four.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("4 copper layers."));
     assert!(out.text.contains("No errors: every connection is routed."));
 }
 
 #[tokio::test]
 async fn route_auto_placed_board_no_at() {
-    let dir = project("route_autoplace", &[("pcb/auto.pcb.json", AUTO_PLACED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/auto.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let dir = project(
+        "route_autoplace",
+        &[("pcb/auto.pcb.json", AUTO_PLACED_BOARD_JSON)],
+    );
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/auto.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("No errors: every connection is routed."));
     let board_json: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path.join("pcb/auto.board.json")).unwrap(),
     )
     .unwrap();
-    let components = board_json["components"].as_array().expect("components array");
+    let components = board_json["components"]
+        .as_array()
+        .expect("components array");
     assert_eq!(components.len(), 3);
     for comp in components {
         let min_x = comp["min"][0].as_f64().unwrap();
         let max_x = comp["max"][0].as_f64().unwrap();
         let min_y = comp["min"][1].as_f64().unwrap();
         let max_y = comp["max"][1].as_f64().unwrap();
-        assert!(min_x >= -15.0 && max_x <= 15.0, "component outside x bounds: {min_x}..{max_x}");
-        assert!(min_y >= -10.0 && max_y <= 10.0, "component outside y bounds: {min_y}..{max_y}");
+        assert!(
+            min_x >= -15.0 && max_x <= 15.0,
+            "component outside x bounds: {min_x}..{max_x}"
+        );
+        assert!(
+            min_y >= -10.0 && max_y <= 10.0,
+            "component outside y bounds: {min_y}..{max_y}"
+        );
     }
 }
 
 #[tokio::test]
 async fn pour_ground_plane_generates_g36() {
     let dir = project("pour_gnd", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("Copper pours: GND on bottom"));
     let b_cu = std::fs::read_to_string(dir.path.join("fab/led/led-B_Cu.gbr")).unwrap();
-    assert!(b_cu.contains("G36"), "bottom copper Gerber must contain G36 region code for pour");
+    assert!(
+        b_cu.contains("G36"),
+        "bottom copper Gerber must contain G36 region code for pour"
+    );
 }
 
 #[tokio::test]
 async fn pour_antenna_clears_ground_under_keepout() {
     let dir = project("pour_ant", &[("pcb/ant.pcb.json", ANTENNA_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/ant.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/ant.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("No errors"));
     let circuit: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path.join("pcb/ant.circuit.json")).unwrap(),
@@ -463,7 +596,10 @@ async fn pour_antenna_clears_ground_under_keepout() {
         .filter(|v| v["x"].as_f64().unwrap() > -15. && v["x"].as_f64().unwrap() < 10.)
         .map(|v| v["y"].as_f64().unwrap())
         .fold(f64::NEG_INFINITY, f64::max);
-    assert!(max_y <= 12.1, "ground reaches y {max_y} under the antenna (must be <= 12.1)");
+    assert!(
+        max_y <= 12.1,
+        "ground reaches y {max_y} under the antenna (must be <= 12.1)"
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -472,28 +608,67 @@ async fn pour_antenna_clears_ground_under_keepout() {
 
 #[tokio::test]
 async fn out_555_build_time_and_connection_count() {
-    let dir = project("out_555", &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)]);
+    let dir = project(
+        "out_555",
+        &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)],
+    );
     let start = std::time::Instant::now();
-    let out = run("pcb_build", json!({"source":"pcb/blinker.pcb.json"}), &dir.path).await.unwrap();
-    eprintln!("555 board native build: {:.3} ms (routing, all exports and file writes)", start.elapsed().as_secs_f64() * 1000.);
-    assert!(out.text.contains("7 net(s) routed as 15 trace(s)"), "{}", out.text);
+    let out = run(
+        "pcb_build",
+        json!({"source":"pcb/blinker.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
+    eprintln!(
+        "555 board native build: {:.3} ms (routing, all exports and file writes)",
+        start.elapsed().as_secs_f64() * 1000.
+    );
+    assert!(
+        out.text.contains("7 net(s) routed as 15 trace(s)"),
+        "{}",
+        out.text
+    );
     assert_eq!(out.files.len(), 19);
 }
 
 #[tokio::test]
 async fn out_circuit_matches_the_rf_reader_for_every_antenna_shape() {
     use forge_server::tools::exec::{find_program, run as exec};
-    if tokio::task::spawn_blocking(|| find_program(&["python3".into()])).await.unwrap().is_none() {
+    if tokio::task::spawn_blocking(|| find_program(&["python3".into()]))
+        .await
+        .unwrap()
+        .is_none()
+    {
         eprintln!("skipped: python3 is not installed");
         return;
     }
-    let reader = include_str!("../runners/openems_antenna.py").split("# ---------- mesh ----------").next().unwrap().replace("import numpy as np", "");
+    let reader = include_str!("../runners/openems_antenna.py")
+        .split("# ---------- mesh ----------")
+        .next()
+        .unwrap()
+        .replace("import numpy as np", "");
     let check = format!("{reader}\nboard, z, name, copper, barrels, pours, pads, arm = load_board(json.load(open(sys.argv[1])), 'ANT1')\nassert name == 'ANT1' and arm and copper and pours and 'pin1' in pads\nassert set(z) == {{'top', 'bottom', 'inner1', 'inner2'}}\nassert feed_port(z, pads, pours)[2] in ('x', 'y', 'z')\n");
-    for shape in ["2.4ghz_quarter_wave_monopole", "2.4ghz_meandered_monopole", "2.4ghz_inverted_f", "2.4ghz_meandered_inverted_f", "2.4ghz_folded_dipole"] {
+    for shape in [
+        "2.4ghz_quarter_wave_monopole",
+        "2.4ghz_meandered_monopole",
+        "2.4ghz_inverted_f",
+        "2.4ghz_meandered_inverted_f",
+        "2.4ghz_folded_dipole",
+    ] {
         let json = json!({"board":{"width":80,"height":60,"layers":4},"parts":[{"ref":"ANT1","kind":"antenna","shape":shape,"at":[0,0]}],"pours":[{"net":"GND","layer":"bottom"}]}).to_string();
         let dir = project("out_rf_reader", &[("pcb/ant.pcb.json", json)]);
-        run("pcb_build", json!({"source":"pcb/ant.pcb.json"}), &dir.path).await.unwrap();
-        let result = exec("python3", &["-c".into(), check.clone(), "pcb/ant.circuit.json".into()], &dir.path, 30_000, &[]).await;
+        run("pcb_build", json!({"source":"pcb/ant.pcb.json"}), &dir.path)
+            .await
+            .unwrap();
+        let result = exec(
+            "python3",
+            &["-c".into(), check.clone(), "pcb/ant.circuit.json".into()],
+            &dir.path,
+            30_000,
+            &[],
+        )
+        .await;
         assert_eq!(result.code, 0, "{shape}: {}", result.stderr);
     }
 }
@@ -501,9 +676,13 @@ async fn out_circuit_matches_the_rf_reader_for_every_antenna_shape() {
 #[tokio::test]
 async fn out_file_pcb_svg() {
     let dir = project("out_pcb_svg", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.files.contains(&"pcb/led-pcb.svg".into()));
     let content = std::fs::read_to_string(dir.path.join("pcb/led-pcb.svg")).unwrap();
     assert!(content.contains("<svg") && content.contains("</svg>"));
@@ -512,9 +691,13 @@ async fn out_file_pcb_svg() {
 #[tokio::test]
 async fn out_file_schematic_svg() {
     let dir = project("out_sch_svg", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.files.contains(&"pcb/led-schematic.svg".into()));
     let content = std::fs::read_to_string(dir.path.join("pcb/led-schematic.svg")).unwrap();
     assert!(content.contains("<svg") && content.contains("</svg>"));
@@ -523,31 +706,49 @@ async fn out_file_schematic_svg() {
 #[tokio::test]
 async fn out_file_glb() {
     let dir = project("out_glb", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.files.contains(&"pcb/led.glb".into()));
     let bytes = std::fs::read(dir.path.join("pcb/led.glb")).unwrap();
-    assert!(bytes.starts_with(b"glTF"), "GLB must start with glTF binary magic");
+    assert!(
+        bytes.starts_with(b"glTF"),
+        "GLB must start with glTF binary magic"
+    );
 }
 
 #[tokio::test]
 async fn out_file_step() {
     let dir = project("out_step", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.files.contains(&"pcb/led.step".into()));
     let content = std::fs::read_to_string(dir.path.join("pcb/led.step")).unwrap();
-    assert!(content.contains("ISO-10303-21"), "STEP must contain ISO-10303-21 header");
+    assert!(
+        content.contains("ISO-10303-21"),
+        "STEP must contain ISO-10303-21 header"
+    );
 }
 
 #[tokio::test]
 async fn out_file_board_json() {
     let dir = project("out_board_json", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.files.contains(&"pcb/led.board.json".into()));
     let p = dir.path.join("pcb/led.board.json");
     assert_js_formatted_json(&p);
@@ -559,9 +760,13 @@ async fn out_file_board_json() {
 #[tokio::test]
 async fn out_file_circuit_json() {
     let dir = project("out_circuit_json", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.files.contains(&"pcb/led.circuit.json".into()));
     let p = dir.path.join("pcb/led.circuit.json");
     assert_js_formatted_json(&p);
@@ -575,126 +780,182 @@ async fn out_file_circuit_json() {
 #[tokio::test]
 async fn out_file_fab_copper_f_cu_gerber() {
     let dir = project("out_f_cu", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-F_Cu.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_copper_b_cu_gerber() {
     let dir = project("out_b_cu", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-B_Cu.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_copper_in1_cu_4layer_gerber() {
     let dir = project("out_in1", &[("pcb/four.pcb.json", FOUR_LAYER_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/four.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/four.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/four/four-In1_Cu.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_copper_in2_cu_4layer_gerber() {
     let dir = project("out_in2", &[("pcb/four.pcb.json", FOUR_LAYER_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/four.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/four.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/four/four-In2_Cu.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_mask_f_mask_gerber() {
     let dir = project("out_f_mask", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-F_Mask.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_mask_b_mask_gerber() {
     let dir = project("out_b_mask", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-B_Mask.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_paste_f_paste_gerber() {
     let dir = project("out_f_paste", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-F_Paste.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_paste_b_paste_gerber() {
     let dir = project("out_b_paste", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-B_Paste.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_silkscreen_f_silkscreen_gerber() {
     let dir = project("out_f_silk", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-F_Silkscreen.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_silkscreen_b_silkscreen_gerber() {
     let dir = project("out_b_silk", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-B_Silkscreen.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_edge_cuts_gerber() {
     let dir = project("out_edge", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_gerber_syntax(&dir.path.join("fab/led/led-Edge_Cuts.gbr"));
 }
 
 #[tokio::test]
 async fn out_file_fab_drill_pth_excellon() {
     let dir = project("out_pth", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_excellon_syntax(&dir.path.join("fab/led/led-PTH.drl"));
 }
 
 #[tokio::test]
 async fn out_file_fab_drill_npth_excellon() {
     let dir = project("out_npth", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert_excellon_syntax(&dir.path.join("fab/led/led-NPTH.drl"));
 }
 
 #[tokio::test]
 async fn out_file_fab_pnp_csv() {
     let dir = project("out_pnp", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     let content = std::fs::read_to_string(dir.path.join("fab/led/led-pnp.csv")).unwrap();
     assert!(content.starts_with("Designator,Mid X,Mid Y,Layer,Rotation"));
 }
@@ -702,9 +963,13 @@ async fn out_file_fab_pnp_csv() {
 #[tokio::test]
 async fn out_file_fab_bom_csv() {
     let dir = project("out_bom", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     let content = std::fs::read_to_string(dir.path.join("fab/led/led-bom.csv")).unwrap();
     assert!(content.starts_with("Comment,Designator,Footprint,LCSC Part #"));
 }
@@ -712,45 +977,72 @@ async fn out_file_fab_bom_csv() {
 #[tokio::test]
 async fn out_report_line_built_board() {
     let dir = project("out_rep_board", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
-    assert!(out.text.contains("Built pcb/led.pcb.json: board 30 × 20 mm, 1.6 mm thick, 2 copper layers."));
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
+    assert!(out
+        .text
+        .contains("Built pcb/led.pcb.json: board 30 × 20 mm, 1.6 mm thick, 2 copper layers."));
 }
 
 #[tokio::test]
 async fn out_report_line_parts() {
     let dir = project("out_rep_parts", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("4 part(s):"));
 }
 
 #[tokio::test]
 async fn out_report_line_routed_traces() {
     let dir = project("out_rep_traces", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
-    assert!(out.text.contains("routed as") && out.text.contains("trace(s) with") && out.text.contains("via(s);") && out.text.contains("hole(s)."));
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
+    assert!(
+        out.text.contains("routed as")
+            && out.text.contains("trace(s) with")
+            && out.text.contains("via(s);")
+            && out.text.contains("hole(s).")
+    );
 }
 
 #[tokio::test]
 async fn out_report_line_copper_pours() {
     let dir = project("out_rep_pours", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("Copper pours: GND on bottom"));
 }
 
 #[tokio::test]
 async fn out_report_line_no_errors() {
     let dir = project("out_rep_no_err", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let out = run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     assert!(out.text.contains("No errors: every connection is routed."));
 }
 
@@ -768,10 +1060,16 @@ async fn out_report_line_errors_summary() {
   "nets": {"SIG": ["R1.1", "R2.1"]}
 }"#;
     let dir = project("out_rep_errs", &[("pcb/err.pcb.json", unroutable_board)]);
-    let err = run("pcb_build", json!({"source": "pcb/err.pcb.json"}), &dir.path)
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("1 ERROR(S), fix them and rebuild:"));
+    let err = run(
+        "pcb_build",
+        json!({"source": "pcb/err.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("1 ERROR(S), fix them and rebuild:"));
 }
 
 // -----------------------------------------------------------------------------
@@ -784,32 +1082,49 @@ async fn drc_error_board_not_built() {
     let err = run("pcb_drc", json!({"board": "unbuilt"}), &dir.path)
         .await
         .unwrap_err();
-    assert!(err.to_string().contains("board unbuilt is not built; run pcb_build first"));
+    assert!(err
+        .to_string()
+        .contains("board unbuilt is not built; run pcb_build first"));
 }
 
 #[tokio::test]
 async fn drc_clean_board() {
     let dir = project("drc_clean", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    run(
+        "pcb_build",
+        json!({"source": "pcb/led.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
     let out = run("pcb_drc", json!({"board": "led"}), &dir.path)
         .await
         .unwrap();
     let drc_path = dir.path.join("fab/led/led-drc.txt");
     assert!(drc_path.exists(), "fab/led/led-drc.txt must exist");
     let rpt = std::fs::read_to_string(&drc_path).unwrap();
-    let lines: Vec<&str> = rpt.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = rpt
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     assert_eq!(lines.last().copied(), Some("No DRC errors."));
     assert!(out.text.contains("No DRC errors."));
 }
 
 #[tokio::test]
 async fn drc_broken_board_reports_violations() {
-    let dir = project("drc_broken", &[("pcb/broken.pcb.json", TWO_RESISTOR_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/broken.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let dir = project(
+        "drc_broken",
+        &[("pcb/broken.pcb.json", TWO_RESISTOR_BOARD_JSON)],
+    );
+    run(
+        "pcb_build",
+        json!({"source": "pcb/broken.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
 
     let circuit_file = dir.path.join("pcb/broken.circuit.json");
     let content = std::fs::read_to_string(&circuit_file).unwrap();
@@ -830,26 +1145,44 @@ async fn drc_broken_board_reports_violations() {
         }
     }
     assert!(modified, "must have found and moved a pad");
-    std::fs::write(&circuit_file, serde_json::to_string_pretty(&circuit).unwrap()).unwrap();
+    std::fs::write(
+        &circuit_file,
+        serde_json::to_string_pretty(&circuit).unwrap(),
+    )
+    .unwrap();
 
     let out = run("pcb_drc", json!({"board": "broken"}), &dir.path)
         .await
         .unwrap();
     let rpt = std::fs::read_to_string(dir.path.join("fab/broken/broken-drc.txt")).unwrap();
-    let lines: Vec<&str> = rpt.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = rpt
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     assert!(lines.iter().any(|l| l.starts_with("clearance: ")));
     // The moved pad may also crowd the routed tracks, so only require at least one error.
     let last = lines.last().copied().unwrap_or("");
-    assert!(last.ends_with(" DRC error(s).") && !last.starts_with("0 "), "{rpt}");
+    assert!(
+        last.ends_with(" DRC error(s).") && !last.starts_with("0 "),
+        "{rpt}"
+    );
     assert!(out.text.contains("clearance: "));
 }
 
 #[tokio::test]
 async fn drc_track_width_violation() {
-    let dir = project("drc_width", &[("pcb/width.pcb.json", TWO_RESISTOR_BOARD_JSON)]);
-    run("pcb_build", json!({"source": "pcb/width.pcb.json"}), &dir.path)
-        .await
-        .unwrap();
+    let dir = project(
+        "drc_width",
+        &[("pcb/width.pcb.json", TWO_RESISTOR_BOARD_JSON)],
+    );
+    run(
+        "pcb_build",
+        json!({"source": "pcb/width.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
 
     let circuit_file = dir.path.join("pcb/width.circuit.json");
     let content = std::fs::read_to_string(&circuit_file).unwrap();
@@ -872,13 +1205,21 @@ async fn drc_track_width_violation() {
         }
     }
     assert!(modified, "must have found and modified a pcb_trace");
-    std::fs::write(&circuit_file, serde_json::to_string_pretty(&circuit).unwrap()).unwrap();
+    std::fs::write(
+        &circuit_file,
+        serde_json::to_string_pretty(&circuit).unwrap(),
+    )
+    .unwrap();
 
     let out = run("pcb_drc", json!({"board": "width"}), &dir.path)
         .await
         .unwrap();
     let rpt = std::fs::read_to_string(dir.path.join("fab/width/width-drc.txt")).unwrap();
-    let lines: Vec<&str> = rpt.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = rpt
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     assert!(lines.iter().any(|l| l.starts_with("track width: ")));
     assert_eq!(lines.last().copied(), Some("1 DRC error(s)."));
     assert!(out.text.contains("track width: "));
@@ -946,10 +1287,7 @@ async fn calc_via_current_and_resistance() {
     assert!(
         has_1_53,
         "expected via resistance 1.53 ± 0.05 mΩ in: {}\nparsed mΩ: {:?}, mohm: {:?}, Ω: {:?}",
-        out.text,
-        m_nums,
-        mohm_nums,
-        ohm_nums
+        out.text, m_nums, mohm_nums, ohm_nums
     );
 }
 
@@ -1034,10 +1372,7 @@ async fn calc_e_series_nearest_and_divider() {
     assert!(
         has_4_99k,
         "expected nearest E96 value 4.99k for 5000 Ω in: {}\nparsed k: {:?}, kΩ: {:?}, Ω: {:?}",
-        out.text,
-        k_nums,
-        kohm_nums,
-        ohm_nums
+        out.text, k_nums, kohm_nums, ohm_nums
     );
 
     // Voltage divider: 5 V -> 3.3 V
@@ -1053,13 +1388,10 @@ async fn calc_e_series_nearest_and_divider() {
     )
     .await
     .unwrap();
-    let vout_line = out_div
-        .text
-        .lines()
-        .find(|l| {
-            let lower = l.to_lowercase();
-            lower.contains("vout") || lower.contains("output") || lower.contains("v_out")
-        });
+    let vout_line = out_div.text.lines().find(|l| {
+        let lower = l.to_lowercase();
+        lower.contains("vout") || lower.contains("output") || lower.contains("v_out")
+    });
     let vout_candidates = if let Some(line) = vout_line {
         parse_numbers_with_unit(line, "V")
     } else {
@@ -1084,9 +1416,21 @@ async fn calc_e_series_nearest_and_divider() {
 
 #[tokio::test]
 async fn route_555_vias_fan_out_clear_of_smd_pads_and_pass_drc() {
-    let dir = project("route_555_fanout", &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)]);
-    run("pcb_build", json!({"source":"pcb/blinker.pcb.json"}), &dir.path).await.unwrap();
-    let circuit: Value = serde_json::from_str(&std::fs::read_to_string(dir.path.join("pcb/blinker.circuit.json")).unwrap()).unwrap();
+    let dir = project(
+        "route_555_fanout",
+        &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)],
+    );
+    run(
+        "pcb_build",
+        json!({"source":"pcb/blinker.pcb.json"}),
+        &dir.path,
+    )
+    .await
+    .unwrap();
+    let circuit: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path.join("pcb/blinker.circuit.json")).unwrap(),
+    )
+    .unwrap();
     let elements = circuit.as_array().unwrap();
     let vias: Vec<_> = elements.iter().filter(|e| e["type"] == "pcb_via").collect();
     assert!(!vias.is_empty(), "555 board must exercise layer changes");
@@ -1094,23 +1438,35 @@ async fn route_555_vias_fan_out_clear_of_smd_pads_and_pass_drc() {
         let x = via["x"].as_f64().unwrap();
         let y = via["y"].as_f64().unwrap();
         eprintln!("555 via {}: [{x}, {y}] mm", via["net"]);
-        let margin = via["outer_diameter"].as_f64().unwrap()/2. + 0.2;
+        let margin = via["outer_diameter"].as_f64().unwrap() / 2. + 0.2;
         for pad in elements.iter().filter(|e| e["type"] == "pcb_smtpad") {
             let dx = x - pad["x"].as_f64().unwrap();
             let dy = y - pad["y"].as_f64().unwrap();
-            let (s,c) = pad["rotation"].as_f64().unwrap().to_radians().sin_cos();
-            let local_x = c*dx+s*dy;
-            let local_y = -s*dx+c*dy;
-            let half_width = pad["width"].as_f64().unwrap()/2.;
-            let half_height = pad["height"].as_f64().unwrap()/2.;
-            assert!(local_x.abs() > half_width + 0.2 || local_y.abs() > half_height + 0.2,
-                "via {} lies inside expanded SMD pad {}", via["pcb_via_id"], pad["pcb_smtpad_id"]);
-            let gap = (local_x.abs()-half_width).max(0.).hypot((local_y.abs()-half_height).max(0.));
-            assert!(gap >= margin - 1e-6,
-                "via {} copper crowds SMD pad {}",via["pcb_via_id"],pad["pcb_smtpad_id"]);
+            let (s, c) = pad["rotation"].as_f64().unwrap().to_radians().sin_cos();
+            let local_x = c * dx + s * dy;
+            let local_y = -s * dx + c * dy;
+            let half_width = pad["width"].as_f64().unwrap() / 2.;
+            let half_height = pad["height"].as_f64().unwrap() / 2.;
+            assert!(
+                local_x.abs() > half_width + 0.2 || local_y.abs() > half_height + 0.2,
+                "via {} lies inside expanded SMD pad {}",
+                via["pcb_via_id"],
+                pad["pcb_smtpad_id"]
+            );
+            let gap = (local_x.abs() - half_width)
+                .max(0.)
+                .hypot((local_y.abs() - half_height).max(0.));
+            assert!(
+                gap >= margin - 1e-6,
+                "via {} copper crowds SMD pad {}",
+                via["pcb_via_id"],
+                pad["pcb_smtpad_id"]
+            );
         }
     }
-    let drc = run("pcb_drc", json!({"board":"blinker"}), &dir.path).await.unwrap();
+    let drc = run("pcb_drc", json!({"board":"blinker"}), &dir.path)
+        .await
+        .unwrap();
     assert_eq!(drc.text, "No DRC errors.");
 }
 
@@ -1125,6 +1481,11 @@ async fn calc_rejects_invalid_pcb_inputs() {
         json!({"calc":"e_series","value":0,"series":"E96"}),
         json!({"calc":"e_series","vin_v":5,"vout_v":5,"series":"E96"}),
     ] {
-        assert!(run("rf_calc", input.clone(), Path::new("/nonexistent")).await.is_err(), "{input}");
+        assert!(
+            run("rf_calc", input.clone(), Path::new("/nonexistent"))
+                .await
+                .is_err(),
+            "{input}"
+        );
     }
 }
