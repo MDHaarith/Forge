@@ -24,6 +24,11 @@ the phases, and keep the external version working until its native replacement p
 
 Already native: list_files, read_file, write_file, cad_model, rf_calc, design_assemble.
 
+CAD kernel progress (v0.13.0): `part_build` supports primitives, booleans, line/arc/circle extrusion,
+revolution, edge fillets/chamfers and placement, with STEP/STL/JSON export. `part_inspect` reads
+STEP/STP/STL size and volume. Next: standard holes, enclosure/lid/standoffs, mass, hole detection and
+overhang checks (step 4 in `plan.md`). Legacy solid tools stay until the native replacement is complete.
+
 ## Phases (estimates include tests; ±50%)
 
 **Phase 1, core (~35k lines):** Forge works with nothing else installed.

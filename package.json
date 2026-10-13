@@ -1,7 +1,7 @@
 {
   "name": "forge",
   "private": true,
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "An AI workshop that drives code, 3D, PCB and chip tools from one conversation",
   "type": "module",
   "engines": {

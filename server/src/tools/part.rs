@@ -4,25 +4,31 @@ use cadrum::{Boolean, DVec3, Solid, Tessellation};
 use serde_json::{json, Value};
 use std::fs;
 
+mod inspect;
+mod ops;
+
 pub fn tools() -> Vec<Tool> {
     vec![Tool::new(
         "3d",
         "part_build",
-        "Build exact solids in millimetres, Z up. Writes models/<name>.step, binary STL and JSON. Steps run in order; shape ids default to s<step index>. box: size [x,y,z], minimum corner at at. cylinder: radius, height, base centre at at. sphere: radius, centre at at. cone: radius1 (bottom), radius2 (top, may be 0), height, base centre at at. at defaults to [0,0,0]. union/cut/intersect: target and tool body ids; changes target and consumes tool. Exports all remaining bodies. Only these seven operations are currently supported.",
+        "Build exact solids in millimetres, degrees, Z up. Writes models/<name>.step, binary STL and JSON. Steps run in order; shape ids default to s<step index>. box: size [x,y,z], minimum corner at at. cylinder: radius, height, base centre at at. sphere: radius, centre at at. cone: radius1 (bottom), radius2 (top, may be 0), height, base centre at at. at defaults to [0,0,0]. extrude: XY outline, height, at. revolve: XZ outline (x is nonnegative radius), angle (360), about Z from +X towards +Y. outline is {circle:[cx,cy,r]} or {start:[x,y],segments:[{line:[x,y]} or {arc:[x,y],through:[x,y]}]}; last point equals start. union/cut/intersect: target and tool body ids; changes target and consumes tool. fillet: target, radius, edges. chamfer: target, size, edges. edges is all, vertical (straight Z edges), or {at_z:number}. place: target, rotate [rx,ry,rz], move [x,y,z]; rotates X then Y then Z through origin, then moves. Exports all remaining bodies.",
         json!({"type":"object", "properties":{
             "name":{"type":"string", "description":"Lowercase letters, digits, - and _ only"},
             "material":{"type":"string"},
             "steps":{"type":"array", "minItems":1, "items":{"type":"object", "properties":{
                 "op":{"type":"string"}, "id":{"type":"string"},
-                "size":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
+                "size":{},
                 "at":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "radius":{"type":"number"}, "radius1":{"type":"number"},
                 "radius2":{"type":"number"}, "height":{"type":"number"},
+                "angle":{"type":"number"}, "outline":{"type":"object"}, "edges":{},
+                "rotate":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
+                "move":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "target":{"type":"string"}, "tool":{"type":"string"}
             }, "required":["op"]}}
         }, "required":["name","steps"]}),
         part_build,
-    )]
+    ), inspect::tool()]
 }
 
 fn part_build(input: Value, ctx: ToolContext) -> ToolFuture {
@@ -130,7 +136,7 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
     for (index, step) in steps.iter().enumerate() {
         let op = input_str(step, "op")?;
         match op {
-            "box" | "cylinder" | "sphere" | "cone" => {
+            "box" | "cylinder" | "sphere" | "cone" | "extrude" | "revolve" => {
                 let id = match step.get("id") {
                     Some(_) => input_str(step, "id")?.to_owned(),
                     None => format!("s{index}"),
@@ -176,6 +182,7 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                             Solid::cone(r1, r2, DVec3::Z * height).translate(at)
                         }
                     }
+                    "extrude" | "revolve" => ops::profile_solid(step, op, index, at)?,
                     _ => unreachable!(),
                 };
                 bodies.push((id, vec![solid]));
@@ -210,6 +217,10 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                     })?
                 };
                 bodies.remove(tool);
+            }
+            "fillet" | "chamfer" | "place" => {
+                let target = body_index(&bodies, input_str(step, "target")?, index)?;
+                bodies[target].1 = ops::modify(&bodies[target].1, step, op, index)?;
             }
             _ => {
                 return Err(ToolError::expected(format!(

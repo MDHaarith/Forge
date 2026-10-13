@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.0 — 2026-10-13
+
+- `part_build` adds line/arc/circle extrusion, Z-axis revolution, fillets and chamfers selected by
+  all edges, vertical edges or height, and placement with X/Y/Z rotations followed by translation; `rotate` and `move` default to zero.
+- New native `part_inspect` reads STEP/STP and binary or ASCII STL, reporting real size and volume.
+  Hole detection, mass and overhang checks remain scheduled for the next CAD kernel step.
+
 ## 0.12.0 — 2026-10-13
 
 - New `part_build` tool: exact solids from Forge's own CAD kernel (OpenCASCADE via the cadrum crate),

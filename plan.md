@@ -88,7 +88,7 @@ All lengths are millimetres. All angles are degrees. Z is up.
 | `union` / `cut` / `intersect` | `target`, `tool` | boolean; an empty intersect is allowed and has volume 0 |
 | `fillet` | `target`, `radius`, `edges` | round the edges |
 | `chamfer` | `target`, `size`, `edges` | bevel the edges, equal distance |
-| `place` | `target`, `rotate:[rx,ry,rz]`, `move:[x,y,z]` | rotate about X, then Y, then Z, through the origin; then move |
+| `place` | `target`, `rotate:[rx,ry,rz]` (default 0,0,0), `move:[x,y,z]` (default 0,0,0) | rotate about X, then Y, then Z, through the origin; then move |
 | `hole` | `target`, `points`, `size` ("M3"), `kind`, `fit` (default "normal"), `depth` (omit = through) | same rules as `hole()` in forge_cad.py |
 | `enclosure` | `size:[x,y,z]`, `wall` (2), `floor` (2), `radius` (0) | same as `enclosure()` |
 | `lid` | `size:[x,y]`, `thickness` (2), `wall` (2), `lip` (2), `gap` (0.2), `radius` (0), `at` | same as `lid()`: plate from z=0 to thickness, lip from z=-lip to 0, then moved by `at` |
@@ -183,7 +183,7 @@ After every step, the orchestrator does all of these:
 - [x] Step 0: spike (gpt-6.1-sol)
 - [x] Step 1: reference tests (gemini-3.8-flash-high)
 - [x] Step 2: kernel, shapes, combine, export (gpt-6.1-sol)
-- [ ] Step 3: extrude, revolve, fillet, chamfer, place (gpt-6.1-sol)
+- [x] Step 3: extrude, revolve, fillet, chamfer, place (gpt-6.1-sol)
 - [ ] Step 4: holes, enclosure kit, inspect (gpt-6.1-sol)
 - [ ] Step 5: tool descriptions (claude-sonnet-5-5)
 - [ ] Step 6: retire the FreeCAD solid tools (orchestrator)

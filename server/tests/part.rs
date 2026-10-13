@@ -49,35 +49,30 @@ async fn cone_volume() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn extrude_rectangle() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"extrude","height":5,"outline":{"start":[0,0],"segments":[{"line":[20,0]},{"line":[20,10]},{"line":[0,10]},{"line":[0,0]}]}}]})).await;
     near(volume(&out, 0), 1000.0, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn extrude_circle() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"extrude","height":10,"outline":{"circle":[0,0,5]}}]})).await;
     near(volume(&out, 0), 785.398, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn revolve_full() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"revolve","outline":{"start":[0,0],"segments":[{"line":[5,0]},{"line":[5,10]},{"line":[0,10]},{"line":[0,0]}]}}]})).await;
     near(volume(&out, 0), 785.398, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn revolve_half() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"revolve","angle":180,"outline":{"start":[0,0],"segments":[{"line":[5,0]},{"line":[5,10]},{"line":[0,10]},{"line":[0,0]}]}}]})).await;
     near(volume(&out, 0), 392.699, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn revolve_ring() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"revolve","outline":{"start":[3,0],"segments":[{"line":[5,0]},{"line":[5,10]},{"line":[3,10]},{"line":[3,0]}]}}]})).await;
     near(volume(&out, 0), 502.655, 0.01);
@@ -102,21 +97,18 @@ async fn intersect_overlapping_cubes() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn fillet_vertical_edges() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[20,20,20]},{"op":"fillet","target":"a","radius":2,"edges":"vertical"}]})).await;
     near(volume(&out, 0), 7931.327, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn fillet_all_edges() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[20,20,20]},{"op":"fillet","target":"a","radius":2,"edges":"all"}]})).await;
     near(volume(&out, 0), 7804.696, 0.05);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn chamfer_vertical_edges() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[20,20,20]},{"op":"chamfer","target":"a","size":2,"edges":"vertical"}]})).await;
     near(volume(&out, 0), 7840.0, 0.01);
@@ -179,7 +171,6 @@ async fn lid_moved_within_gap_still_fits() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn place_rotates_then_moves() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[10,20,5]},{"op":"place","target":"a","rotate":[0,0,90],"move":[100,0,0]}]})).await;
     let bbox = &out["bodies"][0]["bbox"];
@@ -191,7 +182,6 @@ async fn place_rotates_then_moves() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn writes_step_stl_and_json_and_step_reads_back() {
     let (dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[20,20,20]},{"id":"b","op":"cylinder","radius":5,"height":20,"at":[10,10,0]},{"op":"cut","target":"a","tool":"b"}]})).await;
     for file in ["models/t.step", "models/t.stl", "models/t.json"] {
@@ -236,7 +226,6 @@ async fn inspect_warns_about_overhang() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn errors_name_the_step() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run("part_build", json!({"name":"t","steps":[{"op":"box","size":[1,1,1]},{"op":"teapot"}]}), &dir.path).await.unwrap_err();

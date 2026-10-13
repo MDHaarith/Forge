@@ -50,6 +50,8 @@ server/src/
     workspace.rs vcs.rs code.rs              files, git, run_command
     cad.rs mesh.rs                           cad_model: primitives → STL/SCAD/JSON (no external app)
     part.rs                                  part_build: OCCT solids, booleans → STEP/binary STL/JSON
+    part/ops.rs                              outlines, extrude/revolve, edge selectors, fillet/chamfer, place
+    part/inspect.rs                          part_inspect: STEP/STP/STL size and volume (mass/holes/overhang pending)
     script3d.rs freecad.rs                   blender_build, freecad_build/inspect/drawing
     board.rs pcb.rs design.rs fit.rs         PCB engine, DRC, fab export, board-in-enclosure fit
     rf.rs rfmath.rs                          rf_calc, rf_antenna_sim (openEMS)
