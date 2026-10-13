@@ -154,8 +154,8 @@ Use a distinct `clientRequestId` per round.
 
 - [x] Step 1: reference tests (Gemini)
 - [x] Step 2: validator, schemas, errors, name lookup, prompt (GPT)
-- [ ] Step 3: chat box layout (GPT)
-- [ ] Step 4: release 0.15.1 (orchestrator)
+- [x] Step 3: chat box layout (GPT)
+- [x] Step 4: release 0.15.1 (orchestrator)
 
 ### Step 1 brief: reference tests (send to gemini-3.8-flash-high)
 

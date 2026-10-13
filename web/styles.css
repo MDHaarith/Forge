@@ -73,10 +73,6 @@ textarea { resize: none; line-height: 1.4; }
 .workspaces button { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 0 14px; }
 .workspaces button:hover { color: var(--text); background: var(--raised); }
 .workspaces button.active { color: var(--text); background: var(--panel); box-shadow: inset 0 -2px var(--select); }
-.model-pick { display: flex; gap: 6px; }
-.model-pick select { background: var(--panel); border-color: var(--line); border-radius: 6px; }
-.model-pick #model-name { max-width: 220px; }
-.model-pick select.warn { color: var(--warn); }
 
 /* ---- Editor areas, separated by thin dark gaps like Blender's ---------------------------- */
 .layout {
@@ -231,7 +227,13 @@ textarea { resize: none; line-height: 1.4; }
 .composer-box:focus-within { border-color: var(--select); }
 .composer textarea { border: 0; background: transparent; padding: 2px 4px; max-height: 40vh; }
 .composer textarea:focus-visible { outline: none; }
-.composer-row { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+.composer-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; }
+.model-pick { display: flex; flex: 1; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.model-pick select { font-size: 11px; padding: 2px 4px; max-width: 100%; background: transparent; border-color: transparent; border-radius: 6px; }
+.model-pick select:hover { border-color: var(--line); }
+.model-pick select:focus { border-color: var(--select); }
+.model-pick #model-name { max-width: 180px; }
+.model-pick select.warn { color: var(--warn); }
 .composer button { border-radius: 6px; padding: 4px 14px; }
 .composer button.stop, .composer button.stop:hover:not(:disabled) { background: var(--bad); color: #fff; }
 

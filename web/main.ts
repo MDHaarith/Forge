@@ -151,7 +151,6 @@ $("model-name").addEventListener("change", () => {
   else void loadModels();
 });
 $("effort-pick").addEventListener("change", () => void switchModel(undefined, $<HTMLSelectElement>("effort-pick").value));
-$("model-pick").addEventListener("submit", (e) => e.preventDefault());
 
 async function loadProjects() {
   const names = await api<string[]>("/projects");

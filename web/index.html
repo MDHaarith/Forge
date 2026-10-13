@@ -17,11 +17,6 @@
         <button id="mode-design" type="button" aria-pressed="false" title="The PCB and the 3D assembly side by side">Design</button>
       </nav>
       <span class="spacer"></span>
-      <form id="model-pick" class="model-pick">
-        <select id="provider-pick" aria-label="Model provider"></select>
-        <select id="model-name" aria-label="Model"></select>
-        <select id="effort-pick" aria-label="Thinking level" title="How long Claude thinks before answering" hidden></select>
-      </form>
     </header>
     <main class="layout">
       <aside class="outliner">
@@ -81,9 +76,13 @@
         </div>
         <form id="composer" class="composer">
           <div class="composer-box">
-            <textarea id="prompt" rows="3" placeholder="e.g. Design a 60 × 40 mm enclosure with M3 standoffs" disabled aria-label="Message"></textarea>
+            <textarea id="prompt" rows="3" placeholder="e.g. Design a 60 × 40 mm enclosure with M3 standoffs" disabled aria-label="Message" title="Enter to send · Shift+Enter for a new line"></textarea>
             <div class="composer-row">
-              <span class="muted">Enter to send · Shift+Enter for a new line</span>
+              <div id="model-pick" class="model-pick">
+                <select id="provider-pick" aria-label="Model provider"></select>
+                <select id="model-name" aria-label="Model"></select>
+                <select id="effort-pick" aria-label="Thinking level" title="How long Claude thinks before answering" hidden></select>
+              </div>
               <button id="send" type="submit" disabled>Send</button>
             </div>
           </div>

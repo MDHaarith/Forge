@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.1 — 2026-10-13
+
+- The provider, model and thinking-level pickers moved from the menu bar into the chat box, beside Send.
+- Every tool schema is portable across providers: each field is typed, `part_build` lists its ops
+  and describes `size`, `edges`, `points` and `outline`, and unknown fields are rejected
+  (`<path>.<key> is not a known field`). A test enforces the rules.
+- Clearer errors for models: unparsable arguments return `Arguments were not valid JSON: …`, and an
+  unknown tool lists the available tools. Names such as `functions.part-build` or
+  `mcp__forge__part_build` now resolve to the real tool.
+- The system prompt mentions only tools that are available, so models stop calling missing FreeCAD,
+  Blender or KiCad tools.
+
 ## 0.15.0 — 2026-10-13
 
 - Removed `cad_model`; `part_build` replaces it. The offline demo now builds its enclosure with

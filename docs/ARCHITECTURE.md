@@ -21,7 +21,8 @@ web/main.ts  ──POST /api/projects/<name>/chat──▶  server/src/http.rs
                                     └───────────────┬────────────────┘
                                                     ▼
                                     tools/mod.rs  all_tools() → one Tool per capability
-                                    (input checked by tools/validate.rs, paths by tools/paths.rs)
+                                    (name matched by agent.rs find_tool, input checked by tools/validate.rs,
+                                     paths by tools/paths.rs)
                                                     ▼
                          NDJSON events stream back: user, text, tool_call, tool_result{files}, error, done
                          and are saved in <FORGE_HOME>/.state/<project>.json
@@ -36,7 +37,8 @@ server/src/
   env.rs                   loads ~/.config/forge/env
   http.rs                  every /api route, static UI from dist/, security checks
   projects.rs              project folders, git init, saved history, busy flag, Claude session id
-  agent.rs                 Forge's own agent loop, system prompt, AgentEvent types
+  agent.rs                 Forge's own agent loop, system prompt (names only available tools),
+                           execute_tool and find_tool (shared with mcp.rs), AgentEvent types
   model.rs, providers.rs   OpenAI-compatible providers, offline demo, provider/model switching
   claude_code.rs, mcp.rs   Claude via the user's Claude Code CLI; tools served to it over MCP
   open.rs, platform.rs     "Open in app" buttons; distro detection and install hints
@@ -45,7 +47,8 @@ server/src/
     mod.rs                 Tool struct, all_tools() registry, availability, describe_tools()
     paths.rs               project_path(): the only way a tool may turn input into a path
     exec.rs                run a program: no shell, timeout + kill, 32 MB output cap
-    validate.rs            JSON-schema subset used to check tool input
+    validate.rs            JSON-schema subset used to check tool input (type, enum, anyOf,
+                           additionalProperties:false, min/maxItems)
     launch.rs              run an app natively or as a sandboxed Flatpak
     workspace.rs vcs.rs code.rs              files, git, run_command
     cad.rs                                   openscad_render
