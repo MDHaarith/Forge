@@ -1,0 +1,39 @@
+   Compiling forge-occt-spike v0.1.0 (/home/mdhaarith/Documents/Projects/Forge/spikes/occt)
+    Finished `release` profile [optimized] target(s) in 1.12s
+     Running `../../target/release/stage2`
+loft ruled square 20->10 h10 (expect 2333.333): volume 2333.3333 area 1170.8204 bbox [-10.000, -10.000, -0.000]..[10.000, 10.000, 10.000] faces 6 (1 ms)
+loft ruled circle r10->r5 h10 (expect 1832.596): volume 1832.5957 area 919.5602 bbox [-10.000, -10.000, -0.000]..[10.000, 10.000, 10.000] faces 3 (0 ms)
+loft smooth 3 squares: volume 3733.3333 area 2054.3616 bbox [-10.000, -10.000, -0.000]..[10.000, 10.000, 20.000] faces 6 (1 ms)
+sweep circle r2 along 30 line (expect 376.991): volume 376.9911 area 402.1239 bbox [-0.000, -2.000, -2.000]..[30.000, 2.000, 2.000] faces 3 (0 ms)
+sweep circle r2 along quarter arc R20 (expect 394.784): volume 394.7842 area 419.9169 bbox [-0.000, -0.000, -2.000]..[23.813, 23.813, 2.000] faces 3 (0 ms)
+top faces found: 1
+shell inward -2 open top (expect 7152): volume 7152.0000 area 7432.0000 bbox [-0.000, -0.000, -0.000]..[40.000, 30.000, 20.000] faces 11 (3 ms)
+shell outward +2 open top (rounded outer shell; no sharp-corner reference): volume 8707.9055 area 9008.8495 bbox [-2.000, -2.000, -2.000]..[42.000, 32.000, 20.000] faces 23 (7 ms)
+shell cylinder r10 h20 inward -1 open top (expect pi*(2000-81*19)=1448.274): volume 1448.2742 area 2959.3803 bbox [-10.000, -10.000, -0.000]..[10.000, 10.000, 20.000] faces 5 (1 ms)
+mirror bbox [-15.0000001, -1e-7, -1e-7]..[-4.9999999, 10.0000001, 10.0000001] volume 1000.000
+thread profile: H 0.866025404, minor radius 2.458734123, crest width 0.125000, root width 0.250000, flank angle 60.000000 degrees, helix start [2.448734122634732, -4.440892098500626e-16, -1.0]
+original 10-turn bbox reproduction: unmeshed BRep [[-6.779455, -6.779455, -0.380774], [6.779455, 6.779455, 10.380774]], mesh [[-3.000003, -3.000005, -0.380774], [3.000013, 3.000014, 10.380774]], max mesh radius 3.000070
+extended thread ridge sweep: 10 ms
+thread placement diagnosis: unmeshed BRep bbox [[-4.086885, -4.087102, -1.380774], [4.086885, 4.087102, 11.380774]], mesh bbox [[-3.000007, -3.000010, -1.380774], [3.000000, 3.000008, 11.380774]], mesh max radius 3.000010, meshed BRep bbox [[-3.004637, -3.004640, -1.385404], [3.004630, 3.004638, 11.385404]] (2296 ms)
+thread untrimmed fused volume 275.498827
+thread fuse and clip: 1 solids (1060 ms)
+external M6x1 length10: volume 229.570530, error vs 224.84 2.1040%, 1 solid, BRep bbox [[-3.005243, -3.005244, -0.005238], [3.005247, 3.005248, 10.005238]], mesh bbox [[-3.000005, -3.000006, -0.000000], [3.000009, 3.000010, 10.000000]], bbox meshing 1528 ms, total 5643 ms
+ISO basic profile analytic volume 229.572040; pitch-diameter approximation 224.842610
+internal M6 through 20x20x10: tap drill diameter 5, body volume 3768.667109, removed volume 231.332891, error vs 224.84 2.8878%, 1 solid (1077 ms)
+tap drill plus ISO flank analytic removed volume 231.332757
+sheet L t2 w10 flanges30/20 r2: volume 1094.247780, bbox [[-0.000000, -0.000000, -0.000000], [34.000000, 10.000000, 24.000000]], flat [54.523893,10] (2 ms)
+sweep join gap 0.000000000, tangent angle 0.000003520 degrees
+sweep join gap 0.000000000, tangent angle 0.000003520 degrees
+sweep line/arc/line: volume 448.719503773, rounded 448.720, length 35.707963268 (1 ms)
+plan correction: sweep 448.719 -> 448.720; pi*2^2*(10+pi*10/2+10) = 448.719500309
+polar 6 cylinders r2 h10 radius10: volume 753.982237, 6 solids, bbox [[-12.000000, -10.660254, -0.000000], [12.000000, 10.660254, 10.000000]] (3 ms)
+mesh clearance cubes [0,0,0]/[13,14,0]: 5.000000, analytic sqrt(3^2+4^2)=5, triangles 12/12 (1 ms)
+overlap volume 200.000
+disjoint intersect: Ok(0)
+scene front: visible polylines 4 hidden polylines 128 extent x 0.00..40.00 y 0.00..20.00 (0 ms)
+scene top: visible polylines 130 hidden polylines 126 extent x 0.00..40.00 y 0.00..30.00 (0 ms)
+scene right: visible polylines 4 hidden polylines 126 extent x 0.00..30.00 y 0.00..20.00 (0 ms)
+scene iso: visible polylines 201 hidden polylines 191 extent x 0.00..49.50 y -16.33..28.58 (0 ms)
+SVG written: /home/mdhaarith/Documents/Projects/Forge/spikes/occt/stage2.svg (16228 bytes), four Mesh::scene views; hidden stroke-dasharray 2 1; blind-hole volume 23497.345175
+plain box front: visible 4 hidden 0
+Stage 2: all numerical assertions passed

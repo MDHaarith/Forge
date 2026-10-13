@@ -52,7 +52,7 @@ cd spikes/occt && CARGO_TARGET_DIR=../../target cargo run --release --bin stage2
 | `mirror(origin, normal)` | exact |
 | intersection volume of two cubes overlapping by 2 mm | 200; a disjoint intersect gives 0 solids |
 | `Mesh::scene(SceneOption{view, up, hidden_edges:true, shading:false})` | polylines in `edges_visible` and `edges_hidden`. A plain box front view has 4 visible and 0 hidden polylines. A box with a blind hole has hidden polylines. Coordinates are mm, with the extent equal to the part size. |
-| **Thread (broken)** | A 60° profile in the XZ plane at the helix start, swept with `Up(Z)`, comes out at radius 6.78 instead of 3: the profile is misplaced. `make_pipe_shell` in cadrum's `ffi.cpp` calls `shell.Add(wire, false, false)`, with WithContact and WithCorrection both false. Step 0 must fix this. Each thread union took about 0.9 s. |
+| Thread | Works. Step 0 found that the "radius 6.78" was cadrum's loose bounding box on an unmeshed helical sweep; the real radius is 3.000. The exact working pattern is in `spikes/occt/README.md` "Stage 2". The external M6 rod takes about 2.6 s and the internal thread about 1.1 s. |
 
 ## 2. What stage 2 delivers
 
@@ -104,7 +104,7 @@ goes through `jsfmt::fixed(n, 3)`. Each "Reference" below is the exact expected 
   - path from [0,0,0], line to [30,0,0]: volume 376.991
   - path from [20,0,0], arc to [0,20,0] through [14.142136,14.142136,0]: volume 394.784
   - path from [0,0,0]: line to [10,0,0], then arc to [20,10,0] through [17.071068,2.928932,0],
-    then line to [20,20,0]: volume 448.719
+    then line to [20,20,0]: volume 448.720
 
 **`shell`**: an operation on `target`.
 - Fields: `thickness`, the wall measured inward; `open`, an array of sides from `"top"`,
@@ -156,14 +156,17 @@ includes the original.
 - Reference, M6 length 10 at the origin:
   - bbox [[-3,-3,0],[3,3,10]] within 0.01
   - 1 solid
-  - volume within 3 % of π/4·d2²·L, where d2 = d − 0.6495·P. That is 224.84, so the range is
-    218.1 to 231.6.
+  - volume within 0.5 % of 229.572 (the ISO basic profile integrated exactly): 228.42 to 230.72
+  - `thread` meshes its result at 0.005 mm before returning it, because cadrum's
+    `bounding_box` is loose (radius 6.78 for M6) on unmeshed helical faces. Do not clamp or
+    round the box instead.
 
 **hole `kind:"thread"`**: an internal thread.
 - Same fields and placement as other hole kinds (down from the target's top, `depth` omitted means
   through). Drills the tap-drill hole, then cuts the ISO internal thread.
 - Reference: box 20×20×10, an M6 thread at [10,10], through. The removed volume
-  (4000 − the body's volume) is within 3 % of 224.84.
+  (4000 − the body's volume) is within 0.5 % of 231.333 (tap drill plus the ISO flanks):
+  230.18 to 232.49.
 - `part_inspect` does not need to recognise threaded holes:
   `shortcut: threaded holes are not reported by part_inspect, add helical-face detection when users ask`.
 
@@ -216,7 +219,10 @@ shell, threads or drawings" from Limits, and point drawings at `part_drawing`.
   ```
   - `overlap_volume` is the volume of the intersection.
   - `clearance` is the smallest distance between the two surfaces, and 0 when they touch or
-    overlap. Compute it from 0.01 mm tessellations, using vertex-to-triangle distance both ways.
+    overlap. Compute it from 0.01 mm tessellations as the minimum of vertex-to-triangle distance
+    both ways and triangle-edge to triangle-edge (segment-segment) distance, so crossed edges
+    count. Skip triangle pairs whose bounding boxes are farther apart than the best distance
+    so far.
     Add: `shortcut: clearance comes from tessellations (exact for flat faces, within 0.01 mm on curves), use BRepExtrema when cadrum exposes it`.
   - With fewer than two solids, `interference` is `[]`. For an STL `path` it is always `[]`.
 - **Errors:**
@@ -330,7 +336,7 @@ the findings and the agent's previous report.
 
 ## 5. Work order
 
-- [ ] Step 0: spike (GPT)
+- [x] Step 0: spike (GPT)
 - [ ] Step 1: reference tests (Gemini)
 - [ ] Step 2: loft, sweep, shell, mirror, pattern (GPT)
 - [ ] Step 3: threads and sheet metal (GPT)
@@ -492,7 +498,13 @@ the findings and the agent's previous report.
   `spawn_blocking`.
 - Never `canonicalize`. Every written path goes through `project_path` (`models/`, `drawings/`).
 - JSON numbers go through `jsfmt::fixed`. Keep the key order exactly as in the plan.
-- Booleans on threads are slow (about 0.9 s). Build one thread per call, never one per point.
+- Booleans on threads are slow (about 1 s each). For several threaded holes, build one thread
+  cutter, copy it to each point, and cut once.
+- Use the thread pattern from `spikes/occt/README.md` exactly: ISO flank widths, core and helix
+  both extended one pitch at each end, fuse, then clip. A core shorter than the helix gives a
+  ridge-only union.
+- In SVG, join the scene's NaN-separated fragments into polylines before writing them, or the
+  dashes restart on every fragment and hidden circles look solid. Negate Y for SVG.
 - `shell` with a positive thickness rounds the outer corners. Always pass `-thickness`.
 - `Mesh::scene` panics when `up` is parallel to `view`. The top view uses up +Y.
 - Never call `std::env::set_var` in tests. Never hold a `std::sync::Mutex` guard across `.await`.

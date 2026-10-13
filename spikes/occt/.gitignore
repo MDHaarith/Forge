@@ -7,3 +7,4 @@
 /out.stl
 /*.log
 !/results.log
+!/results-stage2.log
