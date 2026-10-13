@@ -186,7 +186,7 @@ After every step, the orchestrator does all of these:
 - [x] Step 3: extrude, revolve, fillet, chamfer, place (gpt-6.1-sol)
 - [x] Step 4: holes, enclosure kit, inspect (gpt-6.1-sol)
 - [x] Step 5: tool descriptions (claude-sonnet-5-5)
-- [ ] Step 6: retire the FreeCAD solid tools (orchestrator)
+- [x] Step 6: retire the FreeCAD solid tools (orchestrator). By the user's choice only cad_model was removed; the FreeCAD tools stay as a fallback. Finish line passed 2026-10-13 with FreeCAD hidden (FORGE_NO_FLATPAK=1): part_build + part_inspect built a 56×36×24 enclosure, STEP written, 24.47 g PLA.
 
 ---
 
