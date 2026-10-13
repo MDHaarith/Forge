@@ -12,6 +12,7 @@ pub struct Pad {
     pub size: Point,
     pub rotation: f64,
     pub round: bool,
+    pub radius: f64,
     pub layers: u8,
     pub drill: Option<[f64; 2]>,
     pub plated: bool,
@@ -77,6 +78,7 @@ pub fn segment_distance(p: Point, a: Point, b: Point) -> f64 {
     distance(p, [a[0] + t * d[0], a[1] + t * d[1]])
 }
 pub fn rect_distance(p: Point, c: Point, size: Point) -> f64 {
+    // shortcut: pads are full rectangles for clearance, use rounded geometry when fine-pitch boards need the corner gap
     let dx = ((p[0] - c[0]).abs() - size[0] / 2.0).max(0.0);
     let dy = ((p[1] - c[1]).abs() - size[1] / 2.0).max(0.0);
     dx.hypot(dy)
@@ -213,6 +215,7 @@ impl Board {
                     size: pad.size,
                     rotation: p.rotation,
                     round: pad.round,
+                    radius: pad.radius,
                     drill: pad.drill,
                     layers,
                     plated: pad.plated,
@@ -1293,6 +1296,7 @@ mod tests {
                 size: [0.3; 2],
                 rotation: 0.,
                 round: false,
+                radius: 0.,
                 layers: 1,
                 drill: None,
                 plated: true,
@@ -1379,6 +1383,7 @@ mod tests {
                     size: p.size,
                     rotation: 0.,
                     round: false,
+                    radius: p.radius,
                     layers: if bottom { 2 } else { 1 },
                     drill: None,
                     plated: true,

@@ -65,14 +65,14 @@ server/src/
     script3d.rs                              blender_build and shared runner-output helpers
     board.rs pcb.rs design.rs fit.rs         native PCB build/exports, DRC, board-in-enclosure fit
     pcb/spec.rs                             strict native .pcb.json parser, pin aliases, netlist and rule overrides
-    pcb/footprint.rs                        pure nominal footprint generator, pads, courtyard, silk and body geometry
+    pcb/footprint.rs                        pure nominal/KiCad footprint dimensions, rounded SMD pads, courtyard, silk and body geometry
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
-    pcb/drc.rs                              saved-copper geometry, net connectivity and sorted native DRC reports
+    pcb/drc.rs                              saved-copper geometry, net connectivity and separate sorted DRC faults/ERC warnings
     pcb/route.rs                            deterministic tree A*, local rip-up, PathFinder restarts, 2/4 layers, SMD escape and optional filled vias-in-pad
     pcb/pour.rs                             i_overlay planar copper fills, thermals, clearance cuts and hole contours
     pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
-    pcb/gerber.rs                           all Gerber X2 layers, 4-layer copper order and split PTH/NPTH Excellon
-    pcb/svg.rs                              PCB copper/silk/drill view and grid schematic symbols with net labels
+    pcb/gerber.rs                           all Gerber X2 layers, RoundRect flashes, 4-layer copper order and split PTH/NPTH Excellon
+    pcb/svg.rs                              rounded PCB pads and connected grid schematics with orthogonal A*, junctions and power symbols
     pcb/export.rs                           rounded JS JSON, JLCPCB CSVs and shared-kernel STEP/GLB assemblies
     rf.rs rfmath.rs                          RF and PCB calculators (IPC-2221/B, Onderdonk, E-series); rf_antenna_sim (openEMS)
     chip.rs                                  Verilog simulate/synthesize
@@ -96,6 +96,11 @@ GLB coordinates, normals and edges use `[x,z,-y]` for Forge's viewer. All output
 Only `.pcb.json` inputs are accepted; other formats fail with `source must be a .pcb.json file`.
 `pcb_drc {"board":"<name>"}` reads the saved native circuit and source rules, checks geometry and
 connectivity in `spawn_blocking`, and writes sorted faults to `fab/<name>/<name>-drc.txt`.
+Electrical rules use the expanded source netlist: single-pin nets, unconnected or shorted two-pad
+passives/diodes/crystals, and parts with no connected pads (except antennas). Reports list sorted DRC
+faults, sorted ERC warnings, the optional filled-via note, the optional `N ERC warning(s).` count,
+then the existing DRC summary. ERC warnings never count as DRC errors. Old circuit JSON without
+`rect_border_radius` remains valid.
 Net classes may override clearance as well as trace width; the router, pours and DRC share those rules.
 `rules.via_in_pad` is a strict boolean, default false. When true, a via may overlap only its own
 net's SMD pads; all other clearance checks remain active. The DRC report notes that filled/capped
@@ -109,6 +114,23 @@ result across deterministic orders. Static masks are cached within 128 MiB and c
 beyond that budget, so large boards still negotiate. DRC uses saved component positions
 even when source rules change; it never re-places the board.
 `pcb_export_fab` is removed because native `pcb_build` writes every manufacturing artifact.
+
+Generated rectangular SMD pads use a 25% corner radius, capped at 0.25 mm; drilled rectangles stay
+sharp. Circuit JSON places `rect_border_radius` immediately after `height` only for positive radii.
+Copper, mask and paste flash a shared RoundRect aperture macro with rotated corner centres; mask
+expansion also expands the radius. Routing, pours and clearance checks retain full rectangles.
+TO-220, TO-92, SOT-23-6, SOT-89, SOD-323, SMA/SMB/SMC, MSOP-8/10 and microSD dimensions are copied
+from the [official KiCad footprint library](https://gitlab.com/kicad/libraries/kicad-footprints).
+Courtyards and bodies retain library bounding boxes in the existing rectangular geometry model;
+SOT-89's custom middle pad is represented by its anchor and tab, both numbered 2. Diode numbering
+maps KiCad's cathode pad 1 to Forge pad 2, preserving `K`/`A` aliases. microSD retains pins 1–10 and SH.
+
+Schematics place parts by shared-net BFS, then pack symbols with wire gutters on a 2.54 mm grid.
+Two-pad symbols are horizontal; other symbols use DIP pin order. Orthogonal tree A* avoids bodies,
+foreign pins and wire vertices, allows perpendicular crossings without junctions, and marks only
+same-net branches with junctions. Ground and supply nets use per-pin power symbols; signal nets
+over eight pins or failed/bounded searches use per-pin labels. Search is limited to one million grid
+cells. Unconnected pads carry NC crosses. Both SVG previews remain standalone.
 
 ## HTTP API (all under /api, localhost only)
 

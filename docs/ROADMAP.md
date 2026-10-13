@@ -22,7 +22,8 @@ the phases, and keep the external version working until its native replacement p
 Stage 3 is complete (v0.17.0): PCB builds and DRC are native; neither Node nor KiCad is needed.
 Done in v0.18.0: USB-C, Micro-B, JST-PH and barrel-jack footprints; slots and NPTH; PathFinder autorouter.
 Done in v0.19.0: complex-board autorouter (tree growth, rip-up, restarts) and opt-in filled vias-in-pad.
-Next: renderer (Blender replacement) or a real schematic layout with wires.
+Done in v0.20.0: wired schematics, ERC warnings, rounded pads, 11 more footprints.
+Next: the PCB batches in plan.md, then the renderer (Blender replacement).
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
 pcb_build (including manufacturing exports) and pcb_drc. `pcb_export_fab` is removed because

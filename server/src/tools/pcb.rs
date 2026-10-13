@@ -20,7 +20,7 @@ pub use spec::{
 };
 
 pub fn tools() -> Vec<Tool> {
-    vec![Tool::new("pcb", "pcb_drc", "Check a built native board for copper clearance, track width, drills, annular rings, edge clearance, unrouted nets, courtyard overlaps and vias in SMD pads. Reads pcb/<board>.circuit.json and pcb/<board>.pcb.json; writes fab/<board>/<board>-drc.txt. Fix every fault and rebuild before ordering.", json!({"type":"object", "additionalProperties":false,"properties":{"board":{"type":"string","description":"Name of the board built with pcb_build"}},"required":["board"]}), pcb_drc)]
+    vec![Tool::new("pcb", "pcb_drc", "Check a built native board for copper clearance, track width, drills, annular rings, edge clearance, unrouted nets, courtyard overlaps and vias in SMD pads. Also lists electrical rule warnings (single-pin nets, unconnected or shorted two-pin parts, unused parts). Reads pcb/<board>.circuit.json and pcb/<board>.pcb.json; writes fab/<board>/<board>-drc.txt. Fix every fault and rebuild before ordering.", json!({"type":"object", "additionalProperties":false,"properties":{"board":{"type":"string","description":"Name of the board built with pcb_build"}},"required":["board"]}), pcb_drc)]
 }
 
 fn pcb_drc(input: Value, ctx: ToolContext) -> ToolFuture {
@@ -241,7 +241,12 @@ fn circuit(prepared: &PreparedBoard, b: &route::Board, r: &route::Routes, pours:
                     elements.push(json!({"type":"pcb_plated_hole","pcb_plated_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"shape":if pad.round { "circle" } else { "rect" },"outer_diameter":pad.size[0],"hole_diameter":drill[0],"layers":(0..b.layers).map(|i|Layer::from_index(i).name()).collect::<Vec<_>>(),"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
                 }
             } else {
-                elements.push(json!({"type":"pcb_smtpad","pcb_smtpad_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"width":pad.size[0],"height":pad.size[1],"rotation":pad.rotation,"layer":p.side.name(),"shape":if pad.round { "circle" } else { "rect" },"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
+                let mut e = json!({"type":"pcb_smtpad","pcb_smtpad_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"width":pad.size[0],"height":pad.size[1]});
+                if pad.radius > 0. {
+                    e["rect_border_radius"] = json!(pad.radius);
+                }
+                e.as_object_mut().unwrap().extend(json!({"rotation":pad.rotation,"layer":p.side.name(),"shape":if pad.round { "circle" } else { "rect" },"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}).as_object().unwrap().clone());
+                elements.push(e);
             }
         }
     }

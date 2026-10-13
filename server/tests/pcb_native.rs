@@ -1817,7 +1817,7 @@ async fn route_exposed_pad_with_opt_in_filled_vias_and_drc() {
     std::fs::write(dir.path.join("pcb/ep.pcb.json"), input.to_string()).unwrap();
     run("pcb_build", json!({"source":"pcb/ep.pcb.json"}), &dir.path).await.unwrap();
     let drc = run("pcb_drc", json!({"board":"ep"}), &dir.path).await.unwrap();
-    assert_eq!(drc.text, "Filled/capped vias-in-pad are required.\nNo DRC errors.");
+    assert_eq!(drc.text, "erc: R1.2 is not connected\nFilled/capped vias-in-pad are required.\n1 ERC warning(s).\nNo DRC errors.");
     let original = std::fs::read_to_string(dir.path.join("pcb/ep.circuit.json")).unwrap();
     let mut circuit: Value = serde_json::from_str(&original).unwrap();
     let via = circuit.as_array_mut().unwrap().iter_mut().find(|e| {

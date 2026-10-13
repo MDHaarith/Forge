@@ -257,7 +257,9 @@ mod tests {
         assert!(file("In1_Cu.gbr").contains("%TF.FileFunction,Copper,L2,Inr*%"));
         assert!(file("In2_Cu.gbr").contains("%TF.FileFunction,Copper,L3,Inr*%"));
         assert_eq!(file("B_Paste.gbr").matches("G36*").count(), 0);
-        assert_eq!(file("F_Paste.gbr").matches("G36*").count(), 2);
+        assert_eq!(file("F_Paste.gbr").matches("G36*").count(), 0);
+        assert_eq!(file("F_Paste.gbr").matches("D03*").count(), 2);
+        assert_eq!(file("F_Paste.gbr").matches("%AMRoundRect*").count(), 1);
         assert!(file("F_Mask.gbr").contains("%TF.FilePolarity,Negative*%"));
         assert!(file("B_Mask.gbr").contains("%TF.FilePolarity,Negative*%"));
     }

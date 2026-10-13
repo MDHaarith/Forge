@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.20.0 — 2026-10-14
+
+- Schematics draw real wires: grid-snapped symbols, orthogonal wires that avoid bodies and other nets,
+  junction dots, ground/supply symbols for power nets, net labels for nets over 8 pins, NC marks.
+- `pcb_drc` lists electrical rule warnings (single-pin nets, unconnected or shorted two-pin parts,
+  unused parts) after the DRC faults; they do not count as DRC errors.
+- SMD pads have rounded corners (25 % of the short side, at most 0.25 mm), flashed with KiCad's
+  `RoundRect` Gerber macro on copper, mask and paste.
+- Footprints from the KiCad library: `to220`, `to92`, `sot23_6`, `sot89`, `sod323`, `sma`, `smb`, `smc`,
+  `msop8`, `msop10`, `microsd`.
+
 ## 0.19.0 — 2026-10-14
 
 - Autorouter for complex boards: multi-pin nets grow from the whole routed tree, blockers are ripped

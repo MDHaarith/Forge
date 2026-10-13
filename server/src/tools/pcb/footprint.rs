@@ -5,6 +5,7 @@ pub struct Pad {
     pub size: [f64; 2],
     pub drill: Option<[f64; 2]>,
     pub round: bool,
+    pub radius: f64,
     pub plated: bool,
 }
 
@@ -18,7 +19,7 @@ pub struct Footprint {
     pub pin1: [f64; 2],
 }
 
-const NAMES: &str = "0402, 0603, 0805, 1206, sot23, sot23_5, sot223, soicN (even 8..16), tssopN (even 8..28), qfnN (multiples of 4, 16..48), dipN (even 4..40), bgaN (square), pinheader_1xN, pinheader_2xN, crystal_hc49, crystal_3225, button_6x6, sod123, usb_c_16, usb_micro_b, jst_ph_N (2..16), barrel_jack";
+const NAMES: &str = "0402, 0603, 0805, 1206, sot23, sot23_5, sot223, soicN (even 8..16), tssopN (even 8..28), qfnN (multiples of 4, 16..48), dipN (even 4..40), bgaN (square), pinheader_1xN, pinheader_2xN, crystal_hc49, crystal_3225, button_6x6, sod123, usb_c_16, usb_micro_b, jst_ph_N (2..16), barrel_jack, to220, to92, sot23_6, sot89, sod323, sma, smb, smc, msop8, msop10, microsd";
 
 #[derive(Clone, Copy)]
 struct Range(f64, f64);
@@ -48,13 +49,13 @@ fn leads(l: Range, t: Range, w: Range, goals: [f64; 3]) -> [f64; 3] {
 }
 
 fn pad(number: usize, at: [f64; 2], size: [f64; 2], drill: Option<f64>) -> Pad {
-    // shortcut: rectangular SMD pads, upgrade to rounded rectangles if a fab or paste stencil needs them.
     Pad {
         number: number.to_string(),
         at,
         size,
         drill: drill.map(|d| [d, d]),
         round: drill.is_some(),
+        radius: if drill.is_none() { (0.25 * size[0].min(size[1])).min(0.25) } else { 0. },
         plated: true,
     }
 }
@@ -73,6 +74,7 @@ fn pad_ext(
         size,
         drill,
         round,
+        radius: if drill.is_none() && !round { (0.25 * size[0].min(size[1])).min(0.25) } else { 0. },
         plated,
     }
 }
@@ -230,6 +232,57 @@ pub fn footprint(name: &str) -> Result<Footprint, String> {
             1.8,
         ),
         "sod123" => (pair([0.9, 1.2, 3.3], None), box_size([2.7, 1.6]), 1.35),
+        // Official KiCad kicad-footprints/master dimensions, in its y-down frame.
+        "to220" | "to92" => {
+            let (pitch, size, drill, body, height) = if name == "to220" {
+                (2.54, [1.905, 2.], 1.1, [-2.46, -3.15, 7.54, 1.25], 15.)
+            } else {
+                (1.27, [1.05, 1.5], 0.75, [-1.21, -2.48, 3.75, 1.753625], 5.)
+            };
+            let pads = (0..3).map(|i| pad_ext((i+1).to_string(), [i as f64 * pitch, 0.],
+                size, Some([drill; 2]), i != 0, true)).collect();
+            (pads, body, height)
+        }
+        "sot23_6" => (rows(6, 0.95, [1.325, 0.6, 2.275], None), box_size([1.6, 2.9]), 1.1),
+        "sot89" => (
+            vec![
+                pad(1, [-1.95, -1.5], [1.3, 0.9], None),
+                pad(2, [-1.8625, 0.], [1.475, 0.9], None),
+                // KiCad's custom pad 2 is its anchor plus this rectangular tab, both on the same net.
+                pad(2, [0.4375, 0.], [3.125, 1.733], None),
+                pad(3, [-1.95, 1.5], [1.3, 0.9], None),
+            ],
+            box_size([2.5, 4.5]), 1.6,
+        ),
+        "sod323" | "sma" | "smb" | "smc" => {
+            let (size, spacing, body, height) = match name {
+                "sod323" => ([0.6, 0.45], 2.1, [1.8, 1.4], 1.0),
+                "sma" => ([2.5, 1.8], 4., [4.6, 3.], 2.3),
+                "smb" => ([2.5, 2.3], 4.3, [4.6, 4.], 2.4),
+                _ => ([2.5, 3.3], 6.8, [7.1, 6.2], 2.6),
+            };
+            let mut pads = pair([size[0], size[1], spacing], None);
+            // Mirror KiCad diode numbering: its cathode pad 1 is Forge K / pad 2.
+            pads[0].number = "2".into();
+            pads[1].number = "1".into();
+            (pads, box_size(body), height)
+        }
+        "msop8" => (rows(8, 0.65, [1.625, 0.4, 4.225], None), box_size([3.; 2]), 1.1),
+        "msop10" => (rows(10, 0.5, [1.5, 0.35, 4.2], None), box_size([3.; 2]), 1.1),
+        "microsd" => {
+            let mut pads = Vec::new();
+            for (i, x) in [2.775, 1.675, 0.575, -0.525, -1.625, -2.725, -3.825, -4.925, -5.875].into_iter().enumerate() {
+                pads.push(pad(i+1, [x, -7.725], [0.7, 1.2], None));
+            }
+            pads.push(pad(10, [-6.825, 2.775], [1., 0.8], None));
+            for (at, size) in [([-6.825, -3.425], [1., 1.2]), ([-6.825, 6.925], [1., 2.8]),
+                ([4.325, -7.725], [1., 1.2]), ([6.675, 7.375], [1.3, 1.9])]
+            {
+                pads.push(pad_ext("SH", at, size, None, false, true));
+            }
+            // The removable card drawn beyond the housing in F.Fab is not a component body.
+            (pads, [-6.925, -7.825, 6.925, 8.325], 1.83)
+        }
         "crystal_hc49" => (
             pair([1.5, 1.5, 4.88], Some(0.8)),
             box_size([11.05, 4.65]),
@@ -498,7 +551,28 @@ pub fn footprint(name: &str) -> Result<Footprint, String> {
             }
         }
     };
-    Ok(package_body(pads, body, height))
+    let mut fp = package_body(pads, body, height);
+    let courtyard = match name {
+        "to220" => Some([-2.71, -3.4, 7.79, 1.5]),
+        "to92" => Some([-1.46, -2.73, 4., 2.01]),
+        "sot23_6" => Some([-2.05, -1.7, 2.05, 1.7]),
+        "sot89" => Some([-2.85, -2.5, 2.25, 2.5]),
+        "sod323" => Some([-1.6, -0.95, 1.6, 0.95]),
+        "sma" => Some([-3.5, -1.75, 3.5, 1.75]),
+        "smb" => Some([-3.65, -2.25, 3.65, 2.25]),
+        "smc" => Some([-4.9, -3.35, 4.9, 3.35]),
+        "msop8" => Some([-3.18, -1.75, 3.18, 1.75]),
+        "msop10" => Some([-3.1, -1.75, 3.1, 1.75]),
+        "microsd" => Some([-7.82, -8.82, 7.88, 8.88]),
+        _ => None,
+    };
+    if let Some(court) = courtyard {
+        fp.courtyard = court;
+        fp.silkscreen = vec![[court[0]+0.1, court[1]+0.1], [court[2]-0.1, court[1]+0.1],
+            [court[2]-0.1, court[3]-0.1], [court[0]+0.1, court[3]-0.1], [court[0]+0.1, court[1]+0.1]];
+        fp.pin1 = fp.silkscreen[0];
+    }
+    Ok(fp)
 }
 
 #[cfg(test)]
@@ -532,6 +606,7 @@ mod tests {
             "jst_ph_2",
             "jst_ph_16",
             "barrel_jack",
+            "to220", "to92", "sot23_6", "sot89", "sod323", "sma", "smb", "smc", "msop8", "msop10", "microsd",
         ] {
             let fp = footprint(name).unwrap();
             for p in fp.pads {
@@ -559,6 +634,61 @@ mod tests {
             "jst_ph_02",
         ] {
             assert!(footprint(name).is_err());
+        }
+    }
+
+    fn kicad(name: &str, count: usize, first: [f64; 2], last: [f64; 2], size: [f64; 2]) {
+        let fp = footprint(name).unwrap();
+        assert_eq!(fp.pads.len(), count);
+        for (actual, expected) in [(fp.pads[0].at, first), (fp.pads[count-1].at, last), (fp.pads[0].size, size)] {
+            assert!(actual.iter().zip(expected).all(|(a, b)| (a-b).abs() < 1e-9));
+        }
+    }
+
+    #[test]
+    fn to220_matches_kicad() { kicad("to220", 3, [0., 0.], [5.08, 0.], [1.905, 2.]); }
+    #[test]
+    fn to92_matches_kicad() { kicad("to92", 3, [0., 0.], [2.54, 0.], [1.05, 1.5]); }
+    #[test]
+    fn sot23_6_matches_kicad() { kicad("sot23_6", 6, [-1.1375, -0.95], [1.1375, -0.95], [1.325, 0.6]); }
+    #[test]
+    fn sot89_matches_kicad() {
+        kicad("sot89", 4, [-1.95, -1.5], [-1.95, 1.5], [1.3, 0.9]);
+        let fp = footprint("sot89").unwrap();
+        assert_eq!(fp.pads[2].number, "2");
+        assert_eq!(fp.pads[2].at, [0.4375, 0.]);
+        assert_eq!(fp.pads[2].size, [3.125, 1.733]);
+    }
+    #[test]
+    fn sod323_matches_kicad() { kicad("sod323", 2, [-1.05, 0.], [1.05, 0.], [0.6, 0.45]); }
+    #[test]
+    fn sma_matches_kicad() { kicad("sma", 2, [-2., 0.], [2., 0.], [2.5, 1.8]); }
+    #[test]
+    fn smb_matches_kicad() { kicad("smb", 2, [-2.15, 0.], [2.15, 0.], [2.5, 2.3]); }
+    #[test]
+    fn smc_matches_kicad() { kicad("smc", 2, [-3.4, 0.], [3.4, 0.], [2.5, 3.3]); }
+    #[test]
+    fn msop8_matches_kicad() { kicad("msop8", 8, [-2.1125, -0.975], [2.1125, -0.975], [1.625, 0.4]); }
+    #[test]
+    fn msop10_matches_kicad() { kicad("msop10", 10, [-2.1, -1.], [2.1, -1.], [1.5, 0.35]); }
+    #[test]
+    fn microsd_matches_kicad() {
+        kicad("microsd", 14, [2.775, -7.725], [6.675, 7.375], [0.7, 1.2]);
+        let fp = footprint("microsd").unwrap();
+        assert_eq!(fp.pads.iter().filter(|p| p.number == "SH" && p.plated).count(), 4);
+    }
+
+    #[test]
+    fn smd_radius_is_capped_and_drilled_pads_stay_sharp() {
+        assert_eq!(footprint("sot23_6").unwrap().pads[0].radius, 0.15);
+        assert_eq!(footprint("sma").unwrap().pads[0].radius, 0.25);
+        for name in ["to220", "jst_ph_2", "barrel_jack", "pinheader_1x2"] {
+            assert!(footprint(name).unwrap().pads.iter().all(|p| p.radius == 0.));
+        }
+        for name in ["sod323", "sma", "smb", "smc"] {
+            let fp = footprint(name).unwrap();
+            assert_eq!(fp.pads[0].number, "2");
+            assert!(fp.pin1[0] < 0.);
         }
     }
 }

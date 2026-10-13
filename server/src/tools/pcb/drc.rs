@@ -255,6 +255,7 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     size: [positive(e, "width")?, positive(e, "height")?],
                     rotation: num(e, "rotation")?,
                     round: false,
+                    radius: e.get("rect_border_radius").map(|_| num(e, "rect_border_radius")).transpose()?.unwrap_or(0.),
                     layers: layers(e)?,
                     drill: None,
                     plated: true,
@@ -543,8 +544,45 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
     } else {
         format!("{} DRC error(s).", faults.len())
     };
+    let mut warnings = Vec::new();
+    for net in &nets {
+        if let [pin] = net.pins.as_slice() {
+            warnings.push(format!("erc: net {} has one pin ({}.{})", net.name, spec.parts[pin.part].reference, pin.number));
+        }
+    }
+    for p in &parts {
+        let part = &spec.parts[p.part];
+        let connected: Vec<_> = p.footprint.pads.iter().map(|pad| {
+            nets.iter().find(|net| net.pins.iter().any(|pin| pin.part == p.part && pin.number == pad.number))
+        }).collect();
+        if connected.iter().all(Option::is_none) {
+            if part.kind != super::Kind::Antenna {
+                warnings.push(format!("erc: {} has no connected pins", part.reference));
+            }
+        } else if p.footprint.pads.len() == 2 && matches!(part.kind,
+            super::Kind::Resistor | super::Kind::Capacitor | super::Kind::Inductor |
+            super::Kind::Led | super::Kind::Diode | super::Kind::Crystal)
+        {
+            for (pad, net) in p.footprint.pads.iter().zip(&connected) {
+                if net.is_none() {
+                    warnings.push(format!("erc: {}.{} is not connected", part.reference, pad.number));
+                }
+            }
+            if let (Some(a), Some(b)) = (connected[0], connected[1]) {
+                if a.name == b.name {
+                    warnings.push(format!("erc: {} has both pins on net {}", part.reference, a.name));
+                }
+            }
+        }
+    }
+    warnings.sort();
+    let count = warnings.len();
+    faults.extend(warnings);
     if rules.via_in_pad {
         faults.push("Filled/capped vias-in-pad are required.".into());
+    }
+    if count > 0 {
+        faults.push(format!("{count} ERC warning(s)."));
     }
     faults.push(summary);
     Ok(faults.join("\n"))
@@ -568,14 +606,14 @@ mod tests {
     #[test]
     fn deleted_copper_breaks_connectivity_and_reports_are_sorted() {
         let mut copper = circuit(SPEC);
-        assert_eq!(check(SPEC, &copper.to_string()).unwrap(), "No DRC errors.");
+        assert_eq!(check(SPEC, &copper.to_string()).unwrap(), "erc: R1.2 is not connected\nerc: R2.2 is not connected\n2 ERC warning(s).\nNo DRC errors.");
         copper
             .as_array_mut()
             .unwrap()
             .retain(|e| e["type"] != "pcb_trace");
         assert_eq!(
             check(SPEC, &copper.to_string()).unwrap(),
-            "unrouted: net N (R1.1 to R2.1)\n1 DRC error(s)."
+            "unrouted: net N (R1.1 to R2.1)\nerc: R1.2 is not connected\nerc: R2.2 is not connected\n2 ERC warning(s).\n1 DRC error(s)."
         );
         let rows = copper.as_array_mut().unwrap();
         let pad = rows
@@ -609,10 +647,13 @@ mod tests {
             assert!(report.contains(expected), "missing {expected}: {report}");
         }
         let lines: Vec<_> = report.lines().collect();
-        assert!(lines[..lines.len() - 1].windows(2).all(|p| p[0] <= p[1]));
+        let erc = lines.iter().position(|l| l.starts_with("erc:")).unwrap();
+        assert!(lines[..erc].windows(2).all(|p| p[0] <= p[1]));
+        assert!(lines[erc..lines.len()-2].windows(2).all(|p| p[0] <= p[1]));
+        assert_eq!(lines[lines.len()-2], "2 ERC warning(s).");
         assert_eq!(
             lines.last().unwrap(),
-            &format!("{} DRC error(s).", lines.len() - 1)
+            &format!("{erc} DRC error(s).")
         );
         assert_eq!(report, check(SPEC, &copper.to_string()).unwrap());
     }
@@ -622,7 +663,7 @@ mod tests {
         spec["netclasses"] = json!({"power":{"nets":["N"],"trace":0.4,"clearance":0.3}});
         let spec = spec.to_string();
         let mut copper = circuit(&spec);
-        assert_eq!(check(&spec, &copper.to_string()).unwrap(), "No DRC errors.");
+        assert_eq!(check(&spec, &copper.to_string()).unwrap(), "erc: R1.2 is not connected\nerc: R2.2 is not connected\n2 ERC warning(s).\nNo DRC errors.");
         let rows = copper.as_array_mut().unwrap();
         let pad = rows
             .iter_mut()
@@ -662,5 +703,19 @@ mod tests {
             check(SPEC, &copper.to_string()).unwrap_err(),
             "invalid circuit field width"
         );
+    }
+
+    #[test]
+    fn electrical_warnings_use_expanded_pins_and_do_not_count_as_faults() {
+        let spec = json!({"board":{"width":30,"height":20},"parts":[
+            {"ref":"D1","kind":"diode","footprint":"0603","at":[-5,0],"pins":{"1":"S","2":"S"}},
+            {"ref":"R1","kind":"resistor","footprint":"0402","at":[5,0],"pins":{"1":"ONE"}},
+            {"ref":"R2","kind":"resistor","footprint":"0402","at":[0,5]},
+            {"ref":"J1","kind":"header","footprint":"pinheader_1x2","at":[0,-5]}]}).to_string();
+        let mut copper = circuit(&spec);
+        let expected = "erc: D1 has both pins on net S\nerc: J1 has no connected pins\nerc: R1.2 is not connected\nerc: R2 has no connected pins\nerc: net ONE has one pin (R1.1)\n5 ERC warning(s).\nNo DRC errors.";
+        assert_eq!(check(&spec, &copper.to_string()).unwrap(), expected);
+        for e in copper.as_array_mut().unwrap() { e.as_object_mut().unwrap().remove("rect_border_radius"); }
+        assert_eq!(check(&spec, &copper.to_string()).unwrap(), expected);
     }
 }

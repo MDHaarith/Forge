@@ -5,6 +5,7 @@ use crate::jsfmt::fixed_string;
 enum Aperture {
     Circle(i64),
     Obround(i64, i64),
+    RoundRect([i64; 9]),
 }
 
 #[derive(Clone, Debug)]
@@ -14,8 +15,22 @@ pub(super) struct DrillHole {
     pub slot: Option<[route::Point; 2]>,
 }
 
-/// Flash aperture for a round or oval pad; None when the pad must be drawn as a region.
+/// Flash aperture for a circle, oval or rounded rectangle; otherwise draw a region.
 fn flash(p: &route::Pad, expansion: f64) -> Option<Aperture> {
+    if p.radius > 0. {
+        let [w, h] = p.size.map(|v| v + 2. * expansion);
+        let r = (p.radius + expansion).max(0.).min(w.min(h) / 2.);
+        let (s, c) = p.rotation.to_radians().sin_cos();
+        let mut args = [0; 9];
+        args[0] = (r * 1e6).round() as i64;
+        for (i, [x, y]) in [[-w/2.+r, -h/2.+r], [w/2.-r, -h/2.+r],
+            [w/2.-r, h/2.-r], [-w/2.+r, h/2.-r]].into_iter().enumerate()
+        {
+            args[1 + 2*i] = ((c*x - s*y) * 1e6).round() as i64;
+            args[2 + 2*i] = ((s*x + c*y) * 1e6).round() as i64;
+        }
+        return Some(Aperture::RoundRect(args));
+    }
     let [w, h] = p
         .effective_size()
         .map(|v| ((v + 2. * expansion) * 1e6).round() as i64);
@@ -26,6 +41,18 @@ fn flash(p: &route::Pad, expansion: f64) -> Option<Aperture> {
         (true, false) if square => Some(Aperture::Obround(w, h)),
         _ => None,
     }
+}
+
+fn roundrect_macro(out: &mut String, apertures: &std::collections::BTreeMap<Aperture, usize>) {
+    if apertures.keys().any(|a| matches!(a, Aperture::RoundRect(_))) {
+        // KiCad's corner-centre macro: fill the centre, corners and strips between corners.
+        out.push_str("%AMRoundRect*\n4,1,4,$2,$3,$4,$5,$6,$7,$8,$9,$2,$3,0*\n1,1,$1+$1,$2,$3*\n1,1,$1+$1,$4,$5*\n1,1,$1+$1,$6,$7*\n1,1,$1+$1,$8,$9*\n20,1,$1+$1,$2,$3,$4,$5,0*\n20,1,$1+$1,$4,$5,$6,$7,0*\n20,1,$1+$1,$6,$7,$8,$9,0*\n20,1,$1+$1,$8,$9,$2,$3,0*\n%\n");
+    }
+}
+
+fn roundrect_aperture(out: &mut String, id: usize, args: &[i64; 9]) {
+    out.push_str(&format!("%ADD{id}RoundRect,{}*%\n", args.iter()
+        .map(|v| fixed_string(*v as f64 / 1e6, 6)).collect::<Vec<_>>().join("X")));
 }
 
 fn header(function: &str) -> String {
@@ -84,6 +111,7 @@ fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool) -> S
         apertures.insert(p, 0);
     }
     out.push_str("%ADD10C,0.1*%\n");
+    roundrect_macro(&mut out, &apertures);
     for (i, (aper, id)) in apertures.iter_mut().enumerate() {
         *id = i + 11;
         match aper {
@@ -100,6 +128,7 @@ fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool) -> S
                     crate::jsfmt::fixed_string(*h as f64 / 1e6, 6)
                 ));
             }
+            Aperture::RoundRect(args) => roundrect_aperture(&mut out, *id, args),
         }
     }
     out.push_str("D10*\n");
@@ -357,6 +386,7 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
     {
         apertures.insert(p, 0);
     }
+    roundrect_macro(&mut out, &apertures);
     for (i, (aper, id)) in apertures.iter_mut().enumerate() {
         *id = i + 10;
         match aper {
@@ -372,6 +402,11 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
                     crate::jsfmt::fixed_string(*w as f64 / 1e6, 6),
                     crate::jsfmt::fixed_string(*h as f64 / 1e6, 6)
                 ));
+            }
+            Aperture::RoundRect(args) => {
+                out.push_str("%TA.AperFunction,Conductor*%\n");
+                roundrect_aperture(&mut out, *id, args);
+                out.push_str("%TD*%\n");
             }
         }
     }
@@ -432,4 +467,28 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
     }
     out.push_str("M02*\n");
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rotated_roundrects_flash_and_expand_on_mask_and_paste() {
+        let prepared = super::super::prepare(r#"{"board":{"width":20,"height":20},"parts":[{"ref":"R1","kind":"resistor","footprint":"0603","rotation":37}]}"#).unwrap();
+        let b = route::Board::from_prepared(&prepared).unwrap();
+        let r = route::route(&b);
+        for (text, expansion) in [(copper(&b, &r, &vec![], Layer::Top), 0.),
+            (openings(&b, &r, Layer::Top, false), 0.05), (openings(&b, &r, Layer::Top, true), 0.)]
+        {
+            assert_eq!(text.matches("%AMRoundRect*").count(), 1);
+            assert_eq!(text.matches("D03*").count(), 2);
+            assert!(!text.contains("G36*"));
+            let Some(Aperture::RoundRect(args)) = flash(&b.pads[0], expansion) else { panic!("not a rounded flash"); };
+            assert_eq!(args[0], ((b.pads[0].radius + expansion)*1e6).round() as i64);
+            assert!(text.contains(&format!("RoundRect,{}X", fixed_string(args[0] as f64/1e6, 6))));
+        }
+        let Some(Aperture::RoundRect(args)) = flash(&b.pads[0], -b.pads[0].radius-0.01) else { panic!("not a rounded flash"); };
+        assert_eq!(args[0], 0);
+    }
 }

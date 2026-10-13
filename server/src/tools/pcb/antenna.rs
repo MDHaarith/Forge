@@ -105,6 +105,7 @@ impl Geometry {
             size: [0.8; 2],
             drill: None,
             round: false,
+            radius: 0.2,
             plated: true,
         }];
         if let Some([x, y]) = self.secondary {
@@ -114,6 +115,7 @@ impl Geometry {
                 size: if self.ground { [0.7; 2] } else { [0.8; 2] },
                 drill: self.ground.then_some([0.3, 0.3]),
                 round: self.ground,
+                radius: if self.ground { 0. } else { 0.2 },
                 plated: true,
             });
         }
