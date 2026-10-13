@@ -4,6 +4,7 @@ use cadrum::{Mesh, SurfaceKind};
 use serde_json::{json, Value};
 use std::{collections::HashMap, f64::consts::TAU};
 
+// shortcut: threaded holes are not reported by part_inspect, add helical-face detection when users ask.
 pub(super) fn describe_diameter(d: f64, through: bool) -> Option<String> {
     let tap = || {
         TAP_DRILL

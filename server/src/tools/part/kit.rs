@@ -1,4 +1,4 @@
-use super::{number, ops, standards::*, Boolean, DVec3, Solid, ToolError};
+use super::{number, ops, standards::*, threads, Boolean, DVec3, Solid, ToolError};
 use serde_json::{json, Value};
 
 fn optional(step: &Value, key: &str, default: f64, index: usize) -> Result<f64, ToolError> {
@@ -249,6 +249,28 @@ pub(super) fn modify(
         .unwrap_or("M3");
     let mut solids = solids.to_vec();
     if op == "hole" {
+        if step["kind"] == "thread" && !points.is_empty() {
+            threads::dimensions(size, index)?;
+            let bbox = solids
+                .iter()
+                .map(Solid::bounding_box)
+                .reduce(|[min, max], [a, b]| [min.min(a), max.max(b)])
+                .unwrap_or([DVec3::ZERO; 2]);
+            let depth = step
+                .get("depth")
+                .map(|_| number(step, "depth", index, false))
+                .transpose()?;
+            let length = depth.unwrap_or(bbox[1].z - bbox[0].z + 2.0);
+            let diameter = lookup(TAP_DRILL, size, "tap drill")?;
+            let tap = Solid::cylinder(diameter / 2.0, DVec3::Z * (length + 1.0));
+            let cutter = threads::rod(size, length + 1.0, index)?;
+            let mut expr = expression(&solids);
+            for [x, y] in points {
+                let at = DVec3::new(x, y, bbox[1].z - length);
+                expr = expr - tap.clone().translate(at) - cutter.clone().translate(at);
+            }
+            return finish(expr, "hole", index);
+        }
         for point in points {
             solids = hole(&solids, point, size, step, index)?;
         }
@@ -297,6 +319,30 @@ pub(super) fn modify(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn threaded_holes_share_blind_cutter_from_translated_top() {
+        let _kernel = super::super::kernel();
+        let at = DVec3::new(3.0, 4.0, 7.0);
+        let cube = Solid::cube(at, at + DVec3::new(20.0, 20.0, 5.0));
+        let solids = modify(
+            &[cube],
+            &json!({"points":[[8,9],[18,19]],"size":"M3","kind":"thread","depth":2.5}),
+            "hole",
+            1,
+        )
+        .unwrap();
+        assert_eq!(solids.len(), 1);
+        let flank = 2.0 * (1.5 - 1.25) / (3.0_f64.sqrt() * 0.5);
+        let area = std::f64::consts::PI
+            * (1.25_f64.powi(2) * (1.0 - 0.125 - flank)
+                + flank * (1.25_f64.powi(2) + 1.25 * 1.5 + 1.5_f64.powi(2)) / 3.0
+                + 1.5_f64.powi(2) * 0.125);
+        assert!((2000.0 - solids[0].volume() - 2.0 * 2.5 * area).abs() < 0.02);
+        threads::mesh(&solids, 1).unwrap();
+        assert!(solids[0].bounding_box()[0].distance(at) < 0.01);
+        assert!(solids[0].bounding_box()[1].distance(at + DVec3::new(20.0, 20.0, 5.0)) < 0.01);
+    }
 
     #[test]
     fn validates_point_patterns_and_empty_grids() {

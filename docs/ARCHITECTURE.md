@@ -55,8 +55,10 @@ server/src/
     part.rs                                  part_build: OCCT solids, booleans and engineering parts → STEP/binary STL/JSON
     part/ops.rs                              outlines, extrude/revolve, edge selectors, fillet/chamfer, place
     part/shapes.rs                           loft, tangential sweep, inward shell, mirror and linear/polar patterns
+    part/threads.rs                          ISO coarse thread rods, shared internal-thread cutters and fine bounding-box meshes
+    part/sheet.rs                            bent sheet sections and flat length/width metadata
     part/kit.rs                              standard holes, grid/corner patterns, rounded enclosure/lid/standoffs
-    part/standards.rs                        ISO hole/head/insert tables and material densities
+    part/standards.rs                        ISO hole/head/insert/pitch tables and material densities
     part/holes.rs                            analytic STEP hole grouping and standard diameter descriptions
     part/inspect.rs                          part_inspect: STEP/STP/STL size, volume, mass, holes and overhangs
     script3d.rs freecad.rs                   blender_build, freecad_build/inspect/drawing

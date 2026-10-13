@@ -9,7 +9,9 @@ mod inspect;
 mod kit;
 mod ops;
 mod shapes;
+mod sheet;
 mod standards;
+mod threads;
 
 pub fn tools() -> Vec<Tool> {
     let outline = json!({"type":"object", "properties":{
@@ -36,7 +38,7 @@ pub fn tools() -> Vec<Tool> {
             "name":{"type":"string", "description":"Lowercase letters, digits, - and _ only"},
             "material":{"type":"string", "description":"Optional MATERIALS key, used for mass"},
             "steps":{"type":"array", "description":"Ordered shape and operation steps; each op may use any of the declared step fields", "minItems":1, "items":{"type":"object", "additionalProperties":false, "properties":{
-                "op":{"type":"string", "enum":["box","cylinder","sphere","cone","extrude","revolve","loft","sweep","union","cut","intersect","fillet","chamfer","shell","mirror","pattern","place","hole","enclosure","lid","standoffs"]}, "id":{"type":"string"},
+                "op":{"type":"string", "enum":["box","cylinder","sphere","cone","extrude","revolve","loft","sweep","thread","sheet","union","cut","intersect","fillet","chamfer","shell","mirror","pattern","place","hole","enclosure","lid","standoffs"]}, "id":{"type":"string"},
                 "size":{"anyOf":[{"type":"number"},{"type":"string"},{"type":"array","items":{"type":"number"}}], "description":"Array for box and enclosure dimensions (lid: [x,y]); string such as M3 for hole and standoffs; number for chamfer"},
                 "at":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "radius":{"type":"number"}, "radius1":{"type":"number"},
@@ -45,7 +47,7 @@ pub fn tools() -> Vec<Tool> {
                 "rotate":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "move":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "target":{"type":"string"}, "tool":{"type":"string"},
-                "points":points, "kind":{"type":"string"}, "fit":{"type":"string"},
+                "points":points, "kind":{"type":"string","description":"clearance, tap, counterbore, countersink, insert or thread (holes only)"}, "fit":{"type":"string"},
                 "depth":{"type":"number"}, "wall":{"type":"number"}, "floor":{"type":"number"},
                 "thickness":{"type":"number"}, "lip":{"type":"number"}, "gap":{"type":"number"},
                 "base":{"type":"number"}
@@ -77,7 +79,13 @@ pub fn tools() -> Vec<Tool> {
                 "polar":{"type":"object","additionalProperties":false,"properties":{
                     "count":{"type":"integer"},"angle":{"type":"number"},
                     "center":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}
-                },"required":["count"]}
+                },"required":["count"]},
+                "length":{"type":"number"}, "width":{"type":"number"},
+                "flanges":{"type":"array","items":{"type":"number"},"minItems":1},
+                "bends":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{
+                    "angle":{"type":"number"},"radius":{"type":"number"}
+                },"required":["angle"]}},
+                "k_factor":{"type":"number"}
         }).as_object().unwrap().clone());
     vec![
         Tool::new(
@@ -93,6 +101,8 @@ Ops (at defaults to [0,0,0]):
 - revolve: outline, angle (360); outline in XZ (x = radius >= 0), turned about Z from +X towards +Y.
 - loft: sections [{"outline":outline,"z":z},...], ruled (false), at; at least two XY sections with strictly increasing z, then moved by at.
 - sweep: outline in its own XY plane around its origin, path {"start":[x,y,z],"segments":[{"line":[x,y,z]} | {"arc":[x,y,z],"through":[x,y,z]},...]}; profile origin at start, +Z along the starting tangent. Join segments tangentially within 1 degree; join corners with an arc.
+- thread: size (M2, M2.5, M3, M4, M5, M6, M8, M10 or M12), length, at; external ISO metric coarse thread, axis +Z from at, clipped to length. Pitches respectively 0.4, 0.45, 0.5, 0.7, 0.8, 1, 1.25, 1.5 and 1.75 mm.
+- sheet: thickness, width along +Y, flanges [flat_length,...], bends [{"angle":degrees,"radius":inner_radius},...], k_factor (0.44), at; exactly one more flange than bends, radius defaults to thickness. First flange runs +X with z from 0 to thickness; positive bends turn toward +Z. Extrudes the bent XZ section along +Y. Body JSON includes flat [sum of flanges + sum of bend radians * (radius + k_factor * thickness), width], retained through later operations. No flat-pattern DXF or holes in the flat.
 - union / cut / intersect: target, tool; an empty intersect is allowed (volume 0).
 - fillet: target, radius, edges. chamfer: target, size, edges (equal distance).
 - shell: target, thickness measured inward, open (["top"]); sides top, bottom, front (-Y), back (+Y), left (-X), right (+X) select planar faces at the body's bounding-box extremes.
@@ -105,8 +115,8 @@ Ops (at defaults to [0,0,0]):
 - standoffs: target, points, size ("M3"), height (5), base (0), kind ("insert"); posts on the target, base = z where they start.
 outline: {"circle":[cx,cy,r]} or {"start":[x,y],"segments":[{"line":[x,y]} | {"arc":[x,y],"through":[x,y]}, ...]}; the last point must equal start.
 points: [[x,y],...] or {"grid":[x0,y0,dx,dy,nx,ny]} or {"corners":[length,width,inset]}.
-kind: "clearance", "tap", "counterbore", "countersink" or "insert".
-Limits: no sketcher constraints or threads. Drawings use freecad_drawing while part_drawing is being built.
+kind: "clearance", "tap", "counterbore", "countersink", "insert" or "thread" (holes only; tap drill plus ISO internal thread, down from the target's top; omitted depth means through).
+Limits: no sketcher constraints. Drawings use freecad_drawing while part_drawing is being built.
 Example, 80x50x25 enclosure with 2 mm walls, M3 insert standoffs, and a matching lid beside it at x=90 (at z=2 so its lip rests on the bed):
 {"name":"case","steps":[{"op":"enclosure","id":"box","size":[80,50,25],"wall":2,"floor":2},{"op":"standoffs","target":"box","points":{"corners":[80,50,6]},"size":"M3","base":2,"kind":"insert"},{"op":"lid","id":"cover","size":[80,50],"at":[90,0,2]}]}
 Errors: step <index>: unknown op "<op>"; step <index>: no body "<id>"; step <index>: fillet failed (or chamfer failed)."#,
@@ -157,10 +167,18 @@ fn vector(step: &Value, key: &str, index: usize) -> Result<DVec3, ToolError> {
     Ok(DVec3::from_array(xyz))
 }
 
-fn body_index(bodies: &[(String, Vec<Solid>)], id: &str, index: usize) -> Result<usize, ToolError> {
+struct Body {
+    id: String,
+    solids: Vec<Solid>,
+    flat: Option<[f64; 2]>,
+    // Keep the thread's step index for errors during final meshing.
+    thread_step: Option<usize>,
+}
+
+fn body_index(bodies: &[Body], id: &str, index: usize) -> Result<usize, ToolError> {
     bodies
         .iter()
-        .position(|(name, _)| name == id)
+        .position(|body| body.id == id)
         .ok_or_else(|| ToolError::expected(format!("step {index}: no body \"{id}\"")))
 }
 
@@ -207,17 +225,17 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
         .iter()
         .map(|file| project_path(&ctx.project_dir, file))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut bodies: Vec<(String, Vec<Solid>)> = Vec::new();
+    let mut bodies: Vec<Body> = Vec::new();
     for (index, step) in steps.iter().enumerate() {
         let op = input_str(step, "op")?;
         match op {
             "box" | "cylinder" | "sphere" | "cone" | "extrude" | "revolve" | "loft" | "sweep"
-            | "enclosure" | "lid" => {
+            | "thread" | "sheet" | "enclosure" | "lid" => {
                 let id = match step.get("id") {
                     Some(_) => input_str(step, "id")?.to_owned(),
                     None => format!("s{index}"),
                 };
-                if bodies.iter().any(|(name, _)| name == &id) {
+                if bodies.iter().any(|body| body.id == id) {
                     return Err(ToolError::expected(format!(
                         "step {index}: duplicate body \"{id}\""
                     )));
@@ -227,6 +245,7 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                 } else {
                     DVec3::ZERO
                 };
+                let mut flat = None;
                 let solid = match op {
                     "box" => {
                         let size = vector(step, "size", index)?;
@@ -261,10 +280,26 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                     "extrude" | "revolve" => ops::profile_solid(step, op, index, at)?,
                     "loft" => shapes::loft(step, index, at)?,
                     "sweep" => shapes::sweep(step, index)?,
+                    "thread" => threads::rod(
+                        input_str(step, "size")?,
+                        number(step, "length", index, false)?,
+                        index,
+                    )?
+                    .translate(at),
+                    "sheet" => {
+                        let (solid, dimensions) = sheet::shape(step, index, at)?;
+                        flat = Some(dimensions);
+                        solid
+                    }
                     "enclosure" | "lid" => kit::shape(step, op, index, at)?,
                     _ => unreachable!(),
                 };
-                bodies.push((id, vec![solid]));
+                bodies.push(Body {
+                    id,
+                    solids: vec![solid],
+                    flat,
+                    thread_step: (op == "thread").then_some(index),
+                });
             }
             "union" | "cut" | "intersect" => {
                 let target = body_index(&bodies, input_str(step, "target")?, index)?;
@@ -275,11 +310,11 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                     )));
                 }
                 let a = bodies[target]
-                    .1
+                    .solids
                     .iter()
                     .fold(Boolean::<Solid>::default(), |expr, solid| expr + solid);
                 let b = bodies[tool]
-                    .1
+                    .solids
                     .iter()
                     .fold(Boolean::<Solid>::default(), |expr, solid| expr + solid);
                 let expression = match op {
@@ -288,29 +323,33 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                     "intersect" => a * b,
                     _ => unreachable!(),
                 };
-                bodies[target].1 = if expression.clauses().is_empty() {
+                bodies[target].solids = if expression.clauses().is_empty() {
                     vec![]
                 } else {
                     expression.build_vec().map_err(|err| {
                         ToolError::expected(format!("step {index}: {op} failed: {err}"))
                     })?
                 };
+                bodies[target].thread_step = bodies[target].thread_step.or(bodies[tool].thread_step);
                 bodies.remove(tool);
             }
             "hole" | "standoffs" => {
                 let target = body_index(&bodies, input_str(step, "target")?, index)?;
-                bodies[target].1 = kit::modify(&bodies[target].1, step, op, index)?;
+                bodies[target].solids = kit::modify(&bodies[target].solids, step, op, index)?;
+                if op == "hole" && step["kind"] == "thread" {
+                    bodies[target].thread_step.get_or_insert(index);
+                }
             }
             "fillet" | "chamfer" | "place" => {
                 let target = body_index(&bodies, input_str(step, "target")?, index)?;
-                bodies[target].1 = ops::modify(&bodies[target].1, step, op, index)?;
+                bodies[target].solids = ops::modify(&bodies[target].solids, step, op, index)?;
             }
             "shell" | "mirror" | "pattern" => {
                 let target = body_index(&bodies, input_str(step, "target")?, index)?;
-                bodies[target].1 = if op == "shell" {
-                    shapes::shell(&bodies[target].1, step, index)?
+                bodies[target].solids = if op == "shell" {
+                    shapes::shell(&bodies[target].solids, step, index)?
                 } else {
-                    shapes::copies(&bodies[target].1, step, op, index)?
+                    shapes::copies(&bodies[target].solids, step, op, index)?
                 };
             }
             _ => {
@@ -322,23 +361,34 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
     }
     let metadata: Vec<_> = bodies
         .iter()
-        .map(|(id, solids)| {
-            let bbox = solids
-                .iter()
-                .map(Solid::bounding_box)
-                .reduce(|[min, max], [a, b]| [min.min(a), max.max(b)])
-                .unwrap_or([DVec3::ZERO; 2]);
+        .map(|body| {
+            let bbox = if let Some(index) = body.thread_step {
+                // OCCT also pads meshed boxes by shape tolerances, including after chamfer.
+                // shortcut: bounds use 0.005 mm mesh vertices; use tight analytic bounds when cadrum exposes them.
+                threads::mesh(&body.solids, index)?
+                    .vertices
+                    .into_iter()
+                    .map(|v| [v, v])
+                    .reduce(|[min, max], [a, b]| [min.min(a), max.max(b)])
+            } else {
+                body.solids
+                    .iter()
+                    .map(Solid::bounding_box)
+                    .reduce(|[min, max], [a, b]| [min.min(a), max.max(b)])
+            }
+            .unwrap_or([DVec3::ZERO; 2]);
             let bbox = bbox.map(|v| v.to_array().map(|n| json_number(fixed(n, 3))));
-            let volume: f64 = solids.iter().map(Solid::volume).sum();
-            json!({"id":id,"volume":json_number(fixed(volume,3)),"bbox":bbox,"solids":solids.len()})
+            let volume: f64 = body.solids.iter().map(Solid::volume).sum();
+            let mut entry = json!({"id":body.id,"volume":json_number(fixed(volume,3)),"bbox":bbox,"solids":body.solids.len()});
+            if let Some(flat) = body.flat {
+                entry["flat"] = json!(flat.map(|n| json_number(fixed(n, 3))));
+            }
+            Ok(entry)
         })
-        .collect();
+        .collect::<Result<_, ToolError>>()?;
     let document = json!({"name":name,"material":material,"steps":steps,"bodies":metadata});
     let json = stringify_pretty(&document)? + "\n";
-    let solids: Vec<_> = bodies
-        .iter()
-        .flat_map(|(_, solids)| solids.iter())
-        .collect();
+    let solids: Vec<_> = bodies.iter().flat_map(|body| body.solids.iter()).collect();
     let mut step = Vec::new();
     Solid::write_step(solids.iter().copied(), &mut step)
         .map_err(|err| ToolError::expected(format!("STEP export failed: {err}")))?;
@@ -383,6 +433,89 @@ mod tests {
 
     fn context(dir: &TempDir) -> ToolContext {
         ToolContext::new(dir.path.clone(), dir.path.clone())
+    }
+
+    #[tokio::test]
+    async fn threaded_bolt_bbox_after_union_and_chamfer() {
+        let dir = TempDir::new("part-bolt");
+        let vertices: Vec<_> = (0..6)
+            .map(|k| {
+                let angle = (k as f64 * 60.0).to_radians();
+                [7.505 * angle.cos(), 7.505 * angle.sin()]
+            })
+            .collect();
+        let segments: Vec<_> = vertices[1..]
+            .iter()
+            .chain(std::iter::once(&vertices[0]))
+            .map(|point| json!({"line":point}))
+            .collect();
+        part_build(
+            json!({"name":"bolt","steps":[
+                {"id":"head","op":"extrude","height":5.3,
+                 "outline":{"start":vertices[0],"segments":segments}},
+                {"id":"shank","op":"thread","size":"M8","length":20,"at":[0,0,5.3]},
+                {"op":"union","target":"head","tool":"shank"},
+                {"op":"chamfer","target":"head","size":0.5,"edges":{"at_z":0}}
+            ]}),
+            context(&dir),
+        )
+        .await
+        .unwrap();
+        let out: Value =
+            serde_json::from_str(&fs::read_to_string(dir.path.join("models/bolt.json")).unwrap())
+                .unwrap();
+        assert_eq!(out["bodies"].as_array().unwrap().len(), 1);
+        let bbox = &out["bodies"][0]["bbox"];
+        for (corner, expected) in [[-7.505, -6.5, 0.0], [7.505, 6.5, 25.3]]
+            .iter()
+            .enumerate()
+        {
+            for (axis, expected) in expected.iter().enumerate() {
+                let actual = bbox[corner][axis].as_f64().unwrap();
+                assert!((actual - expected).abs() < 0.01, "bbox: {bbox}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn sheet_defaults_and_flat_survive_place_pattern_and_cut() {
+        let dir = TempDir::new("part-sheet");
+        part_build(json!({"name":"t","steps":[
+            {"id":"a","op":"sheet","thickness":2,"width":10,"flanges":[30,20],"bends":[{"angle":90}],"at":[1,2,3]},
+            {"op":"place","target":"a","move":[0,0,5]},
+            {"op":"pattern","target":"a","linear":{"step":[50,0,0],"count":2}},
+            {"id":"c","op":"box","size":[5,10,2],"at":[1,2,8]},
+            {"op":"cut","target":"a","tool":"c"}
+        ]}), context(&dir)).await.unwrap();
+        let out: Value =
+            serde_json::from_str(&fs::read_to_string(dir.path.join("models/t.json")).unwrap())
+                .unwrap();
+        let body = &out["bodies"][0];
+        assert_eq!(body["flat"], json!([54.524, 10]));
+        assert_eq!(body["bbox"], json!([[6, 2, 8], [85, 12, 32]]));
+        assert_eq!(body["volume"], json!(2088.496));
+        assert_eq!(
+            body.as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["id", "volume", "bbox", "solids", "flat"]
+        );
+        part_build(
+            json!({"name":"straight","steps":[
+                {"op":"sheet","thickness":2,"width":10,"flanges":[30],"bends":[]}
+            ]}),
+            context(&dir),
+        )
+        .await
+        .unwrap();
+        let straight: Value = serde_json::from_str(
+            &fs::read_to_string(dir.path.join("models/straight.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(straight["bodies"][0]["flat"], json!([30, 10]));
+        assert_eq!(straight["bodies"][0]["volume"], 600);
     }
 
     #[tokio::test]

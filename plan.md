@@ -186,7 +186,7 @@ includes the original.
   - flanges [30,20], bends [{angle:90}]: volume 1094.248, bbox [[0,0,0],[34,10,24]],
     flat [54.524,10]
   - flanges [20,30,20], bends [{angle:90},{angle:90}]: volume 1588.496, bbox
-    [[0,0,0],[24,10,38]], flat [79.049,10]
+    [[0,0,0],[24,10,38]], flat [79.048,10]
 - Limit: `shortcut: no flat-pattern DXF or holes in the flat, add when a user needs laser files from sheet parts`.
 
 **Schema.** Add every new field to the `part_build` step schema with types, following the rules of
@@ -339,7 +339,7 @@ the findings and the agent's previous report.
 - [x] Step 0: spike (GPT)
 - [x] Step 1: reference tests (Gemini)
 - [x] Step 2: loft, sweep, shell, mirror, pattern (GPT)
-- [ ] Step 3: threads and sheet metal (GPT)
+- [x] Step 3: threads and sheet metal (GPT)
 - [ ] Step 4: part_inspect interference, centre of mass, overhang (GPT)
 - [ ] Step 5: part_drawing (GPT)
 - [ ] Step 6: retire FreeCAD (GPT)

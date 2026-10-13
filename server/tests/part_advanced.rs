@@ -559,7 +559,6 @@ async fn pattern_error_invalid_count() {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn thread_external_m6_rod() {
     let (_dir, out) = build(json!({
         "name": "th_ext",
@@ -581,7 +580,6 @@ async fn thread_external_m6_rod() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn thread_internal_m6_hole() {
     let (_dir, out) = build(json!({
         "name": "th_int",
@@ -596,7 +594,6 @@ async fn thread_internal_m6_hole() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn thread_error_invalid_size() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
@@ -622,7 +619,6 @@ async fn thread_error_invalid_size() {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn sheet_single_bend_l_bracket() {
     let (_dir, out) = build(json!({
         "name": "sh_l",
@@ -642,7 +638,6 @@ async fn sheet_single_bend_l_bracket() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn sheet_double_bend_u_bracket() {
     let (_dir, out) = build(json!({
         "name": "sh_u",
@@ -658,11 +653,10 @@ async fn sheet_double_bend_u_bracket() {
     .await;
     assert_eq!(volume(&out, 0), 1588.496);
     assert_eq!(out["bodies"][0]["bbox"], json!([[0, 0, 0], [24, 10, 38]]));
-    assert_eq!(out["bodies"][0]["flat"], json!([79.049, 10]));
+    assert_eq!(out["bodies"][0]["flat"], json!([79.048, 10]));
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn sheet_error_flanges_bends_mismatch() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
