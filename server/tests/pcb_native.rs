@@ -356,7 +356,6 @@ async fn spec_error_parts_overlap() {
 // -----------------------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn route_error_unroutable() {
     let unroutable_board = r#"{
   "board": {"width": 30, "height": 20, "layers": 2, "thickness": 1.6},
@@ -377,7 +376,6 @@ async fn route_error_unroutable() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn route_led_board() {
     let dir = project("route_led", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -388,7 +386,6 @@ async fn route_led_board() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn route_555_blinker_no_errors() {
     let dir = project("route_555", &[("pcb/blinker.pcb.json", BLINKER_555_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/blinker.pcb.json"}), &dir.path)
@@ -399,7 +396,6 @@ async fn route_555_blinker_no_errors() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn route_4layer_board() {
     let dir = project("route_4l", &[("pcb/four.pcb.json", FOUR_LAYER_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/four.pcb.json"}), &dir.path)
@@ -410,7 +406,6 @@ async fn route_4layer_board() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn route_auto_placed_board_no_at() {
     let dir = project("route_autoplace", &[("pcb/auto.pcb.json", AUTO_PLACED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/auto.pcb.json"}), &dir.path)
@@ -434,7 +429,6 @@ async fn route_auto_placed_board_no_at() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn pour_ground_plane_generates_g36() {
     let dir = project("pour_gnd", &[("pcb/led.pcb.json", LED_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/led.pcb.json"}), &dir.path)
@@ -446,7 +440,6 @@ async fn pour_ground_plane_generates_g36() {
 }
 
 #[tokio::test]
-#[ignore = "stage 3 not built yet"]
 async fn pour_antenna_clears_ground_under_keepout() {
     let dir = project("pour_ant", &[("pcb/ant.pcb.json", ANTENNA_BOARD_JSON)]);
     let out = run("pcb_build", json!({"source": "pcb/ant.pcb.json"}), &dir.path)

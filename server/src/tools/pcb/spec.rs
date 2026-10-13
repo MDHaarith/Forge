@@ -1,4 +1,4 @@
-use super::{footprint, place, Footprint, Pad, PlacedPart};
+use super::{footprint, place, Footprint, PlacedPart};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -345,25 +345,7 @@ impl Spec {
                 if p.kind != Kind::Antenna {
                     return footprint(p.footprint.as_deref().unwrap_or(""));
                 }
-                // shortcut: antenna feed pads only, replace with arm geometry in stage 3 step 3 before producing outputs.
-                let count = if p
-                    .shape
-                    .as_deref()
-                    .is_some_and(|s| s.contains("inverted_f") || s.contains("dipole"))
-                {
-                    2
-                } else {
-                    1
-                };
-                let pads = (0..count)
-                    .map(|i| Pad {
-                        number: (i + 1).to_string(),
-                        at: [i as f64 * 1.0, 0.0],
-                        size: [1.0; 2],
-                        drill: (i == 1).then_some(0.3),
-                    })
-                    .collect();
-                Ok(super::footprint::package(pads, [1.0; 2], 0.0))
+                Ok(super::antenna::geometry(p.shape.as_deref().unwrap_or(""))?.footprint())
             })
             .collect()
     }

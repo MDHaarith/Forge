@@ -67,6 +67,9 @@ server/src/
     pcb/spec.rs                             strict native .pcb.json parser, pin aliases, netlist and rule overrides
     pcb/footprint.rs                        pure nominal footprint generator, pads, courtyard, silk and body geometry
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
+    pcb/route.rs                            deterministic grid A*, 2/4 layers, through vias, rip-up passes and keepouts
+    pcb/pour.rs                             i_overlay planar copper fills, thermals, clearance cuts and hole contours
+    pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
     rf.rs rfmath.rs                          rf_calc, rf_antenna_sim (openEMS)
     chip.rs                                  Verilog simulate/synthesize
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
@@ -75,12 +78,15 @@ desktop/src/main.rs        Tauri app: binds a free port, runs forge_server::serv
 engines/pcb/               tscircuit PCB engine (JavaScript), bundled to dist/pcb-engine.mjs, run by Node
 web/                       UI (TypeScript + Vite + three.js): main.ts app, design.ts PCB/3D view, viewer.ts,
                            markdown.ts (Markdown + KaTeX, sanitized with DOMPurify)
+licenses/tscircuit-MIT.txt  licence for the ported printed antenna shapes and keepouts
 scripts/                   setup-fedora.sh installer, stage-app.sh bundles files for the desktop app
 docs/                      this map, ROADMAP.md, reference/ (engineering CAD, KiCad and Blender feature checklists)
 ```
 
-`pcb.rs` remains the PCB module root and re-exports the native pure helpers. `pcb_build` validates
-and places `.pcb.json` inputs in `spawn_blocking`, returning no files until the output step is built.
+`pcb.rs` remains the PCB module root and re-exports the native pure helpers. `pcb_build` validates,
+places, routes and pours `.pcb.json` inputs in `spawn_blocking`. The module root currently writes
+the report, circuit JSON, board boxes and bottom copper Gerber; the remaining outputs arrive in
+step 4. Routing grids are limited to eight million cells to bound memory use.
 The existing `.tsx`/`.jsx` path still runs the Node engine and writes its usual outputs.
 
 ## HTTP API (all under /api, localhost only)

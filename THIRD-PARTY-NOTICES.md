@@ -16,6 +16,13 @@ Forge is MIT licensed (see `LICENSE`). It includes the components below, whose l
 - Licence: MIT (`licenses/cadrum-MIT.txt`).
 - Source: https://crates.io/crates/cadrum
 
+## tscircuit (@tscircuit/core 0.0.2132)
+
+- Licence: MIT (`licenses/tscircuit-MIT.txt`), Copyright (c) 2024 tscircuit Inc.
+- Source: https://github.com/tscircuit/core
+- Forge ports the five generated antenna arm geometries and feed-opening keepouts from
+  `lib/components/normal-components/get-generated-antenna-geometry.ts`.
+
 ## Other Rust and npm packages
 
 Every other dependency is listed with its licence in `Cargo.lock` and `package-lock.json`.

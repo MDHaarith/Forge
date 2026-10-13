@@ -1,6 +1,6 @@
 [package]
 name = "forge-server"
-version = "0.16.1"
+version = "0.16.2"
 edition = "2021"
 license = "MIT"
 publish = false
@@ -14,6 +14,7 @@ name = "forge-server"
 path = "src/main.rs"
 
 [dependencies]
+i_overlay = "~4.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "fs", "net", "time", "io-util", "sync"] }
 axum = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

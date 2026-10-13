@@ -28,7 +28,7 @@ impl PlacedPart {
 
     pub fn courtyard(&self) -> [[f64; 2]; 4] {
         let [x0, y0, x1, y1] = self.footprint.courtyard;
-        [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(|p| self.point(p))
+        [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(|p| self.point([p[0], -p[1]]))
     }
 }
 
@@ -72,7 +72,7 @@ fn segment_gap(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> f64 {
         .min(distance(d, a, b))
 }
 
-fn inside(p: [f64; 2], polygon: &[[f64; 2]]) -> bool {
+pub(super) fn inside(p: [f64; 2], polygon: &[[f64; 2]]) -> bool {
     let mut hit = false;
     for i in 0..polygon.len() {
         let a = polygon[i];

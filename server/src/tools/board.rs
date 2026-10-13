@@ -85,12 +85,18 @@ fn pcb_build(input: Value, ctx: ToolContext) -> ToolFuture {
         if !valid_name(&name) { return Err(ToolError::expected("name may only use letters, digits, - and _")); }
         if native {
             let json = tokio::fs::read_to_string(&full).await?;
-            let board = tokio::task::spawn_blocking(move || super::pcb::prepare(&json)).await
+            let build_name = name.clone();
+            let build_source = source.clone();
+            let build = tokio::task::spawn_blocking(move || super::pcb::build(&json, &build_name, &build_source)).await
                 .map_err(|e| ToolError::unexpected(e.to_string()))?.map_err(ToolError::expected)?;
-            return Ok(ToolResult {
-                text: format!("Validated {source}: {} part(s), {} named net(s). Native PCB outputs are not built yet.", board.parts.len(), board.nets.len()),
-                files: Vec::new(),
-            });
+            let mut files = Vec::new();
+            for (file, content) in build.files {
+                let path = project_path(&ctx.project_dir, &file)?;
+                tokio::fs::create_dir_all(path.parent().unwrap()).await?;
+                tokio::fs::write(path, content).await?;
+                files.push(file);
+            }
+            return Ok(ToolResult { text: build.report, files });
         }
         let engine = pcb_engine(&ctx.app_dir).ok_or_else(|| ToolError::expected("Forge's PCB engine is not installed: run npm run pcb-engine in the Forge folder"))?;
         let looked_up = truthy(&input["lookup_parts"]);

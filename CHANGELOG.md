@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.16.2 — 2026-10-13
+
+- Native `.pcb.json` builds now route two- and four-layer boards, respect holes and keepouts,
+  and fill copper pours with clearance, thermal reliefs and hole contours. Routing runs off the
+  async runtime and produces deterministic results.
+- Ported all five printed antenna geometries and feed-opening keepouts from tscircuit under MIT.
+  Native builds write circuit JSON, board boxes, bottom copper Gerber and the build report;
+  the remaining outputs follow in step 4. Existing `.tsx` builds still use Node.
+- Added `i_overlay` 4.5 for planar copper booleans and native contours. It avoids Cadrum's
+  artificial-thickness 3D workaround, which exceeded one second in the PCB spike.
+
 ## 0.16.1 — 2026-10-13
 
 - `pcb_build` accepts native `.pcb.json` inputs for strict validation, footprint generation,
