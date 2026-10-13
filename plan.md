@@ -318,7 +318,7 @@ Rows: test name | input (put it inside json!(...) exactly) | expected | tol
     and instead of near(...) write: assert!(volume(&out, 0) > 0.01);
 23. lid_moved_within_gap_still_fits | same input as 22 but "at":[0.15,0,20] | 0.0 | 0.001
 
-Then write these four extra tests exactly as given:
+Then write these five extra tests exactly as given:
 
 #[tokio::test]
 #[ignore = "part tools not built yet"]
