@@ -503,7 +503,7 @@ async function loadDesign() {
   badge.className = "badge";
   const choice = $<HTMLSelectElement>("design-pick").value;
   if (!project || !designChoices().some((c) => c.value === choice)) {
-    view2d.replaceChildren(el("div", "empty", "No board yet. Ask Forge for a circuit board (it writes pcb/<name>.tsx and runs pcb_build); it shows here."));
+    view2d.replaceChildren(el("div", "empty", "No board yet. Ask Forge for a circuit board (it writes pcb/<name>.pcb.json and runs pcb_build); it shows here."));
     view3d.replaceChildren(el("div", "empty", "Then ask for an enclosure and to assemble the board in it (design_assemble): the 3D assembly and its fit check show here."));
     return;
   }

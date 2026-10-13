@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.5 — 2026-10-13
+
+- Retired the Node PCB engine and `.tsx`/`.jsx` board format. `pcb_build` is always available
+  and accepts only `.pcb.json`; builds, DRC and manufacturing exports run natively.
+- Removed engine-only Node settings, isolated execution, part lookup, tests and bundling.
+  Fedora setup keeps Node/npm only for the UI build; desktop packages no longer recommend Node.
+- Updated board UI, RF-reader wording and documentation. Kept tscircuit's MIT attribution
+  and license for the ported antenna geometry. No new dependencies.
+
 ## 0.16.4 — 2026-10-13
 
 - Native `pcb_drc` checks saved circuit copper, net-class clearance and track widths, drills,

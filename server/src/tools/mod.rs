@@ -34,8 +34,6 @@ pub struct ToolContext {
     pub app_dir: PathBuf,
     pub allow_commands: bool,
     pub blender_program: Option<PathBuf>,
-    pub node_program: Option<PathBuf>,
-    pub node_env: Vec<(String, String)>,
     pub openems_python: Vec<String>,
 }
 
@@ -46,8 +44,6 @@ impl ToolContext {
             app_dir: paths::lexical_path(&app_dir),
             allow_commands: false,
             blender_program: None,
-            node_program: None,
-            node_env: vec![("PATH".into(), std::env::var("PATH").unwrap_or_default()), ("LANG".into(), std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()))],
             openems_python: rf::openems_python(),
         }
     }
@@ -55,8 +51,6 @@ impl ToolContext {
         let mut context = Self::new(project_dir, settings.app_dir.clone());
         context.allow_commands = settings.allow_commands;
         context.blender_program = settings.blender_program.clone();
-        context.node_program = settings.node_program.clone();
-        context.node_env = settings.node_env.clone();
         context.openems_python = settings.openems_python.clone();
         context
     }
@@ -175,9 +169,6 @@ pub fn is_available(tool: &Tool, settings: &Settings) -> bool {
     if let Some(app) = &tool.app {
         let program = settings.blender_program.as_deref();
         return resolve_app(&script3d::with_override(app, program)).is_some();
-    }
-    if tool.name == "pcb_build" {
-        return board::pcb_engine(&settings.app_dir).is_some() && exec::on_path(&board::node_program(settings.node_program.as_deref()));
     }
     if tool.name == "rf_antenna_sim" {
         return exec::find_program(&settings.openems_python).is_some();

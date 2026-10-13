@@ -2,11 +2,8 @@ mod common;
 #[path = "common/tools.rs"]
 mod support;
 
-use common::TempDir;
 use forge_server::tools::{
     all_tools,
-    board::{node_program, pcb_engine, run_engine, summarize_warnings},
-    exec::on_path,
     fit::{
         apply, fit_check, parse_stl, rotation_matrix, triangle_hits_box, unapply, BoardBoxes,
         FitBoard, FitSolid, Placement, Vec3,
@@ -277,61 +274,6 @@ async fn design_assemble_refuses_bad_input() {
     }
 }
 
-#[test]
-fn engine_warnings_are_grouped_and_routine_ones_dropped() {
-    let lines = summarize_warnings(
-        &[
-            "source_unnamed_trace_warning: trace has no name",
-            "source_missing_manufacturer_part_number_warning: R1 has none",
-            "source_missing_manufacturer_part_number_warning: R2 has none",
-            "source_part_not_found_warning: R1 not found",
-            "pcb_silkscreen_overlap_warning: R1 label overlaps C1",
-            "pcb_silkscreen_overlap_warning: R2 label overlaps C2",
-        ]
-        .map(str::to_owned),
-        false,
-    );
-    assert_eq!(lines.len(), 2);
-    assert!(
-        lines[0].starts_with("2 part(s) have no manufacturer part number")
-            && lines[0].contains("lookup_parts: true")
-    );
-    assert_eq!(
-        lines[1],
-        "pcb_silkscreen_overlap_warning ×2, e.g. R1 label overlaps C1"
-    );
-    assert!(summarize_warnings(
-        &["source_part_not_found_warning: R1 not found".into()],
-        true
-    )[0]
-    .contains("R1 not found"));
-}
-
-fn has_engine() -> bool {
-    if pcb_engine(&app_dir()).is_none() {
-        eprintln!("skipped: PCB engine not built (npm run pcb-engine)");
-        return false;
-    }
-    let settings = forge_server::Settings::from_env(app_dir());
-    if !on_path(&node_program(settings.node_program.as_deref())) {
-        eprintln!("skipped: node not installed (FORGE_NODE/PATH)");
-        return false;
-    }
-    true
-}
-
-const LED_BOARD: &str = r#"export default () => (
-  <board width="30mm" height="20mm">
-    <resistor name="R1" resistance="1k" footprint="0402" pcbX={-6} pcbY={0} />
-    <led name="LED1" color="red" footprint="0603" pcbX={6} pcbY={0} />
-    <pinheader name="J1" pinCount={2} pitch="2.54mm" pcbX={0} pcbY={-6} />
-    <trace from=".J1 > .pin1" to=".R1 > .pin1" />
-    <trace from=".R1 > .pin2" to=".LED1 > .anode" />
-    <trace from=".LED1 > .cathode" to=".J1 > .pin2" />
-  </board>
-)
-"#;
-
 #[tokio::test]
 async fn pcb_build_json_needs_no_node_engine() {
     let dir = project("pcb_json", &[("pcb/led.pcb.json", r#"{
@@ -345,221 +287,19 @@ async fn pcb_build_json_needs_no_node_engine() {
     let settings = forge_server::Settings::from_env(app_dir());
     let mut ctx = ToolContext::from_settings(dir.path.clone(), &settings);
     ctx.app_dir = dir.path.join("no-engine");
-    ctx.node_program = Some(dir.path.join("no-node"));
     let tool = all_tools().into_iter().find(|t| t.name == "pcb_build").unwrap();
     let out = (tool.run)(json!({"source":"pcb/led.pcb.json"}), ctx).await.unwrap();
     assert!(out.text.contains("pcb/led.pcb.json"), "{}", out.text);
 }
 
 #[tokio::test]
-async fn pcb_build_routes_a_board_and_writes_its_views_3d_model_and_fab_files() {
-    if !has_engine() {
-        return;
-    }
-    let dir = project("pcb", &[("pcb/led.tsx", LED_BOARD)]);
-    let out = run("pcb_build", json!({"source":"pcb/led.tsx"}), &dir.path)
-        .await
-        .unwrap();
-    for expected in [
-        "board 30 × 20 mm",
-        "3 part(s): R1, LED1, J1",
-        "No errors: every connection is routed",
-    ] {
-        assert!(out.text.contains(expected), "{}", out.text);
-    }
-    for f in [
-        "pcb/led-pcb.svg",
-        "pcb/led-schematic.svg",
-        "pcb/led.glb",
-        "pcb/led.circuit.json",
-        "pcb/led.board.json",
-        "fab/led/",
-    ] {
-        assert!(out.files.iter().any(|file| file == f), "{f}");
-    }
-    let data: Value =
-        serde_json::from_slice(&std::fs::read(dir.path.join("pcb/led.board.json")).unwrap())
-            .unwrap();
-    assert_eq!(
-        &data["size"].as_array().unwrap()[..2],
-        &[json!(30), json!(20)]
-    );
-    let mut names = data["components"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|c| c["name"].as_str().unwrap())
-        .collect::<Vec<_>>();
-    names.sort();
-    assert_eq!(names, ["J1", "LED1", "R1"]);
-    let fab = std::fs::read_dir(dir.path.join("fab/led"))
-        .unwrap()
-        .map(|f| f.unwrap().file_name().to_string_lossy().into_owned())
-        .collect::<Vec<_>>();
-    assert!(
-        fab.iter().any(|f| f.ends_with(".gbr"))
-            && fab.iter().any(|f| f == "led-PTH.drl")
-            && fab.iter().any(|f| f == "led-pnp.csv"),
-        "{}",
-        fab.join(", ")
-    );
-    let bom = std::fs::read_to_string(dir.path.join("fab/led/led-bom.csv")).unwrap();
-    assert!(bom.starts_with("Comment,Designator,Footprint,LCSC Part #"));
-    assert!(bom.lines().any(|l| l
-        .split_once("1k")
-        .is_some_and(|(_, tail)| tail.contains("R1"))));
-    assert_eq!(
-        &std::fs::read(dir.path.join("pcb/led.glb")).unwrap()[..4],
-        b"glTF"
-    );
-}
-
-#[tokio::test]
-async fn pcb_build_pours_a_ground_plane() {
-    if !has_engine() {
-        return;
-    }
-    let source = LED_BOARD.replace("</board>", "  <trace from=\".J1 > .pin2\" to=\"net.GND\" />\n    <copperpour connectsTo=\"net.GND\" layer=\"bottom\" />\n  </board>");
-    let dir = project("pcb", &[("pcb/gnd.tsx", source)]);
-    let out = run("pcb_build", json!({"source":"pcb/gnd.tsx"}), &dir.path)
-        .await
-        .unwrap();
-    assert!(
-        out.text.contains("Copper pours: GND on bottom"),
-        "{}",
-        out.text
-    );
-    assert!(!out.text.contains("engine_step_error"), "{}", out.text);
-    assert!(
-        std::fs::read_to_string(dir.path.join("fab/gnd/gnd-B_Cu.gbr"))
-            .unwrap()
-            .contains("G36")
-    );
-}
-
-#[tokio::test]
-async fn pcb_build_accepts_a_printed_antennas_open_arm_and_clears_ground_under_a_keepout() {
-    if !has_engine() {
-        return;
-    }
-    let dir = project(
-        "pcb",
-        &[(
-            "pcb/ant.tsx",
-            r#"export default () => (
-  <board width="50mm" height="40mm">
-    <antenna name="ANT1" antennaShape="2.4ghz_quarter_wave_monopole" pcbX={-20} pcbY={18.4} />
-    <keepout pcbX={-3} pcbY={16} width="32mm" height="8mm" shape="rect" layers={["bottom"]} />
-    <copperpour connectsTo="net.GND" layer="bottom" />
-  </board>
-)"#,
-        )],
-    );
-    let out = run("pcb_build", json!({"source":"pcb/ant.tsx"}), &dir.path)
-        .await
-        .unwrap();
-    assert!(out.text.contains("No errors"), "{}", out.text);
-    assert!(!out.text.contains("disconnected endpoint"), "{}", out.text);
-    let circuit: Value =
-        serde_json::from_slice(&std::fs::read(dir.path.join("pcb/ant.circuit.json")).unwrap())
-            .unwrap();
-    let pour = circuit
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|e| e["type"] == "pcb_copper_pour")
-        .unwrap();
-    let max_y = pour["brep_shape"]["outer_ring"]["vertices"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|v| v["x"].as_f64().unwrap() > -15. && v["x"].as_f64().unwrap() < 10.)
-        .map(|v| v["y"].as_f64().unwrap())
-        .fold(f64::NEG_INFINITY, f64::max);
-    assert!(max_y <= 12.1, "ground reaches y {max_y} under the antenna");
-}
-
-#[tokio::test]
-async fn pcb_build_reports_board_errors_and_keeps_board_code_sandboxed() {
-    if !has_engine() {
-        return;
-    }
-    let outside = TempDir::new("outside");
-    let dir = project("pcb", &[
-        ("pcb/env.tsx", "throw new Error(\"KEY=\" + (process.env.FORGE_TEST_SECRET ?? \"hidden\"))\nexport default () => <board width=\"10mm\" height=\"10mm\" />\n".to_owned()),
-        ("pcb/escape.tsx", format!("const fs = process.getBuiltinModule(\"node:fs\")\nlet r = \"written\"\ntry {{ fs.writeFileSync({}, \"x\") }} catch {{ r = \"blocked\" }}\nthrow new Error(\"WRITE=\" + r)\nexport default () => <board width=\"10mm\" height=\"10mm\" />\n", json!(outside.path.join("x.txt")))),
-    ]);
-    let build = all_tools()
-        .into_iter()
-        .find(|t| t.name == "pcb_build")
-        .unwrap();
-    let mut ctx = ToolContext::new(dir.path.clone(), app_dir());
-    ctx.node_env
-        .push(("FORGE_TEST_SECRET".into(), "s3cret".into()));
-    for (input, expected) in [
-        (json!({"source":"pcb/env.tsx"}), "KEY=hidden"),
-        (json!({"source":"pcb/escape.tsx"}), "WRITE=blocked"),
-    ] {
-        let err = (build.run)(input, ctx.clone())
+async fn pcb_build_rejects_tsx_and_jsx_sources() {
+    let dir = project("pcb_legacy", &[("pcb/old.tsx", ""), ("pcb/old.jsx", "")]);
+    for source in ["pcb/old.tsx", "pcb/old.jsx"] {
+        let err = run("pcb_build", json!({"source":source}), &dir.path)
             .await
             .unwrap_err()
             .to_string();
-        assert!(err.contains(expected), "{err}");
+        assert_eq!(err, "source must be a .pcb.json file");
     }
-    assert_eq!(std::fs::read_dir(&outside.path).unwrap().count(), 0);
-    for (input, expected) in [
-        (json!({"source":"pcb/none.tsx"}), "does not exist"),
-        (
-            json!({"source":"pcb/env.tsx","name":"a/b"}),
-            "name may only",
-        ),
-    ] {
-        let err = (build.run)(input, ctx.clone())
-            .await
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains(expected), "{err}");
-    }
-}
-
-#[tokio::test]
-async fn pcb_engine_uses_configured_node_and_only_path_lang_and_args() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = project("node", &[("node-stub", "#!/bin/sh\nprintf '%s\\n' \"$PATH\" \"$LANG\" \"${FORGE_TEST_SECRET-hidden}\" \"$FORGE_ARGS\" \"$@\"\n")]);
-    let stub = dir.path.join("node-stub");
-    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let mut ctx = ToolContext::new(dir.path.clone(), app_dir());
-    ctx.node_program = Some(stub);
-    ctx.node_env = vec![
-        ("PATH".into(), "/configured/path".into()),
-        ("LANG".into(), "configured.UTF-8".into()),
-        ("FORGE_TEST_SECRET".into(), "s3cret".into()),
-    ];
-    let engine = dir.path.join("engine.mjs");
-    let result = run_engine(&engine, &ctx, json!({"name":"test"}), 1000)
-        .await
-        .unwrap();
-    assert_eq!(result.code, 0, "{}", result.stderr);
-    let lines = result.stdout.lines().collect::<Vec<_>>();
-    assert_eq!(
-        &lines[..4],
-        &[
-            "/configured/path",
-            "configured.UTF-8",
-            "hidden",
-            "{\"name\":\"test\"}"
-        ]
-    );
-    assert_eq!(
-        &lines[4..],
-        [
-            "--permission".to_owned(),
-            format!("--allow-fs-read={}", engine.display()),
-            format!("--allow-fs-read={}", dir.path.display()),
-            format!("--allow-fs-write={}", dir.path.display()),
-            "--disable-warning=ExperimentalWarning".into(),
-            "--disable-warning=SecurityWarning".into(),
-            engine.to_string_lossy().into_owned()
-        ]
-    );
 }

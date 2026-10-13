@@ -89,18 +89,8 @@ say "Installing packages with dnf"
 want pcb && echo "(KiCad with its libraries is a large download, about 1-2 GB.)"
 run $SUDO dnf install -y "${PACKAGES[@]}"
 
-# The UI build and PCB engine need Node.js 22.18 or newer.
-node_ok() { "$1" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=18)?0:1)' 2>/dev/null; }
-find_node() { for n in node node-24 node-22; do command -v "$n" >/dev/null && node_ok "$(command -v "$n")" && { command -v "$n"; return; }; done; }
-NODE="$(find_node || true)"
-if [ -z "$NODE" ] && [ "$DRY_RUN" = 0 ]; then
-  say "The default Node.js is older than 22.18; installing nodejs24"
-  run $SUDO dnf install -y nodejs24 nodejs24-npm
-  NODE="$(find_node || true)"
-  [ -n "$NODE" ] || { echo "Could not get Node.js 22.18 or newer. Install it, then run this script again." >&2; exit 1; }
-fi
-NODE="${NODE:-/usr/bin/node}"
-NPM="${NPM:-$(dirname "$NODE")/npm}"; [ -x "$NPM" ] || command -v "$NPM" >/dev/null || NPM="npm"
+# Node.js and npm are build tools for the UI, not runtime PCB dependencies.
+NPM="${NPM:-npm}"
 
 # --- 3. openEMS (antenna simulation) -----------------------------------------------
 
@@ -121,9 +111,8 @@ fi
 
 # --- 4. Forge itself -----------------------------------------------------------------
 
-say "Installing Forge's dependencies, its built-in PCB engine, and building the interface"
+say "Installing Forge's dependencies and building the interface"
 run "$NPM" --prefix "$REPO" ci --no-audit --no-fund
-run "$NPM" --prefix "$REPO" run pcb-engine
 run "$NPM" --prefix "$REPO" run build
 run cargo build --release -p forge-server --manifest-path "$REPO/Cargo.toml"
 
@@ -144,7 +133,6 @@ if [ ! -e "$ENV_FILE" ]; then
 # Forge settings, read when Forge starts. Keep this file private (chmod 600).
 # Claude uses your Claude Code CLI login: run claude to sign in.
 # FORGE_CLAUDE=/path/to/claude     # override the claude executable on PATH
-# FORGE_NODE=/usr/bin/node         # Node is only needed at runtime for pcb_build
 # OPENAI_API_KEY=                  # optional key for another provider
 # FORGE_HOME=~/Forge          # where projects are stored
 # FORGE_MODEL=claude-opus-5-5
@@ -166,7 +154,6 @@ Documentation=file://$REPO/README.md
 [Service]
 WorkingDirectory=$REPO
 Environment=FORGE_APP_DIR=$REPO
-Environment=FORGE_NODE=$NODE
 # systemd user services do not get ~/.local/bin, where the Claude Code CLI installs itself.
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
 ExecStart=$REPO/target/release/forge-server

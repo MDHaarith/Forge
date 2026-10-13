@@ -63,7 +63,7 @@ server/src/
     part/inspect.rs                          part_inspect: STEP/STP/STL size, volume, centre of mass, holes, configurable overhangs and STEP pair interference/clearance
     part/drawing.rs                          part_drawing: scaled landscape SVG views, hidden lines, dimensions, hole table/title block and top-outline R12 DXF
     script3d.rs                              blender_build and shared runner-output helpers
-    board.rs pcb.rs design.rs fit.rs         PCB engine, DRC, fab export, board-in-enclosure fit
+    board.rs pcb.rs design.rs fit.rs         native PCB build/exports, DRC, board-in-enclosure fit
     pcb/spec.rs                             strict native .pcb.json parser, pin aliases, netlist and rule overrides
     pcb/footprint.rs                        pure nominal footprint generator, pads, courtyard, silk and body geometry
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
@@ -79,7 +79,6 @@ server/src/
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
 desktop/src/main.rs        Tauri app: binds a free port, runs forge_server::serve in-process
-engines/pcb/               tscircuit PCB engine (JavaScript), bundled to dist/pcb-engine.mjs, run by Node
 web/                       UI (TypeScript + Vite + three.js): main.ts app, design.ts PCB/3D view, viewer.ts,
                            markdown.ts (Markdown + KaTeX, sanitized with DOMPurify)
 licenses/tscircuit-MIT.txt  licence for the ported printed antenna shapes and keepouts
@@ -90,11 +89,11 @@ docs/                      this map, ROADMAP.md, reference/ (engineering CAD, Ki
 `pcb.rs` remains the PCB module root and re-exports the native pure helpers. `pcb_build` validates,
 places, routes and pours `.pcb.json` inputs in `spawn_blocking`. The module root writes the report,
 circuit JSON and board boxes, then collects every SVG, CAD and manufacturing export. Native builds
-execute without Node; the legacy tool availability gate stays until step 6. CAD export shares
+are always available without an external program. CAD export shares
 `part.rs`'s kernel lock, held only inside the worker;
 GLB coordinates, normals and edges use `[x,z,-y]` for Forge's viewer. All output paths resolve through
 `project_path` before async writes. Routing grids are limited to eight million cells to bound memory use.
-The existing `.tsx`/`.jsx` path still runs the Node engine and writes its usual outputs.
+Only `.pcb.json` inputs are accepted; other formats fail with `source must be a .pcb.json file`.
 `pcb_drc {"board":"<name>"}` reads the saved native circuit and source rules, checks geometry and
 connectivity in `spawn_blocking`, and writes sorted faults to `fab/<name>/<name>-drc.txt`.
 Net classes may override clearance as well as trace width; the router, pours and DRC share those rules.

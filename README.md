@@ -49,18 +49,17 @@ scripts/setup-fedora.sh --desktop    # adds the Rust and WebKitGTK build package
 The desktop app (Tauri, `forge-desktop`, "Forge" in the app menu) opens Forge in its own window
 instead of the browser. It starts a private Forge server on a free local port, so it never clashes
 with the `forge` service, and runs that Rust server in-process until the app exits. It reads the same
-`~/.config/forge/env`. The RPM requires git and WebKitGTK, and recommends Node.js for
-`pcb_build`, Blender, OpenSCAD, KiCad, Icarus Verilog and Yosys. The window starts without Node.
+`~/.config/forge/env`. The RPM requires git and WebKitGTK, and recommends Blender, OpenSCAD,
+KiCad, Icarus Verilog and Yosys. The window starts without Node.
 
-To build the RPM yourself: `npm ci && npm run pcb-engine && npm run desktop:build` (output in
-`target/release/bundle/rpm/`). The PCB engine is optional; leave out `npm run pcb-engine` if
-you do not need `pcb_build`. `npm run desktop` runs a development build from the repository;
+To build the RPM yourself: `npm ci && npm run desktop:build` (output in
+`target/release/bundle/rpm/`). `npm run desktop` runs a development build from the repository;
 run `sh scripts/stage-app.sh` once first so Tauri's resource folder exists.
 
 ## Run it anywhere else
 
 Requires the Rust toolchain (Rust and Cargo), Node.js 22.18 or newer for the UI build,
-and git. Node is only needed at runtime for `pcb_build`.
+and git. PCB builds run natively without Node.
 
 ```sh
 npm install
@@ -84,13 +83,12 @@ runs the test suite; `npm run typecheck` checks the UI and Vite config.
 | Variable | Effect |
 |---|---|
 | `FORGE_CLAUDE` | Path to the Claude Code CLI; defaults to `claude` on `PATH`. Uses that CLI's login. |
-| `FORGE_NODE` | Path to Node for `pcb_build`; defaults to `node` on `PATH`. |
 | `FORGE_PROVIDER` | Provider to start with: `claude`, `openai`, `openrouter`, `deepseek`, `qwen`, `glm`, `opencode` or `offline`. Default: Claude when its CLI is available, else offline. |
 | `FORGE_MODEL` | Model ID for the startup provider (default `claude-opus-5-5`). |
 | `FORGE_OFFLINE=1` | Force the offline demo even with credentials. |
 | `FORGE_ALLOW_COMMANDS=1` | Let the agent run programs in the project folder (`run_command`). Off by default. |
 | `FORGE_HOME` | Where projects are stored. |
-| `FORGE_APP_DIR` | Folder holding `dist/`, `server/runners/` and `engines/pcb/dist/` for a standalone binary. |
+| `FORGE_APP_DIR` | Folder holding `dist/` and `server/runners/` for a standalone binary. |
 | `FORGE_BLENDER` | Path to `blender` when it is not on `PATH` (e.g. an AppImage). A native install is preferred over a Flatpak. |
 | `FORGE_NO_FLATPAK=1` | Ignore Flatpak installs of Blender and KiCad. |
 | `PORT` | Server port (default 4317). |
@@ -145,7 +143,7 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | | `part_drawing`: scaled technical views, hidden lines, dimensions, hole table and title block → SVG, top-outline DXF | – |
 | 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+, native or Flatpak `org.blender.Blender` |
 | 3D: quick | `openscad_render` | [OpenSCAD](https://openscad.org) |
-| PCB | `pcb_build`: board from tscircuit code → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM | Node.js and the built-in engine (`npm run pcb-engine`) |
+| PCB | `pcb_build`: native `.pcb.json` board → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM; `pcb_drc`: saved-copper checks | none |
 | | `design_assemble`: boards and enclosure parts in one 3D assembly, with a fit check | – |
 | RF | `rf_calc`: impedance and trace width (microstrip, coplanar, stripline, differential) on fab stackups, antenna matching networks, link budget and range | – |
 | | `rf_antenna_sim`: full-wave simulation of the board's antenna → S11, bandwidth, impedance, efficiency, gain pattern, Touchstone file | openEMS (`--with-rf`) |
@@ -189,19 +187,13 @@ together. The **Design** tab (top bar) shows the selected board's PCB layout (or
 the 3D assembly. Clicking a part in either view selects it in the other, collisions are outlined
 in red and tight spots in amber, and "See-through case" makes the enclosure transparent.
 
-- **The board** is tscircuit code (React-style `<board>`, `<resistor>`, `<chip>`, `<trace>`)
-  in `pcb/<name>.tsx`. `pcb_build` runs it in Forge's PCB engine (`engines/pcb`, bundled into
-  one file), which places parts, autoroutes and writes `pcb/` views and models and `fab/<name>/`
-  files ready for JLCPCB. The board code runs in a Node permission sandbox: it can read and
-  write only the project, start no programs and does not see Forge's settings or API key, and
-  it stays offline unless `lookup_parts` is set.
+- **The board** is JSON in `pcb/<name>.pcb.json`. Native `pcb_build` validates connections,
+  generates footprints, places parts, autoroutes and pours copper. It writes `pcb/` views and
+  models and `fab/<name>/` manufacturing files ready for JLCPCB. Builds stay offline; set each
+  part's `lcsc` field for BOM part numbers.
 - **The case** is built with `part_build`, sized from the board's size, holes and tallest part.
 - **`design_assemble`** places both in `design/<name>.json` and checks every component's box
   against the case's triangles, so the agent can move a connector or raise a lid until it fits.
-
-The engine has its own `engines/pcb/package.json` (tscircuit needs TypeScript 5, Forge uses 7);
-`npm run pcb-engine` installs and bundles it, and the setup script does this for you.
-The desktop build includes the engine if it is already built.
 
 ## Radios and antennas
 
@@ -211,10 +203,9 @@ Boards with Wi-Fi, Bluetooth, Zigbee, LoRa or other radios get an RF workflow:
    differential pair on JLCPCB's stackups (or any height and permittivity): microstrip with
    frequency dispersion (Hammerstad-Jensen, Kirschning-Jansen), grounded coplanar waveguide
    (conformal mapping), stripline (Wheeler/Cohn) and coupled microstrip.
-2. **The antenna.** tscircuit's `<antenna>` draws 2.4 GHz monopoles, inverted-F antennas and a
-   folded dipole; a `<copperpour>` on the other layer is their ground. Their built-in keepout
-   clears only about 1 mm, so add a `<keepout>` that clears the radiating arm by 5 mm or more out
-   to the board edge, leaving ground under the feed pad.
+2. **The antenna.** A part with `kind:"antenna"` draws 2.4 GHz monopoles, inverted-F antennas
+   and a folded dipole; `pours` on the other layer provide ground. Add `keepouts` that clear
+   the radiating arm by 5 mm or more out to the board edge, leaving ground under the feed pad.
 3. **Simulation.** `rf_antenna_sim` meshes the antenna's copper, the substrate and the ground
    pours for openEMS (an FDTD field solver), excites the feed and reports where it resonates,
    its -10 dB bandwidth, input impedance, efficiency and gain, with S11 and pattern plots and a

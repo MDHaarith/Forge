@@ -56,15 +56,10 @@ impl Sandbox {
             "cargo",
             "update-desktop-database",
             "xdg-open",
-            "node",
-            "node-24",
-            "node-22",
         ] {
             // sudo runs its command so `sudo dnf` is logged as dnf too.
             let body = if name == "sudo" {
                 "echo \"sudo $*\" >> \"$HOME/../calls.log\"; exec \"$@\"".into()
-            } else if name.starts_with("node") {
-                "exit 0".into()
             } else {
                 format!("echo \"{name} $*\" >> \"$HOME/../calls.log\"")
             };
@@ -271,7 +266,7 @@ async fn a_real_run_installs_packages_the_service_and_a_working_forge_command() 
         assert!(packages.contains(&package), "{package}: {calls}");
     }
     assert!(!calls.lines().any(|line| line.starts_with("flatpak ")));
-    for args in ["ci --no-audit --no-fund", "run pcb-engine", "run build"] {
+    for args in ["ci --no-audit --no-fund", "run build"] {
         assert!(calls
             .lines()
             .any(|line| line == format!("npm --prefix {} {args}", repo().display())));
@@ -297,7 +292,6 @@ async fn a_real_run_installs_packages_the_service_and_a_working_forge_command() 
     for expected in [
         format!("ExecStart={}/target/release/forge-server", repo().display()),
         format!("Environment=FORGE_APP_DIR={}", repo().display()),
-        format!("Environment=FORGE_NODE={}/node", sandbox.bin.display()),
         "Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin".into(),
     ] {
         assert!(service.lines().any(|line| line == expected), "{service}");

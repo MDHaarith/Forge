@@ -28,8 +28,6 @@ pub struct Settings {
     pub startup_model: Option<String>,
     pub offline: bool,
     pub blender_program: Option<PathBuf>,
-    pub node_program: Option<PathBuf>,
-    pub node_env: Vec<(String, String)>,
     pub openems_python: Vec<String>,
 }
 
@@ -45,14 +43,6 @@ impl Settings {
             startup_model: None,
             offline: false,
             blender_program: None,
-            node_program: None,
-            node_env: vec![
-                ("PATH".into(), std::env::var("PATH").unwrap_or_default()),
-                (
-                    "LANG".into(),
-                    std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()),
-                ),
-            ],
             openems_python: tools::rf::openems_python(),
         }
     }
@@ -77,10 +67,6 @@ impl Settings {
         );
         settings.blender_program = vars
             .get("FORGE_BLENDER")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from);
-        settings.node_program = vars
-            .get("FORGE_NODE")
             .filter(|v| !v.is_empty())
             .map(PathBuf::from);
         settings.providers = Arc::new(Providers::new(vars));

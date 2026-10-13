@@ -2,7 +2,7 @@
   "name": "forge",
   "private": true,
   "license": "MIT",
-  "version": "0.16.4",
+  "version": "0.16.5",
   "description": "An AI workshop that drives code, 3D, PCB and chip tools from one conversation",
   "type": "module",
   "engines": {
@@ -15,8 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "cargo test --workspace",
     "desktop": "vite build && tauri dev",
-    "desktop:build": "tauri build",
-    "pcb-engine": "npm ci --prefix engines/pcb --no-audit --no-fund && npm run --prefix engines/pcb bundle"
+    "desktop:build": "tauri build"
   },
   "dependencies": {
     "dompurify": "3.4.17",

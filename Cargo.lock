@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "forge-server"
-version = "0.16.4"
+version = "0.16.5"
 dependencies = [
  "axum",
  "cadrum",

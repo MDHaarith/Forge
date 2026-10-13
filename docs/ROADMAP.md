@@ -15,15 +15,16 @@ the phases, and keep the external version working until its native replacement p
 |---|---|---|
 | blender_build | Blender | renderer and mesh modifiers |
 | openscad_render | OpenSCAD | fold into the CAD kernel, or drop |
-| pcb_build (legacy inputs and availability gate) | Node + tscircuit engine | Native .pcb.json execution works; retire legacy inputs and gate |
-| pcb_drc | none (native) | saved-copper DRC complete; pcb_build writes Gerber/Excellon files |
 | chip_simulate, chip_synthesize | iverilog, yosys | Verilog simulator and synthesis |
 | rf_antenna_sim | openEMS | FDTD solver |
 | git_status, git_commit, git_log | git | built-in git library (gitoxide) |
 
-Stage 3 step 5 is complete: native DRC, SMD via fanout and PCB calculators. Next: retire the legacy Node engine.
+Stage 3 step 6 is complete: PCB builds and DRC are native, and the Node engine is retired.
+Next: stage 3 release checks and v0.17.0.
 
-Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble.
+Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
+pcb_build (including manufacturing exports) and pcb_drc. `pcb_export_fab` is removed because
+`pcb_build` writes those files.
 
 CAD kernel (`plan.md` stages 1 and 2 done): `part_build` makes exact solids (primitives, extrude,
 revolve, loft, sweep, shell, mirror, linear/polar patterns, ISO threads, sheet metal, booleans,
@@ -44,8 +45,8 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
   Stage 3 steps 2–3 add strict `.pcb.json` validation, generated footprints, pin/net checks,
   deterministic placement and 2/4-layer routing, keepouts, thermal copper pours and five printed
   antenna shapes. Step 4 adds PCB/schematic SVGs, GLB/STEP assemblies, circuit JSON, board boxes,
-  all Gerber layers, split drills and assembly CSVs. Native DRC and Node retirement are next;
-  `.tsx` builds still use Node.
+  all Gerber layers, split drills and assembly CSVs. Step 5 adds native DRC, SMD via fanout
+  and PCB calculators. Step 6 retires the Node engine; only `.pcb.json` inputs are accepted.
 - Renderer: CPU path tracer (PBR), glTF export, mesh modifiers (subdivide, bevel, array, mirror, solidify).
 
 **Phase 2, common (~30k lines):** drawings (hidden-line views, dimensions, SVG/DXF/PDF), assembly

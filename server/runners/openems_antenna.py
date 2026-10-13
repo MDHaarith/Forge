@@ -1,4 +1,4 @@
-"""Simulates a PCB antenna from a tscircuit circuit.json with openEMS (FDTD).
+"""Simulates a PCB antenna from pcb/<name>.circuit.json with openEMS (FDTD).
 
     python openems_antenna.py '<json args>'
 
@@ -118,7 +118,7 @@ def load_board(circuit, antenna_name):
 
     names = {s["source_component_id"]: s.get("name", "") for s in by_type.get("source_component", [])}
     comps = {c["pcb_component_id"]: names.get(c.get("source_component_id"), "") for c in by_type.get("pcb_component", [])}
-    # tscircuit draws antenna footprints as traces that belong to the component.
+    # Antenna copper traces belong to their component.
     drawn = sorted({t["pcb_component_id"] for t in by_type.get("pcb_trace", []) if t.get("pcb_component_id")})
     if antenna_name:
         ids = [cid for cid, n in comps.items() if n == antenna_name]

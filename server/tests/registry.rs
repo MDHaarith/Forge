@@ -1,31 +1,21 @@
 mod common;
 use common::TempDir;
 use forge_server::{
-    tools::{all_tools, describe_tools, exec::on_path, is_available},
+    tools::{all_tools, describe_tools, is_available},
     Settings,
 };
 
 #[test]
-fn availability_keeps_registry_requires_semantics_and_pcb_needs_both_engine_and_node() {
+fn availability_keeps_registry_requires_semantics_and_pcb_is_native() {
     let dir = TempDir::new("availability");
     let mut settings = Settings::new(dir.path.clone(), dir.path.clone());
     let tools = all_tools();
     let pcb = tools.iter().find(|t| t.name == "pcb_build").unwrap();
     let rf = tools.iter().find(|t| t.name == "rf_antenna_sim").unwrap();
-    settings.node_program = Some(dir.path.join("missing-node"));
-    assert!(!is_available(pcb, &settings));
-    std::fs::create_dir_all(dir.path.join("engines/pcb/dist")).unwrap();
-    std::fs::write(dir.path.join("engines/pcb/dist/pcb-engine.mjs"), "").unwrap();
-    assert!(!is_available(pcb, &settings));
-    let stub = dir.path.join("node-stub");
-    std::fs::write(&stub, "").unwrap();
-    settings.node_program = Some(stub.clone());
+    assert!(pcb.requires.is_empty());
     assert!(is_available(pcb, &settings));
-    std::fs::remove_file(dir.path.join("engines/pcb/dist/pcb-engine.mjs")).unwrap();
-    assert!(!is_available(pcb, &settings));
-    std::fs::write(dir.path.join("engines/pcb/dist/pcb-engine.mjs"), "").unwrap();
-    settings.node_program = None;
-    assert_eq!(is_available(pcb, &settings), on_path("node"));
+    let stub = dir.path.join("program-stub");
+    std::fs::write(&stub, "").unwrap();
 
     settings.openems_python = vec![dir
         .path
@@ -71,7 +61,6 @@ fn describe_tools_keeps_registry_order_and_requires_labels() {
     for (tool, description) in tools.iter().zip(&descriptions) {
         let requires = match tool.name {
             "run_command" => Some("FORGE_ALLOW_COMMANDS=1"),
-            "pcb_build" => Some("Forge's PCB engine"),
             "rf_antenna_sim" => Some("openEMS"),
             _ => tool
                 .needs
