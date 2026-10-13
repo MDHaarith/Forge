@@ -1,36 +1,16 @@
 mod common;
+#[path = "common/model.rs"]
+mod scripted_model;
 use common::TempDir;
 use forge_server::{
-    agent::{Agent, AgentEvent},
-    model::{Model, ModelFuture, ModelReply, ModelRequest},
+    agent::{system_prompt, Agent, AgentEvent},
+    model::ModelReply,
     tools::{all_tools, Tool, ToolContext, ToolError, ToolFuture},
 };
+use scripted_model::ScriptedModel;
 use serde_json::{json, Value};
-use std::{
-    collections::VecDeque,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
-/// Replies from a fixed script and records every request it receives.
-struct ScriptedModel {
-    requests: Mutex<Vec<ModelRequest>>,
-    replies: Mutex<VecDeque<ModelReply>>,
-}
-impl Model for ScriptedModel {
-    fn name(&self) -> String {
-        "scripted".into()
-    }
-    fn respond<'a>(&'a self, request: &'a ModelRequest) -> ModelFuture<'a> {
-        self.requests.lock().unwrap().push(request.clone());
-        let reply = self
-            .replies
-            .lock()
-            .unwrap()
-            .pop_front()
-            .ok_or_else(|| "script ran out".into());
-        Box::pin(async move { reply })
-    }
-}
 fn text(t: &str) -> Value {
     json!({"type":"text","text":t,"citations":null})
 }
@@ -45,10 +25,7 @@ fn reply(reason: &str, content: Vec<Value>) -> ModelReply {
 }
 fn setup(replies: Vec<ModelReply>) -> (TempDir, Arc<ScriptedModel>, Agent, Mutex<Vec<AgentEvent>>) {
     let dir = TempDir::new("agent");
-    let model = Arc::new(ScriptedModel {
-        requests: Mutex::new(vec![]),
-        replies: Mutex::new(replies.into()),
-    });
+    let model = Arc::new(ScriptedModel::new(replies));
     let tools = Arc::new(|| {
         all_tools()
             .into_iter()
@@ -302,4 +279,118 @@ async fn stop_ends_a_turn_and_answers_its_open_tool_calls() {
     let messages = agent.messages.lock().unwrap();
     assert_eq!(messages.last().unwrap()["content"][0]["tool_use_id"], "a");
     assert!(!agent.running());
+}
+
+#[tokio::test]
+#[ignore = "patch 0.15.1 not built yet"]
+async fn weak_model_recovers_from_bad_calls() {
+    let (dir, _model, agent, events) = setup(vec![
+        // Turn 1: write_file call whose input is {"_unparsed":"{oops"}
+        reply(
+            "tool_use",
+            vec![call("c1", "write_file", json!({"_unparsed": "{oops"}))],
+        ),
+        // Turn 2: call named functions.write-file with a valid input
+        reply(
+            "tool_use",
+            vec![call(
+                "c2",
+                "functions.write-file",
+                json!({"path": "recovered.txt", "contents": "recovered contents"}),
+            )],
+        ),
+        // Turn 3: plain text reply
+        reply("end_turn", vec![text("Done.")]),
+    ]);
+
+    agent
+        .send("fix it", &|e| events.lock().unwrap().push(e))
+        .await
+        .unwrap();
+
+    let events = events.lock().unwrap();
+    let results: Vec<_> = events
+        .iter()
+        .filter_map(|e| {
+            if let AgentEvent::ToolResult { ok, text, .. } = e {
+                Some((*ok, text.as_str()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    assert!(results.len() >= 2, "expected at least 2 tool results, got {}", results.len());
+    let (first_ok, first_text) = results[0];
+    assert!(!first_ok, "first tool result should be an error");
+    assert!(
+        first_text.starts_with("Arguments were not valid JSON: "),
+        "expected first result to start with 'Arguments were not valid JSON: ', got: {first_text}"
+    );
+    assert!(
+        first_text.ends_with(". Send the input as one JSON object."),
+        "expected first result to end with '. Send the input as one JSON object.', got: {first_text}"
+    );
+
+    let written = std::fs::read_to_string(dir.path.join("recovered.txt"))
+        .expect("second call should have written recovered.txt");
+    assert_eq!(written, "recovered contents");
+}
+
+#[tokio::test]
+#[ignore = "patch 0.15.1 not built yet"]
+async fn unknown_tool_lists_available_tools() {
+    let (_dir, _model, agent, events) = setup(vec![
+        reply(
+            "tool_use",
+            vec![call("c1", "launch_rocket", json!({}))],
+        ),
+        reply("end_turn", vec![text("ok")]),
+    ]);
+
+    agent
+        .send("launch it", &|e| events.lock().unwrap().push(e))
+        .await
+        .unwrap();
+
+    let events = events.lock().unwrap();
+    let result = events
+        .iter()
+        .find_map(|e| {
+            if let AgentEvent::ToolResult { text, .. } = e {
+                Some(text.as_str())
+            } else {
+                None
+            }
+        })
+        .expect("expected tool result");
+
+    let available = all_tools()
+        .into_iter()
+        .filter(|t| t.domain == "workspace" || t.domain == "3d")
+        .map(|t| t.name)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let expected = format!("Unknown or unavailable tool \"launch_rocket\". Available tools: {available}.");
+    assert_eq!(result, expected);
+}
+
+#[test]
+#[ignore = "patch 0.15.1 not built yet"]
+fn prompt_names_only_available_tools() {
+    let subset: Vec<Tool> = all_tools()
+        .into_iter()
+        .filter(|t| {
+            !t.name.starts_with("freecad_")
+                && !t.name.starts_with("blender_")
+                && !t.name.starts_with("rf_antenna")
+        })
+        .collect();
+
+    let prompt = system_prompt("p", &subset);
+    assert!(prompt.contains("part_build"));
+    assert!(!prompt.contains("freecad_"));
+    assert!(!prompt.contains("blender_build"));
+    assert!(!prompt.contains("rf_antenna_sim"));
+    assert!(!prompt.contains("KiCad tools"));
 }
