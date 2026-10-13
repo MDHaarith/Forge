@@ -181,7 +181,7 @@ After every step, the orchestrator does all of these:
 4. Commit. Push only when the user asks.
 
 - [ ] Step 0: spike (gpt-6.1-sol)
-- [ ] Step 1: reference tests (gemini-3.8-flash-high)
+- [x] Step 1: reference tests (gemini-3.8-flash-high)
 - [ ] Step 2: kernel, shapes, combine, export (gpt-6.1-sol)
 - [ ] Step 3: extrude, revolve, fillet, chamfer, place (gpt-6.1-sol)
 - [ ] Step 4: holes, enclosure kit, inspect (gpt-6.1-sol)
