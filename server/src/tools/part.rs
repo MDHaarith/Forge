@@ -4,14 +4,17 @@ use cadrum::{Boolean, DVec3, Solid, Tessellation};
 use serde_json::{json, Value};
 use std::fs;
 
+mod holes;
 mod inspect;
+mod kit;
 mod ops;
+mod standards;
 
 pub fn tools() -> Vec<Tool> {
     vec![Tool::new(
         "3d",
         "part_build",
-        "Build exact solids in millimetres, degrees, Z up. Writes models/<name>.step, binary STL and JSON. Steps run in order; shape ids default to s<step index>. box: size [x,y,z], minimum corner at at. cylinder: radius, height, base centre at at. sphere: radius, centre at at. cone: radius1 (bottom), radius2 (top, may be 0), height, base centre at at. at defaults to [0,0,0]. extrude: XY outline, height, at. revolve: XZ outline (x is nonnegative radius), angle (360), about Z from +X towards +Y. outline is {circle:[cx,cy,r]} or {start:[x,y],segments:[{line:[x,y]} or {arc:[x,y],through:[x,y]}]}; last point equals start. union/cut/intersect: target and tool body ids; changes target and consumes tool. fillet: target, radius, edges. chamfer: target, size, edges. edges is all, vertical (straight Z edges), or {at_z:number}. place: target, rotate [rx,ry,rz], move [x,y,z]; rotates X then Y then Z through origin, then moves. Exports all remaining bodies.",
+        "Build exact solids in millimetres, degrees, Z up. Writes models/<name>.step, binary STL and JSON. Steps run in order; shape ids default to s<step index>. box: size [x,y,z], minimum corner at at. cylinder: radius, height, base centre at at. sphere: radius, centre at at. cone: radius1 (bottom), radius2 (top, may be 0), height, base centre at at. at defaults to [0,0,0]. extrude: XY outline, height, at. revolve: XZ outline (x is nonnegative radius), angle (360), about Z from +X towards +Y. outline is {circle:[cx,cy,r]} or {start:[x,y],segments:[{line:[x,y]} or {arc:[x,y],through:[x,y]}]}; last point equals start. union/cut/intersect: target and tool body ids; changes target and consumes tool. fillet: target, radius, edges. chamfer: target, size, edges. edges is all, vertical (straight Z edges), or {at_z:number}. place: target, rotate [rx,ry,rz], move [x,y,z]; rotates X then Y then Z through origin, then moves. hole: target, points, size (M3), kind (clearance), fit (normal), optional depth; kinds clearance, tap, counterbore, countersink, insert. points is [[x,y],...] or {grid:[x0,y0,dx,dy,nx,ny]} or {corners:[length,width,inset]}. enclosure: size [x,y,z], wall (2), floor (2), radius (0). lid: size [x,y], thickness (2), wall (2), lip (2), gap (0.2), radius (0), at. standoffs: target, points, size (M3), height (5), base (0), kind (insert, tap or clearance). material must be a MATERIALS key. Exports all remaining bodies.",
         json!({"type":"object", "properties":{
             "name":{"type":"string", "description":"Lowercase letters, digits, - and _ only"},
             "material":{"type":"string"},
@@ -24,7 +27,11 @@ pub fn tools() -> Vec<Tool> {
                 "angle":{"type":"number"}, "outline":{"type":"object"}, "edges":{},
                 "rotate":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "move":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
-                "target":{"type":"string"}, "tool":{"type":"string"}
+                "target":{"type":"string"}, "tool":{"type":"string"},
+                "points":{}, "kind":{"type":"string"}, "fit":{"type":"string"},
+                "depth":{"type":"number"}, "wall":{"type":"number"}, "floor":{"type":"number"},
+                "thickness":{"type":"number"}, "lip":{"type":"number"}, "gap":{"type":"number"},
+                "base":{"type":"number"}
             }, "required":["op"]}}
         }, "required":["name","steps"]}),
         part_build,
@@ -93,30 +100,7 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
         None => Value::Null,
         Some(value) => {
             let material = input_str(&input, "material")?;
-            let names = [
-                "PLA",
-                "PETG",
-                "ABS",
-                "ASA",
-                "Nylon PA12",
-                "Polycarbonate",
-                "Acrylic",
-                "POM (Delrin)",
-                "Aluminium 6061",
-                "Aluminium 7075",
-                "Steel",
-                "Stainless 304",
-                "Brass",
-                "Copper",
-                "Titanium Ti-6Al-4V",
-                "Plywood",
-            ];
-            if !names.contains(&material) {
-                return Err(ToolError::expected(format!(
-                    "unknown material \"{material}\"; valid names: {}",
-                    names.join(", ")
-                )));
-            }
+            standards::material_density(material)?;
             value.clone()
         }
     };
@@ -136,7 +120,8 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
     for (index, step) in steps.iter().enumerate() {
         let op = input_str(step, "op")?;
         match op {
-            "box" | "cylinder" | "sphere" | "cone" | "extrude" | "revolve" => {
+            "box" | "cylinder" | "sphere" | "cone" | "extrude" | "revolve" | "enclosure"
+            | "lid" => {
                 let id = match step.get("id") {
                     Some(_) => input_str(step, "id")?.to_owned(),
                     None => format!("s{index}"),
@@ -183,6 +168,7 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                         }
                     }
                     "extrude" | "revolve" => ops::profile_solid(step, op, index, at)?,
+                    "enclosure" | "lid" => kit::shape(step, op, index, at)?,
                     _ => unreachable!(),
                 };
                 bodies.push((id, vec![solid]));
@@ -217,6 +203,10 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                     })?
                 };
                 bodies.remove(tool);
+            }
+            "hole" | "standoffs" => {
+                let target = body_index(&bodies, input_str(step, "target")?, index)?;
+                bodies[target].1 = kit::modify(&bodies[target].1, step, op, index)?;
             }
             "fillet" | "chamfer" | "place" => {
                 let target = body_index(&bodies, input_str(step, "target")?, index)?;

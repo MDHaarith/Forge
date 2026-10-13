@@ -116,7 +116,7 @@ pub(super) fn profile_solid(
     solid.map_err(|err| ToolError::expected(format!("step {index}: {op} failed: {err}")))
 }
 
-fn samples(edge: &Edge) -> Vec<DVec3> {
+pub(super) fn samples(edge: &Edge) -> Vec<DVec3> {
     // shortcut: cadrum exposes no curve type or edge bounds; sample to 1e-7 mm until it exposes those queries.
     edge.approximation_segments(Tessellation {
         deflection_linear: 1e-7,

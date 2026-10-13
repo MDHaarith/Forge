@@ -115,56 +115,48 @@ async fn chamfer_vertical_edges() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn m3_clearance_hole() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[20,20,5]},{"op":"hole","target":"a","points":[[10,10]],"size":"M3","kind":"clearance"}]})).await;
     near(volume(&out, 0), 1954.604, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn m3_tap_blind_hole() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"a","op":"box","size":[20,20,5]},{"op":"hole","target":"a","points":[[10,10]],"size":"M3","kind":"tap","depth":4}]})).await;
     near(volume(&out, 0), 1980.365, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn enclosure_volume() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"enclosure","size":[60,40,20]}]})).await;
     near(volume(&out, 0), 11712.0, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn lid_volume() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"op":"lid","size":[60,40]}]})).await;
     near(volume(&out, 0), 8758.72, 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn standoffs_add_volume() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"e","op":"enclosure","size":[60,40,20]},{"op":"standoffs","target":"e","points":[[10,10],[50,30]],"size":"M3","height":5,"base":2,"kind":"insert"}]})).await;
     near(volume(&out, 0), 12088.991, 0.05);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn lid_fits_with_no_overlap() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"e","op":"enclosure","size":[60,40,20]},{"id":"l","op":"lid","size":[60,40],"at":[0,0,20]},{"op":"intersect","target":"e","tool":"l"}]})).await;
     near(volume(&out, 0), 0.0, 0.001);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn lid_moved_past_gap_overlaps() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"e","op":"enclosure","size":[60,40,20]},{"id":"l","op":"lid","size":[60,40],"at":[0.25,0,20]},{"op":"intersect","target":"e","tool":"l"}]})).await;
     assert!(volume(&out, 0) > 0.01);
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn lid_moved_within_gap_still_fits() {
     let (_dir, out) = build(json!({"name":"t","steps":[{"id":"e","op":"enclosure","size":[60,40,20]},{"id":"l","op":"lid","size":[60,40],"at":[0.15,0,20]},{"op":"intersect","target":"e","tool":"l"}]})).await;
     near(volume(&out, 0), 0.0, 0.001);
@@ -198,7 +190,6 @@ async fn writes_step_stl_and_json_and_step_reads_back() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn inspect_finds_both_m5_holes_and_mass() {
     let (dir, _out) = build(json!({"name":"bracket","steps":[{"id":"a","op":"box","size":[40,20,5]},{"op":"hole","target":"a","points":[[8,10],[32,10]],"size":"M5","kind":"clearance"}]})).await;
     let report = run("part_inspect", json!({"path":"models/bracket.step","material":"Aluminium 6061"}), &dir.path).await.unwrap();
@@ -216,7 +207,6 @@ async fn inspect_finds_both_m5_holes_and_mass() {
 }
 
 #[tokio::test]
-#[ignore = "part tools not built yet"]
 async fn inspect_warns_about_overhang() {
     let (dir, _out) = build(json!({"name":"tee","steps":[{"id":"a","op":"box","size":[10,10,10]},{"id":"b","op":"box","size":[30,10,5],"at":[-10,0,10]},{"op":"union","target":"a","tool":"b"}]})).await;
     let report = run("part_inspect", json!({"path":"models/tee.step"}), &dir.path).await.unwrap();

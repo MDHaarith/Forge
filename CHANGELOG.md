@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 — 2026-10-13
+
+- `part_build` adds standard clearance, tap, counterbore, countersink and insert holes, point patterns,
+  rounded enclosures, matching lids and standoffs. Engineering dimensions and material densities
+  match the existing CAD helpers.
+- `part_inspect` reports material mass, STEP hole features and 45-degree printing overhangs above
+  the bed. STL inspection reports mass and overhangs while keeping holes marked as unknown.
+
 ## 0.13.0 — 2026-10-13
 
 - `part_build` adds line/arc/circle extrusion, Z-axis revolution, fillets and chamfers selected by

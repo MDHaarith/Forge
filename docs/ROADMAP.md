@@ -24,10 +24,12 @@ the phases, and keep the external version working until its native replacement p
 
 Already native: list_files, read_file, write_file, cad_model, rf_calc, design_assemble.
 
-CAD kernel progress (v0.13.0): `part_build` supports primitives, booleans, line/arc/circle extrusion,
-revolution, edge fillets/chamfers and placement, with STEP/STL/JSON export. `part_inspect` reads
-STEP/STP/STL size and volume. Next: standard holes, enclosure/lid/standoffs, mass, hole detection and
-overhang checks (step 4 in `plan.md`). Legacy solid tools stay until the native replacement is complete.
+CAD kernel progress (v0.14.0): `part_build` supports primitives, booleans, line/arc/circle extrusion,
+revolution, edge fillets/chamfers, placement, standard holes and enclosure/lid/standoffs, with
+STEP/STL/JSON export. `part_inspect` reads STEP/STP/STL size, volume, material mass and 45-degree
+printing overhangs; STEP inspection also detects hole features. Step 4 in `plan.md` is complete.
+Next: finish tool descriptions (step 5), then retire legacy solid tools and verify the desktop
+workflow (step 6). FreeCAD drawing tools stay until a native drawing replacement is ready.
 
 ## Phases (estimates include tests; ±50%)
 

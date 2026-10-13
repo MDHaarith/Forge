@@ -184,7 +184,7 @@ After every step, the orchestrator does all of these:
 - [x] Step 1: reference tests (gemini-3.8-flash-high)
 - [x] Step 2: kernel, shapes, combine, export (gpt-6.1-sol)
 - [x] Step 3: extrude, revolve, fillet, chamfer, place (gpt-6.1-sol)
-- [ ] Step 4: holes, enclosure kit, inspect (gpt-6.1-sol)
+- [x] Step 4: holes, enclosure kit, inspect (gpt-6.1-sol)
 - [ ] Step 5: tool descriptions (claude-sonnet-5-5)
 - [ ] Step 6: retire the FreeCAD solid tools (orchestrator)
 
