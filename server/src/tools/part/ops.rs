@@ -28,7 +28,7 @@ fn point(value: &Value, index: usize, revolve: bool) -> Result<DVec3, ToolError>
     })
 }
 
-fn outline(step: &Value, index: usize, revolve: bool) -> Result<Vec<Edge>, ToolError> {
+pub(super) fn outline(step: &Value, index: usize, revolve: bool) -> Result<Vec<Edge>, ToolError> {
     let outline = &step["outline"];
     let failed = |err| ToolError::expected(format!("step {index}: outline failed: {err}"));
     if outline.get("circle").is_some() {

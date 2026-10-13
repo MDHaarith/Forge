@@ -8,6 +8,7 @@ mod holes;
 mod inspect;
 mod kit;
 mod ops;
+mod shapes;
 mod standards;
 
 pub fn tools() -> Vec<Tool> {
@@ -31,36 +32,11 @@ pub fn tools() -> Vec<Tool> {
             "corners":{"type":"array","items":{"type":"number"}}
         }}
     ]});
-    vec![Tool::new(
-        "3d",
-        "part_build",
-        r#"Build exact solids (STEP kernel, not meshes) from an ordered list of steps; writes models/<name>.step, models/<name>.stl (binary) and models/<name>.json (steps, per-body volume, bbox). Lengths are mm, angles degrees, Z up. Choose edges by selector, never by number: "all", "vertical" (straight edges parallel to Z) or {"at_z":z} (edges lying entirely at height z). Steps run in order. A shape step makes a body; id is optional and defaults to s<index> (index counts from 0 over all steps). An operation step names its target body. union/cut/intersect also name a tool body, which is consumed. Every body left at the end is exported. material is optional (used for mass): PLA, PETG, ABS, ASA, Nylon PA12, Polycarbonate, Acrylic, POM (Delrin), Aluminium 6061, Aluminium 7075, Steel, Stainless 304, Brass, Copper, Titanium Ti-6Al-4V or Plywood.
-Ops (at defaults to [0,0,0]):
-- box: size [x,y,z], at; minimum corner at at.
-- cylinder: radius, height, at; axis +Z, base centre at at.
-- sphere: radius, at; centre at at.
-- cone: radius1 (bottom), radius2 (top, may be 0), height, at; axis +Z.
-- extrude: outline, height, at; outline in XY, extruded +Z, then moved by at.
-- revolve: outline, angle (360); outline in XZ (x = radius >= 0), turned about Z from +X towards +Y.
-- union / cut / intersect: target, tool; an empty intersect is allowed (volume 0).
-- fillet: target, radius, edges. chamfer: target, size, edges (equal distance).
-- place: target, rotate [rx,ry,rz] (0,0,0), move [x,y,z] (0,0,0); rotates about X, then Y, then Z through the origin, then moves.
-- hole: target, points, size ("M3"), kind, fit ("normal"), depth (omit = through).
-- enclosure: size [x,y,z], wall (2), floor (2), radius (0); open-top box.
-- lid: size [x,y], thickness (2), wall (2), lip (2), gap (0.2), radius (0), at; plate from z=0 to thickness, lip from z=-lip to 0, then moved by at.
-- standoffs: target, points, size ("M3"), height (5), base (0), kind ("insert"); posts on the target, base = z where they start.
-outline: {"circle":[cx,cy,r]} or {"start":[x,y],"segments":[{"line":[x,y]} | {"arc":[x,y],"through":[x,y]}, ...]}; the last point must equal start.
-points: [[x,y],...] or {"grid":[x0,y0,dx,dy,nx,ny]} or {"corners":[length,width,inset]}.
-kind: "clearance", "tap", "counterbore", "countersink" or "insert".
-Limits: no sketcher constraints, loft, sweep, shell, threads or drawings (use freecad_drawing for drawings while it exists).
-Example, 80x50x25 enclosure with 2 mm walls, M3 insert standoffs, and a matching lid beside it at x=90 (at z=2 so its lip rests on the bed):
-{"name":"case","steps":[{"op":"enclosure","id":"box","size":[80,50,25],"wall":2,"floor":2},{"op":"standoffs","target":"box","points":{"corners":[80,50,6]},"size":"M3","base":2,"kind":"insert"},{"op":"lid","id":"cover","size":[80,50],"at":[90,0,2]}]}
-Errors: step <index>: unknown op "<op>"; step <index>: no body "<id>"; step <index>: fillet failed (or chamfer failed)."#,
-        json!({"type":"object", "additionalProperties": false, "properties":{
+    let mut schema = json!({"type":"object", "additionalProperties": false, "properties":{
             "name":{"type":"string", "description":"Lowercase letters, digits, - and _ only"},
             "material":{"type":"string", "description":"Optional MATERIALS key, used for mass"},
             "steps":{"type":"array", "description":"Ordered shape and operation steps; each op may use any of the declared step fields", "minItems":1, "items":{"type":"object", "additionalProperties":false, "properties":{
-                "op":{"type":"string", "enum":["box","cylinder","sphere","cone","extrude","revolve","union","cut","intersect","fillet","chamfer","place","hole","enclosure","lid","standoffs"]}, "id":{"type":"string"},
+                "op":{"type":"string", "enum":["box","cylinder","sphere","cone","extrude","revolve","loft","sweep","union","cut","intersect","fillet","chamfer","shell","mirror","pattern","place","hole","enclosure","lid","standoffs"]}, "id":{"type":"string"},
                 "size":{"anyOf":[{"type":"number"},{"type":"string"},{"type":"array","items":{"type":"number"}}], "description":"Array for box and enclosure dimensions (lid: [x,y]); string such as M3 for hole and standoffs; number for chamfer"},
                 "at":{"type":"array", "items":{"type":"number"}, "minItems":3, "maxItems":3},
                 "radius":{"type":"number"}, "radius1":{"type":"number"},
@@ -74,9 +50,71 @@ Errors: step <index>: unknown op "<op>"; step <index>: no body "<id>"; step <ind
                 "thickness":{"type":"number"}, "lip":{"type":"number"}, "gap":{"type":"number"},
                 "base":{"type":"number"}
             }, "required":["op"]}}
-        }, "required":["name","steps"]}),
-        part_build,
-    ), inspect::tool()]
+        }, "required":["name","steps"]});
+    schema["properties"]["steps"]["items"]["properties"]
+        .as_object_mut().unwrap()
+        .extend(json!({
+                "sections":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{
+                    "outline":outline,"z":{"type":"number"}
+                },"required":["outline","z"]}},
+                "ruled":{"type":"boolean"},
+                "path":{"type":"object","additionalProperties":false,"properties":{
+                    "start":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
+                    "segments":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{
+                        "line":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
+                        "arc":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
+                        "through":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3}
+                    }}}
+                },"required":["start","segments"]},
+                "open":{"type":"array","items":{"type":"string","enum":["top","bottom","front","back","left","right"]}},
+                "plane":{"type":"string","enum":["x","y","z"]},
+                "origin":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
+                "keep":{"type":"boolean"},
+                "linear":{"type":"object","additionalProperties":false,"properties":{
+                    "step":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3},
+                    "count":{"type":"integer"}
+                },"required":["step","count"]},
+                "polar":{"type":"object","additionalProperties":false,"properties":{
+                    "count":{"type":"integer"},"angle":{"type":"number"},
+                    "center":{"type":"array","items":{"type":"number"},"minItems":2,"maxItems":2}
+                },"required":["count"]}
+        }).as_object().unwrap().clone());
+    vec![
+        Tool::new(
+            "3d",
+            "part_build",
+            r#"Build exact solids (STEP kernel, not meshes) from an ordered list of steps; writes models/<name>.step, models/<name>.stl (binary) and models/<name>.json (steps, per-body volume, bbox). Lengths are mm, angles degrees, Z up. Choose edges by selector, never by number: "all", "vertical" (straight edges parallel to Z) or {"at_z":z} (edges lying entirely at height z). Steps run in order. A shape step makes a body; id is optional and defaults to s<index> (index counts from 0 over all steps). An operation step names its target body. union/cut/intersect also name a tool body, which is consumed. Every body left at the end is exported. material is optional (used for mass): PLA, PETG, ABS, ASA, Nylon PA12, Polycarbonate, Acrylic, POM (Delrin), Aluminium 6061, Aluminium 7075, Steel, Stainless 304, Brass, Copper, Titanium Ti-6Al-4V or Plywood.
+Ops (at defaults to [0,0,0]):
+- box: size [x,y,z], at; minimum corner at at.
+- cylinder: radius, height, at; axis +Z, base centre at at.
+- sphere: radius, at; centre at at.
+- cone: radius1 (bottom), radius2 (top, may be 0), height, at; axis +Z.
+- extrude: outline, height, at; outline in XY, extruded +Z, then moved by at.
+- revolve: outline, angle (360); outline in XZ (x = radius >= 0), turned about Z from +X towards +Y.
+- loft: sections [{"outline":outline,"z":z},...], ruled (false), at; at least two XY sections with strictly increasing z, then moved by at.
+- sweep: outline in its own XY plane around its origin, path {"start":[x,y,z],"segments":[{"line":[x,y,z]} | {"arc":[x,y,z],"through":[x,y,z]},...]}; profile origin at start, +Z along the starting tangent. Join segments tangentially within 1 degree; join corners with an arc.
+- union / cut / intersect: target, tool; an empty intersect is allowed (volume 0).
+- fillet: target, radius, edges. chamfer: target, size, edges (equal distance).
+- shell: target, thickness measured inward, open (["top"]); sides top, bottom, front (-Y), back (+Y), left (-X), right (+X) select planar faces at the body's bounding-box extremes.
+- mirror: target, plane ("x", "y" or "z", the normal axis), origin ([0,0,0]), keep (true); union the original and mirrored solids, or replace with keep:false.
+- pattern: target, exactly one of linear {"step":[dx,dy,dz],"count":n} or polar {"count":n,"angle":360,"center":[x,y]}; count is an integer from 2 to 100 including the original. Polar copies rotate about Z through center ([0,0]), spaced 360/n degrees for angle 360, otherwise angle/(n-1). Copies are united. Pattern a cutter body, then cut with it.
+- place: target, rotate [rx,ry,rz] (0,0,0), move [x,y,z] (0,0,0); rotates about X, then Y, then Z through the origin, then moves.
+- hole: target, points, size ("M3"), kind, fit ("normal"), depth (omit = through).
+- enclosure: size [x,y,z], wall (2), floor (2), radius (0); open-top box.
+- lid: size [x,y], thickness (2), wall (2), lip (2), gap (0.2), radius (0), at; plate from z=0 to thickness, lip from z=-lip to 0, then moved by at.
+- standoffs: target, points, size ("M3"), height (5), base (0), kind ("insert"); posts on the target, base = z where they start.
+outline: {"circle":[cx,cy,r]} or {"start":[x,y],"segments":[{"line":[x,y]} | {"arc":[x,y],"through":[x,y]}, ...]}; the last point must equal start.
+points: [[x,y],...] or {"grid":[x0,y0,dx,dy,nx,ny]} or {"corners":[length,width,inset]}.
+kind: "clearance", "tap", "counterbore", "countersink" or "insert".
+Limits: no sketcher constraints or threads. Drawings use freecad_drawing while part_drawing is being built.
+Example, 80x50x25 enclosure with 2 mm walls, M3 insert standoffs, and a matching lid beside it at x=90 (at z=2 so its lip rests on the bed):
+{"name":"case","steps":[{"op":"enclosure","id":"box","size":[80,50,25],"wall":2,"floor":2},{"op":"standoffs","target":"box","points":{"corners":[80,50,6]},"size":"M3","base":2,"kind":"insert"},{"op":"lid","id":"cover","size":[80,50],"at":[90,0,2]}]}
+Errors: step <index>: unknown op "<op>"; step <index>: no body "<id>"; step <index>: fillet failed (or chamfer failed)."#,
+            schema,
+            part_build,
+        ),
+        inspect::tool(),
+    ]
 }
 
 fn part_build(input: Value, ctx: ToolContext) -> ToolFuture {
@@ -132,7 +170,9 @@ static KERNEL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Held for the whole time a thread uses OpenCASCADE, including dropping its shapes.
 fn kernel() -> std::sync::MutexGuard<'static, ()> {
-    KERNEL.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    KERNEL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
@@ -171,8 +211,8 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
     for (index, step) in steps.iter().enumerate() {
         let op = input_str(step, "op")?;
         match op {
-            "box" | "cylinder" | "sphere" | "cone" | "extrude" | "revolve" | "enclosure"
-            | "lid" => {
+            "box" | "cylinder" | "sphere" | "cone" | "extrude" | "revolve" | "loft" | "sweep"
+            | "enclosure" | "lid" => {
                 let id = match step.get("id") {
                     Some(_) => input_str(step, "id")?.to_owned(),
                     None => format!("s{index}"),
@@ -219,6 +259,8 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
                         }
                     }
                     "extrude" | "revolve" => ops::profile_solid(step, op, index, at)?,
+                    "loft" => shapes::loft(step, index, at)?,
+                    "sweep" => shapes::sweep(step, index)?,
                     "enclosure" | "lid" => kit::shape(step, op, index, at)?,
                     _ => unreachable!(),
                 };
@@ -262,6 +304,14 @@ fn build(input: Value, ctx: ToolContext) -> Result<ToolResult, ToolError> {
             "fillet" | "chamfer" | "place" => {
                 let target = body_index(&bodies, input_str(step, "target")?, index)?;
                 bodies[target].1 = ops::modify(&bodies[target].1, step, op, index)?;
+            }
+            "shell" | "mirror" | "pattern" => {
+                let target = body_index(&bodies, input_str(step, "target")?, index)?;
+                bodies[target].1 = if op == "shell" {
+                    shapes::shell(&bodies[target].1, step, index)?
+                } else {
+                    shapes::copies(&bodies[target].1, step, op, index)?
+                };
             }
             _ => {
                 return Err(ToolError::expected(format!(

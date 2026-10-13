@@ -338,7 +338,7 @@ the findings and the agent's previous report.
 
 - [x] Step 0: spike (GPT)
 - [x] Step 1: reference tests (Gemini)
-- [ ] Step 2: loft, sweep, shell, mirror, pattern (GPT)
+- [x] Step 2: loft, sweep, shell, mirror, pattern (GPT)
 - [ ] Step 3: threads and sheet metal (GPT)
 - [ ] Step 4: part_inspect interference, centre of mass, overhang (GPT)
 - [ ] Step 5: part_drawing (GPT)

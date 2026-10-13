@@ -54,6 +54,7 @@ server/src/
     cad.rs                                   openscad_render
     part.rs                                  part_build: OCCT solids, booleans and engineering parts → STEP/binary STL/JSON
     part/ops.rs                              outlines, extrude/revolve, edge selectors, fillet/chamfer, place
+    part/shapes.rs                           loft, tangential sweep, inward shell, mirror and linear/polar patterns
     part/kit.rs                              standard holes, grid/corner patterns, rounded enclosure/lid/standoffs
     part/standards.rs                        ISO hole/head/insert tables and material densities
     part/holes.rs                            analytic STEP hole grouping and standard diameter descriptions

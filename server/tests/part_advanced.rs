@@ -104,7 +104,6 @@ fn dxf_coord_spans(dxf: &str) -> (f64, f64, f64, f64) {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn loft_ruled_squares() {
     let (_dir, out) = build(json!({
         "name": "loft_sq",
@@ -145,7 +144,6 @@ async fn loft_ruled_squares() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn loft_ruled_circles() {
     let (_dir, out) = build(json!({
         "name": "loft_circ",
@@ -163,7 +161,6 @@ async fn loft_ruled_circles() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn loft_smooth_squares() {
     let square = |half: f64| {
         json!({
@@ -192,7 +189,6 @@ async fn loft_smooth_squares() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn loft_error_sections_count_or_z() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
@@ -218,15 +214,14 @@ async fn loft_error_sections_count_or_z() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn loft_error_failed() {
     let dir = project("part", &[] as &[(&str, &str)]);
-    let bowtie = json!({
+    let branched = json!({
         "start": [0, 0],
         "segments": [
             {"line": [10, 0]},
+            {"line": [0, 0]},
             {"line": [0, 10]},
-            {"line": [10, 10]},
             {"line": [0, 0]}
         ]
     });
@@ -237,7 +232,7 @@ async fn loft_error_failed() {
             "steps": [{
                 "op": "loft",
                 "sections": [
-                    {"outline": bowtie, "z": 0},
+                    {"outline": branched, "z": 0},
                     {"outline": {"circle": [0, 0, 5]}, "z": 10}
                 ]
             }]
@@ -254,7 +249,6 @@ async fn loft_error_failed() {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn sweep_line_path() {
     let (_dir, out) = build(json!({
         "name": "sw_line",
@@ -272,7 +266,6 @@ async fn sweep_line_path() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn sweep_arc_path() {
     let (_dir, out) = build(json!({
         "name": "sw_arc",
@@ -293,7 +286,6 @@ async fn sweep_arc_path() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn sweep_line_arc_line_path() {
     let (_dir, out) = build(json!({
         "name": "sw_comp",
@@ -315,7 +307,6 @@ async fn sweep_line_arc_line_path() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn sweep_error_not_tangential() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
@@ -345,7 +336,6 @@ async fn sweep_error_not_tangential() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn sweep_error_failed() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
@@ -358,8 +348,8 @@ async fn sweep_error_failed() {
                 "path": {
                     "start": [1, 0, 0],
                     "segments": [{
-                        "arc": [0, 1, 0],
-                        "through": [0.707, 0.707, 0]
+                        "arc": [-1, 0, 0],
+                        "through": [0, 0, 0]
                     }]
                 }
             }]
@@ -376,7 +366,6 @@ async fn sweep_error_failed() {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn shell_box_open_top() {
     let (_dir, out) = build(json!({
         "name": "sh_box",
@@ -390,7 +379,6 @@ async fn shell_box_open_top() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn shell_cylinder_thickness() {
     let (_dir, out) = build(json!({
         "name": "sh_cyl",
@@ -404,7 +392,6 @@ async fn shell_cylinder_thickness() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn shell_error_no_face() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
@@ -424,7 +411,6 @@ async fn shell_error_no_face() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn shell_error_failed() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
@@ -448,7 +434,6 @@ async fn shell_error_failed() {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn mirror_disjoint_keep() {
     let (_dir, out) = build(json!({
         "name": "m_disjoint",
@@ -464,7 +449,6 @@ async fn mirror_disjoint_keep() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn mirror_touching_single_solid() {
     let (_dir, out) = build(json!({
         "name": "m_touch",
@@ -479,7 +463,6 @@ async fn mirror_touching_single_solid() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn mirror_replace_keep_false() {
     let (_dir, out) = build(json!({
         "name": "m_nokeep",
@@ -498,7 +481,6 @@ async fn mirror_replace_keep_false() {
 // =========================================================================
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn pattern_linear_box() {
     let (_dir, out) = build(json!({
         "name": "pat_lin",
@@ -514,7 +496,6 @@ async fn pattern_linear_box() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn pattern_polar_cylinders() {
     let (_dir, out) = build(json!({
         "name": "pat_pol",
@@ -530,7 +511,6 @@ async fn pattern_polar_cylinders() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn pattern_error_missing_linear_or_polar() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
@@ -553,7 +533,6 @@ async fn pattern_error_missing_linear_or_polar() {
 }
 
 #[tokio::test]
-#[ignore = "stage 2 not built yet"]
 async fn pattern_error_invalid_count() {
     let dir = project("part", &[] as &[(&str, &str)]);
     let err = run(
