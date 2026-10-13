@@ -197,7 +197,7 @@ the findings and the agent's previous report.
 - [x] Step 4: outputs: Gerber, drill, pnp, BOM, SVGs, circuit.json, board.json, GLB, STEP (GPT)
 - [x] Step 5: native pcb_drc, delete pcb_export_fab, rf_calc calculators (GPT)
 - [x] Step 6: retire the Node engine and the .tsx format (GPT)
-- [ ] Step 7: release 0.17.0 and finish line (orchestrator)
+- [x] Step 7: release 0.17.0 and finish line (orchestrator)
 
 ### Step 0 brief: spike (send to gpt-6.1-sol)
 

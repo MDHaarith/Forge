@@ -19,8 +19,8 @@ the phases, and keep the external version working until its native replacement p
 | rf_antenna_sim | openEMS | FDTD solver |
 | git_status, git_commit, git_log | git | built-in git library (gitoxide) |
 
-Stage 3 step 6 is complete: PCB builds and DRC are native, and the Node engine is retired.
-Next: stage 3 release checks and v0.17.0.
+Stage 3 is complete (v0.17.0): PCB builds and DRC are native; neither Node nor KiCad is needed.
+Next: renderer (Blender replacement) or USB/connector footprints and a real schematic layout.
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
 pcb_build (including manufacturing exports) and pcb_drc. `pcb_export_fab` is removed because
@@ -40,7 +40,7 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
 **Phase 1, core (~35k lines):** Forge works with nothing else installed.
 - CAD kernel tools: sketch, extrude/revolve, booleans, fillets/chamfers, ISO holes, STEP/STL export,
   mass properties, hole detection, interference and SVG/DXF drawings are native (stage 2 done).
-- Rust PCB engine: netlist, IPC-7351 footprint generator, placement, autorouter, copper pours,
+- [x] Rust PCB engine (stage 3, v0.17.0): netlist, IPC-7351 footprint generator, placement, autorouter, copper pours,
   schematic SVG, 3D board; native DRC; Gerber, drill, pick-and-place, BOM.
   Stage 3 steps 2–3 add strict `.pcb.json` validation, generated footprints, pin/net checks,
   deterministic placement and 2/4-layer routing, keepouts, thermal copper pours and five printed

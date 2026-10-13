@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.0 — 2026-10-13
+
+- Forge's own PCB engine (stage 3): `pcb_build` reads `pcb/<name>.pcb.json` and generates IPC-7351
+  footprints, places, autoroutes (2 or 4 layers), pours copper with thermal reliefs, draws printed
+  antennas and writes Gerber X2, Excellon, pick-and-place, BOM, SVG views, GLB and STEP. `pcb_drc`
+  runs natively. `rf_calc` adds track width, via, fusing, spacing and E-series calculations.
+  Neither Node nor KiCad is needed for circuit boards.
+
 ## 0.16.5 — 2026-10-13
 
 - Retired the Node PCB engine and `.tsx`/`.jsx` board format. `pcb_build` is always available
