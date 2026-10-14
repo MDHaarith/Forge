@@ -47,6 +47,7 @@ pub struct Board {
     pub via_in_pad: bool,
     pub blind_vias: bool,
     pub teardrops: bool,
+    pub beautify: bool,
     pub pairs: Vec<Pair>,
     pub length_groups: Vec<(String, Vec<usize>, f64)>,
     pub fixed_vias: Vec<Via>,
@@ -251,6 +252,7 @@ impl Board {
             via_in_pad: spec.rules.via_in_pad,
             blind_vias: spec.rules.blind_vias,
             teardrops: spec.rules.teardrops,
+            beautify: spec.rules.beautify,
             pairs: vec![],
             length_groups: vec![],
             fixed_vias: vec![],
@@ -1383,14 +1385,25 @@ fn clear(b: &Board, kept: &Routes, add: &Routes) -> bool {
     })))
 }
 
+#[cfg(test)]
 pub fn route(b: &Board) -> Routes {
-    route_with_threads(b, std::thread::available_parallelism().map(usize::from).unwrap_or(1))
+    route_with_stats(b).0
 }
 
+pub(super) fn route_with_stats(b: &Board) -> (Routes, Option<super::beautify::Stats>) {
+    route_with_threads_and_stats(b, std::thread::available_parallelism().map(usize::from).unwrap_or(1))
+}
+
+#[cfg(test)]
 fn route_with_threads(b: &Board, threads: usize) -> Routes {
+    route_with_threads_and_stats(b, threads).0
+}
+
+fn route_with_threads_and_stats(b: &Board, threads: usize) -> (Routes, Option<super::beautify::Stats>) {
     let mut r = if b.pairs.is_empty() { route_ordinary(b, threads) } else { route_pairs(b, threads) };
+    let stats = b.beautify.then(|| super::beautify::finish(b, &mut r));
     if !b.pairs.is_empty() || !b.length_groups.is_empty() || b.teardrops { super::tune::finish(b, &mut r); }
-    r
+    (r, stats)
 }
 
 fn add_via(r: &mut Routes, via: Via) {

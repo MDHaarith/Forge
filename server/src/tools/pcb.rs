@@ -2,6 +2,7 @@ use super::{input_str, paths::project_path, Tool, ToolContext, ToolError, ToolFu
 use serde_json::{json, Value};
 
 mod antenna;
+mod beautify;
 mod drc;
 mod export;
 mod footprint;
@@ -76,7 +77,7 @@ pub struct NativeBuild {
 pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String> {
     let prepared = prepare(json)?;
     let board = route::Board::from_prepared(&prepared)?;
-    let routed = route::route(&board);
+    let (routed, beautified) = route::route_with_stats(&board);
     let errors: Vec<_> = board
         .nets
         .iter()
@@ -172,6 +173,10 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
             board.holes.len()
         ),
     ];
+    if let Some(s) = beautified.filter(|s| s.changed) {
+        lines.push(format!("Beautified: {} -> {} segments, {} via(s) removed, {} corner(s) chamfered.",
+            s.before, s.after, s.vias, s.chamfers));
+    }
     if !pours.is_empty() {
         lines.push(format!(
             "Copper pours: {}",

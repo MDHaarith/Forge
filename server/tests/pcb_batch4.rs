@@ -13,7 +13,9 @@ fn hash(bytes: &[u8]) -> u64 {
 
 #[test]
 fn default_output_matches_0210() {
-    let built = pcb::build(DEFAULT, "default", "pcb/default.pcb.json").unwrap();
+    let mut raw: Value = serde_json::from_str(DEFAULT).unwrap();
+    raw["rules"] = json!({"beautify":false});
+    let built = pcb::build(&raw.to_string(), "default", "pcb/default.pcb.json").unwrap();
     assert_eq!(hash(built.report.as_bytes()), 0x066720c643634129);
     let expected = [0x0be90ca493265f65, 0x7c43710f699dd942, 0x0c6edc93c24ebabc,
         0x2c64d4476bf1c441, 0xdd8f3824d5533598, 0x1d68a797e7a65ee5, 0x172a41aaa2bb9fab,
@@ -29,7 +31,7 @@ fn default_output_matches_0210() {
     }
     assert_eq!(hash(&built.binary_files[0].1), 0xe26fce56bd5843a0);
     let mut explicit: Value = serde_json::from_str(DEFAULT).unwrap();
-    explicit["rules"] = json!({"blind_vias":false,"teardrops":false});
+    explicit["rules"] = json!({"blind_vias":false,"teardrops":false,"beautify":false});
     explicit["diffpairs"] = json!({});
     explicit["length_groups"] = json!({});
     explicit["board"]["er"] = json!(4.5);

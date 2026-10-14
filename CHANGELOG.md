@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.0 — 2026-10-14
+
+- Beautify routed copper by default: normalize overlaps, pull octilinear paths tight, chamfer clear corners, remove redundant vias and centre SMD entries.
+- Preserve connectivity, clearance, differential-pair copper and reference planes before length/skew tuning and teardrops.
+- Add `rules.beautify: false` for the previous raw routing output and report segment, via and corner changes.
+
 ## 0.22.0 — 2026-10-14
 - Add opt-in differential-pair routing with fixed coupled copper, paired layer changes, ordinary-net fallback and skew tuning.
 - Match length groups with clearance-checked meanders and report saved-copper length/skew faults in DRC.

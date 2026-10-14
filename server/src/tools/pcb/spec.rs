@@ -61,6 +61,7 @@ pub struct Rules {
     pub via_in_pad: bool,
     pub blind_vias: bool,
     pub teardrops: bool,
+    pub beautify: bool,
     pub edge: f64,
 }
 impl Default for Rules {
@@ -72,6 +73,7 @@ impl Default for Rules {
             via_in_pad: false,
             blind_vias: false,
             teardrops: false,
+            beautify: true,
             edge: 0.3,
         }
     }

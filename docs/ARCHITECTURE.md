@@ -69,6 +69,7 @@ server/src/
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
     pcb/drc.rs                              saved-copper geometry, 4 mm spatial index, pour/via connectivity and sorted DRC faults/ERC warnings
     pcb/route.rs                            regional tree A*, PathFinder, fixed differential pairs, physical via spans, planes and filled vias-in-pad
+    pcb/beautify.rs                         deterministic octilinear pulling, corner chamfers, via reduction and centred pad entries before tuning
     pcb/impedance.rs                        IPC-2141 single/differential microstrip widths by bounded bisection
     pcb/tune.rs                             shared lengths/coupling metrics, continuous-clearance meanders, skew bumps and teardrops
     pcb/pour.rs                             i_overlay planar copper fills, pad/via thermals, foreign-via antipads and hole contours
@@ -143,8 +144,17 @@ fallback if a pair or the remaining board cannot route, including pins with mult
 Shared metrics measure saved track lengths
 and parallel overlap for reports and DRC. Tuning runs before pours; teardrops run after tuning and
 use the same continuous geometry as DRC. `server/tests/pcb_batch4.rs` checks each feature, validation,
-saved-copper DRC and artifact hashes captured from 0.21.0. Gerber generation metadata stays at
-0.21.0 so an app version bump does not change default output bytes.
+saved-copper DRC and raw artifact hashes captured from 0.21.0; its hash comparison normalizes the
+Gerber package-version metadata.
+`rules.beautify` is a strict boolean, default true. After routing and before tuning, each ordinary net
+normalizes overlaps and collinear chains, pulls clearance-clean octilinear paths tight, chamfers clear
+right/acute corners, removes redundant non-plane vias and centres SMD entries. Pads, vias and junctions
+anchor chains. Fixed antenna copper and all differential-pair nets stay untouched. Each accepted net
+keeps pad connectivity and a 0.2 mm maximum total pad-entry length allowance; via counts cannot grow.
+Four deterministic rounds and 256 pull candidates per chain bound polishing work. Channel centring
+is deferred. `beautify:false` preserves the previous raw route; changed copper adds a build-report
+line with segment counts, removed vias and chamfered corners. `server/tests/pcb_beautify.rs` checks
+quality, independent saved-copper connectivity, DRC, repeatability, planes, pairs and length groups.
 `pcb_export_fab` is removed because native `pcb_build` writes every manufacturing artifact.
 
 Generated rectangular SMD pads use a 25% corner radius, capped at 0.25 mm; drilled rectangles stay

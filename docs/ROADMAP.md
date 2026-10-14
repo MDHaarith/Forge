@@ -25,6 +25,7 @@ Done in v0.19.0: complex-board autorouter (tree growth, rip-up, restarts) and op
 Done in v0.20.0: wired schematics, ERC warnings, rounded pads, 11 more footprints.
 Done in v0.21.0: deterministic 200-part routing, regional searches and inner reference planes.
 Done in v0.22.0: differential pairs, length meanders, impedance widths, blind/buried vias and teardrops.
+Done in v0.23.0: default-on router beautification with octilinear pulling, chamfered corners, fewer vias and centred pad entries.
 Next: PCB batch 5 in plan.md (panelization and fabrication details), then the renderer (Blender replacement).
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
