@@ -25,3 +25,5 @@ bumps the version and commits.
   TC1/TC2, Bode/noise plots, and offline ngspice accuracy fixtures with an optional live replay.
 - [x] Batch 9 (v0.28.0): retire digital logic and the redundant scripted CAD renderer; native gitoxide
   project creation, status, staging, commits and logs, with offline identity/ignore/path regression tests.
+
+- [ ] Batch 10 (v0.29.0): native full-wave antenna FDTD, CPML, lumped port and NF2FF; offline accuracy references and compatible RF artifacts.

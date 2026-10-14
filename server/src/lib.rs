@@ -28,7 +28,6 @@ pub struct Settings {
     pub startup_model: Option<String>,
     pub offline: bool,
     pub blender_program: Option<PathBuf>,
-    pub openems_python: Vec<String>,
 }
 
 impl Settings {
@@ -43,7 +42,6 @@ impl Settings {
             startup_model: None,
             offline: false,
             blender_program: None,
-            openems_python: tools::rf::openems_python(),
         }
     }
 

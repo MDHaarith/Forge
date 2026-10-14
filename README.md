@@ -4,8 +4,8 @@ An AI workshop: one conversation that drives the tools for software, 3D/mechanic
 printed circuit boards and circuits, and records every step in git.
 
 Claude plans the work and calls **tools**; each tool either does the job itself
-(the built-in OpenCASCADE CAD kernel, PCB engine, circuit simulator and gitoxide git engine)
-or wraps a proven open-source program (Blender and openEMS). Every project is a git
+(the built-in OpenCASCADE CAD kernel, PCB engine, circuit simulator, FDTD antenna solver and gitoxide git engine)
+or wraps a proven open-source program (Blender). Every project is a git
 repository, and designs are kept as text so they can be diffed, reviewed and rebuilt.
 
 ## Install on Fedora
@@ -21,8 +21,6 @@ The script:
 
 - installs Rust, Cargo, Node.js, Blender, rsvg-convert (PDF drawings) and KiCad with `dnf`
   (KiCad is a large download; leave it out with `--only "3d"`);
-- with `--with-rf` (or `--only rf` later), installs git for the source checkout and builds the openEMS field solver from source into
-  `~/opt/openEMS` for antenna simulation (about 20 minutes);
 - builds Forge and its built-in PCB engine, and adds a `forge` command, an app-menu launcher, and a systemd user service;
 - creates `~/.config/forge/env` (private, mode 600) for your settings and optional provider keys.
 
@@ -146,7 +144,7 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | | `circuit_simulate`: native SPICE operating-point, DC, transient, AC, noise and temperature analyses | – |
 | | `design_assemble`: boards and enclosure parts in one 3D assembly, with a fit check | – |
 | RF | `rf_calc`: impedance and trace width (microstrip, coplanar, stripline, differential) on fab stackups, antenna matching networks, link budget and range | – |
-| | `rf_antenna_sim`: full-wave simulation of the board's antenna → S11, bandwidth, impedance, efficiency, gain pattern, Touchstone file | openEMS (`--with-rf`) |
+| | `rf_antenna_sim`: full-wave simulation of the board's antenna → S11, bandwidth, impedance, efficiency, gain pattern, Touchstone file | – |
 
 ## Exact CAD and Blender
 
@@ -204,7 +202,7 @@ Boards with Wi-Fi, Bluetooth, Zigbee, LoRa or other radios get an RF workflow:
    and a folded dipole; `pours` on the other layer provide ground. Add `keepouts` that clear
    the radiating arm by 5 mm or more out to the board edge, leaving ground under the feed pad.
 3. **Simulation.** `rf_antenna_sim` meshes the antenna's copper, the substrate and the ground
-   pours for openEMS (an FDTD field solver), excites the feed and reports where it resonates,
+   pours for Forge's built-in FDTD field solver, excites the feed and reports where it resonates,
    its -10 dB bandwidth, input impedance, efficiency and gain, with S11 and pattern plots and a
    Touchstone `.s1p`. It is checked against a half-wave dipole (resonance, ~70 ohm, ~2.1 dBi),
    and warns when ground copper under or within 2 mm of the arm will detune the antenna.
@@ -213,10 +211,9 @@ Boards with Wi-Fi, Bluetooth, Zigbee, LoRa or other radios get an RF workflow:
 5. **Range.** `rf_calc` (calc `link`) estimates range from transmit power, antenna gains and the
    receiver's sensitivity for free space, outdoor and indoor paths.
 
-openEMS is not packaged for Fedora; `scripts/setup-fedora.sh --with-rf` builds it into
-`~/opt/openEMS` (about 20 minutes). Elsewhere, build it per the
-[openEMS install guide](https://docs.openems.de/en/latest/install/requirements.html) and set
-`FORGE_OPENEMS_PYTHON` to its venv's `python3`.
+Antenna simulation runs in Rust with no RF runtime dependencies. The solver uses nonuniform
+Yee cells, eight-cell convolutional absorbing boundaries, a 50 Ω Gaussian feed, and a Huygens
+surface for far-field gain. `fast` and `accurate` select mesh density and energy-decay thresholds.
 
 ## For developers and AI agents
 

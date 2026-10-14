@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.29.0 — 2026-10-14
+
+- Replace the external RF runner with a native full-wave nonuniform Yee FDTD solver, eight-cell CFS-CPML, lossy substrates, copper sheets and via conductors.
+- Keep feed placement, ground-clearance warnings, S11/impedance/bandwidth reports, SVG gain cuts, Touchstone and RF JSON compatible.
+- Add persistent deterministic z-slab workers, checked AVX2/AVX-512 kernels, packed absorbing-boundary histories, streamed Huygens far-field transforms and offline cavity, absorber, transmission-line, load and antenna reference checks.
+- Remove RF Python settings, availability/install hints and Fedora solver downloads.
+
 ## 0.28.0 — 2026-10-14
 
 - Replace the installed git program with gitoxide for project creation, status, staging, commits and logs. Keep ignored files out of commits and use the user's git identity, falling back to Forge.

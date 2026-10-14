@@ -5,6 +5,7 @@ pub mod fit;
 pub mod pcb;
 pub mod rf;
 pub mod rfmath;
+pub mod fdtd;
 pub mod code;
 pub mod exec;
 pub mod launch;
@@ -33,7 +34,6 @@ pub struct ToolContext {
     pub app_dir: PathBuf,
     pub allow_commands: bool,
     pub blender_program: Option<PathBuf>,
-    pub openems_python: Vec<String>,
 }
 
 impl ToolContext {
@@ -43,14 +43,12 @@ impl ToolContext {
             app_dir: paths::lexical_path(&app_dir),
             allow_commands: false,
             blender_program: None,
-            openems_python: rf::openems_python(),
         }
     }
     pub fn from_settings(project_dir: PathBuf, settings: &Settings) -> Self {
         let mut context = Self::new(project_dir, settings.app_dir.clone());
         context.allow_commands = settings.allow_commands;
         context.blender_program = settings.blender_program.clone();
-        context.openems_python = settings.openems_python.clone();
         context
     }
 }
@@ -167,9 +165,6 @@ pub fn is_available(tool: &Tool, settings: &Settings) -> bool {
     if let Some(app) = &tool.app {
         let program = settings.blender_program.as_deref();
         return resolve_app(&script3d::with_override(app, program)).is_some();
-    }
-    if tool.name == "rf_antenna_sim" {
-        return exec::find_program(&settings.openems_python).is_some();
     }
     tool.requires.is_empty() || exec::find_program(&tool.requires).is_some()
 }

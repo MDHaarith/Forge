@@ -1,7 +1,7 @@
-use super::{exec::{clip, find_program, run}, paths::project_path, rfmath::*, script3d::{files, parse_runner_output, valid_name}, Tool, ToolContext, ToolError, ToolFuture, ToolResult};
+use super::{paths::project_path, rfmath::*, script3d::{files, valid_name}, Tool, ToolContext, ToolError, ToolFuture, ToolResult};
 use crate::jsfmt::{locale, number, numeric, precision, round, string, truthy};
 use serde_json::{json, Value};
-use std::{path::PathBuf, time::Instant};
+use std::time::Instant;
 
 pub fn tools() -> Vec<Tool> {
     vec![
@@ -19,11 +19,8 @@ pub fn tools() -> Vec<Tool> {
 Use the trace width it gives in pcb/<name>.pcb.json and keep RF traces short with ground on both sides."#, json!({"type":"object", "additionalProperties": false,"properties":{"calc":{"type":"string","enum":["line","match","link","track_width","via","fusing","spacing","e_series"],"description":"Calculation: RF lines, matching, link budgets or PCB calculators"},"line":{"type":"string","enum":["microstrip","cpwg","stripline","diff_microstrip"],"description":"line: geometry (default microstrip)"},"stackup":{"type":"string","enum":["jlc-2layer-1.6","jlc-4layer-1.6-7628","jlc-4layer-1.6-3313"],"description":"line: fab stackup"},"height_mm":{"type":"number","description":"line: dielectric height to the reference plane (stripline: plane-to-plane)"},"er":{"type":"number","description":"line: relative permittivity of the dielectric"},"copper_mm":{"type":"number","description":"line/track_width/fusing: copper thickness in mm (line default 0.035)"},"width_mm":{"type":"number","description":"line/fusing: trace width in mm"},"target_ohms":{"type":"number","description":"line: impedance to find the width for (differential for diff_microstrip)"},"gap_mm":{"type":"number","description":"line: cpwg gap to side ground, or diff pair spacing"},"frequency_mhz":{"type":"number","description":"Frequency in MHz (line: default 2450)"},"load_re":{"type":"number","description":"match: load resistance in ohm"},"load_im":{"type":"number","description":"match: load reactance in ohm (negative = capacitive)"},"source_ohms":{"type":"number","description":"match: impedance to match to (default 50)"},"tx_dbm":{"type":"number","description":"link: transmit power"},"tx_gain_dbi":{"type":"number","description":"link: transmit antenna gain in dBi (default 0)"},"rx_gain_dbi":{"type":"number","description":"link: receive antenna gain in dBi (default 0)"},"sensitivity_dbm":{"type":"number","description":"link: receiver sensitivity"},"distance_m":{"type":"number","description":"link: distance to evaluate"},"loss_db":{"type":"number","description":"link: extra losses (cables, enclosure)"},"margin_db":{"type":"number","description":"link: fade margin for the range (default 10)"},"environment":{"type":"string","enum":["free_space","outdoor","indoor"],"description":"link: propagation environment (default free_space)"},"path_loss_exponent":{"type":"number","description":"link: overrides environment"},"current_a":{"type":"number","description":"track_width: required current in amperes"},"temp_rise_c":{"type":"number","description":"track_width/via: permitted temperature rise in degrees C"},"layer":{"type":"string","enum":["internal","external","external_coated"],"description":"track_width: internal/external; spacing: internal/external/external_coated"},"drill_mm":{"type":"number","description":"via: finished drill diameter in mm"},"length_mm":{"type":"number","description":"via: barrel length in mm"},"plating_mm":{"type":"number","description":"via: copper plating thickness in mm"},"time_s":{"type":"number","description":"fusing: time to melt in seconds"},"voltage_v":{"type":"number","description":"spacing: DC or AC peak voltage"},"value":{"type":"number","description":"e_series: value to round to a preferred value"},"series":{"type":"string","enum":["E12","E24","E96"],"description":"e_series: preferred-value series, default E24"},"vin_v":{"type":"number","description":"e_series: divider input voltage"},"vout_v":{"type":"number","description":"e_series: desired unloaded output voltage"}},"required":["calc"]}), rf_calc)
         },
         {
-            let mut tool = Tool::new("pcb", "rf_antenna_sim", r#"Simulates a board's antenna with openEMS (a full-wave FDTD field solver), from the board pcb_build made. Reports the resonance, S11 and -10 dB bandwidth, the input impedance at the target frequency, radiation efficiency and peak gain, and writes rf/<board>/<antenna>-s11.svg, <antenna>-pattern.svg (gain in three planes), <antenna>.s1p (Touchstone, for a VNA comparison or a circuit simulator) and <antenna>.json.
+            let tool = Tool::new("pcb", "rf_antenna_sim", r#"Simulates a board's antenna with Forge's built-in full-wave FDTD solver, from the board pcb_build made. Reports the resonance, S11 and -10 dB bandwidth, the input impedance at the target frequency, radiation efficiency and peak gain, and writes rf/<board>/<antenna>-s11.svg, <antenna>-pattern.svg (gain in three planes), <antenna>.s1p (Touchstone, for a VNA comparison or a circuit simulator) and <antenna>.json.
 The board needs ground copper (a pour) under the antenna's feed pad. Use it to check an antenna before ordering boards: fix the length if the resonance is off, then feed the impedance to rf_calc match for the matching network. "fast" takes about a minute, "accurate" several."#, json!({"type":"object", "additionalProperties": false,"properties":{"board":{"type":"string","description":"Name of the board built with pcb_build (reads pcb/<board>.circuit.json)"},"antenna":{"type":"string","description":"Antenna's component name, e.g. ANT1 (needed only when the board has several)"},"frequency_mhz":{"type":"number","description":"Target frequency (default 2450)"},"span_mhz":{"type":"number","description":"Width of the sweep around the target (default 80 % of the target)"},"quality":{"type":"string","enum":["fast","accurate"],"description":"Mesh density (default fast)"},"er":{"type":"number","description":"Substrate permittivity (default 4.5, FR-4)"},"loss_tangent":{"type":"number","description":"Substrate loss tangent (default 0.02, FR-4 at 2.4 GHz)"}},"required":["board"]}), rf_antenna_sim);
-            tool.requires = openems_python();
-            tool.needs = Some("openEMS");
-            tool.install = Some(serde_json::from_value(json!({"url":"scripts/setup-fedora.sh --only rf (builds openEMS from source)"})).unwrap());
             tool
         },
     ]
@@ -210,15 +207,6 @@ fn rf_calc(input: Value, _ctx: ToolContext) -> ToolFuture {
     })
 }
 
-/// Python environments with openEMS, from the Fedora setup script's build or a manual one.
-pub fn openems_python() -> Vec<String> {
-    let mut candidates = Vec::new();
-    if let Some(p) = std::env::var_os("FORGE_OPENEMS_PYTHON").filter(|p| !p.is_empty()) { candidates.push(PathBuf::from(p).to_string_lossy().into_owned()); }
-    candidates.push(crate::env::home_dir().join("opt/openEMS/venv/bin/python3").to_string_lossy().into_owned());
-    candidates.push("/opt/openEMS/venv/bin/python3".into());
-    candidates
-}
-
 fn mhz(f: f64) -> String { format!("{} MHz", r(f / 1e6, 4)) }
 fn pct(x: f64) -> String { format!("{} %", number(round(x * 100.0))) }
 fn ohms(value: &Value) -> String {
@@ -229,7 +217,7 @@ fn ohms(value: &Value) -> String {
 pub fn describe_sim(board: &str, res: &Value, quality: &str) -> String {
     let n = |key| numeric(res.get(key));
     let band = res.get("band").filter(|v| truthy(v));
-    let mut lines = vec![format!("Simulated {} on pcb/{board} with openEMS ({quality} mesh, {} cells, {} s), fed {}; swept {} to {}.", string(res.get("antenna")), locale(n("cells")), number(round(n("seconds"))), string(res.get("port")), mhz(numeric(res["span"].get(0))), mhz(numeric(res["span"].get(1))))];
+    let mut lines = vec![format!("Simulated {} on pcb/{board} with Forge FDTD ({quality} mesh, {} cells, {} s), fed {}; swept {} to {}.", string(res.get("antenna")), locale(n("cells")), number(round(n("seconds"))), string(res.get("port")), mhz(numeric(res["span"].get(0))), mhz(numeric(res["span"].get(1))))];
     if let Some(band) = band {
         let (lo, hi) = (numeric(band.get(0)), numeric(band.get(1)));
         lines.push(format!("  Best match {} dB at {}; S11 below -10 dB from {} to {} ({} MHz{}).", r(n("s11_min_db"), 3), mhz(n("resonance")), mhz(lo), mhz(hi), r((hi - lo) / 1e6, 3), if truthy(&band[2]) { ", runs past the sweep" } else { "" }));
@@ -267,25 +255,25 @@ fn rf_antenna_sim(input: Value, ctx: ToolContext) -> ToolFuture {
         if quality != "fast" && quality != "accurate" { return Err(ToolError::expected("quality must be \"fast\" or \"accurate\"")); }
         let er = opt(input.get("er"), "er", 1.0, 20.0)?.unwrap_or(4.5);
         let tand = opt(input.get("loss_tangent"), "loss_tangent", 0.0, 0.2)?.unwrap_or(0.02);
-        let python = find_program(&ctx.openems_python).ok_or_else(|| ToolError::expected("openEMS is not installed; run scripts/setup-fedora.sh --only rf"))?;
         let out_rel = format!("rf/{board}");
         let out = project_path(&ctx.project_dir, &out_rel)?;
-        // Keep scratch paths inside the project; remove them before returning, as with the TS temp folder.
-        let sim_rel = format!(".forge-openems-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
-        let sim = project_path(&ctx.project_dir, &sim_rel)?;
-        tokio::fs::create_dir(&sim).await?;
-        let args = json!({"circuit":circuit,"out":out,"antenna":antenna,"f0_hz":f0,"span_hz":span,"quality":quality,"er":er,"tand":tand,"threads":0,"sim_dir":project_path(&ctx.project_dir, &format!("{sim_rel}/run"))?});
         let started = Instant::now();
-        let result = async {
-            let res = run(&python, &[ctx.app_dir.join("server/runners/openems_antenna.py").to_string_lossy().into_owned(), serde_json::to_string(&args)?], &ctx.project_dir, if quality == "accurate" { 60 * 60_000 } else { 20 * 60_000 }, &[]).await;
-            let parsed = parse_runner_output(&res)?;
-            if let Some(error) = parsed.error { return Err(ToolError::expected(clip(&error, 4000))); }
-            let mut result = parsed.result.unwrap();
-            result["seconds"] = json!(started.elapsed().as_secs_f64());
-            let files = files(&result["files"]).iter().map(|f| format!("{out_rel}/{f}")).collect();
-            Ok(ToolResult { text: describe_sim(&board, &result, &quality), files })
-        }.await;
-        tokio::fs::remove_dir_all(sim).await?;
-        result
+        // Bound the saved geometry before parsing or allocating the field grid.
+        if tokio::fs::metadata(&circuit).await?.len() > 32*1024*1024 { return Err(ToolError::expected("antenna circuit exceeds 32 MB")); }
+        let bytes = tokio::fs::read(&circuit).await?;
+        if bytes.len() > 32*1024*1024 { return Err(ToolError::expected("antenna circuit exceeds 32 MB")); }
+        let accurate = quality == "accurate";
+        let simulation = tokio::task::spawn_blocking(move || {
+            let circuit: Value = serde_json::from_slice(&bytes).map_err(|e|e.to_string())?;
+            super::fdtd::simulate(&circuit, &antenna, f0, span, er, tand, accurate)
+        }).await.map_err(|e|ToolError::expected(format!("FDTD worker failed: {e}")))?.map_err(ToolError::expected)?;
+        // Resolve every output through the shared project path check before writing anything.
+        let targets = simulation.artifacts.iter().map(|(name,_)|project_path(&ctx.project_dir,&format!("{out_rel}/{name}"))).collect::<Result<Vec<_>,_>>()?;
+        tokio::fs::create_dir_all(&out).await?;
+        for ((_,content),path) in simulation.artifacts.iter().zip(targets) { tokio::fs::write(path,content).await?; }
+        let mut result = simulation.result;
+        result["seconds"] = json!(started.elapsed().as_secs_f64());
+        let files = files(&result["files"]).iter().map(|f| format!("{out_rel}/{f}")).collect();
+        Ok(ToolResult { text: describe_sim(&board, &result, &quality), files })
     })
 }

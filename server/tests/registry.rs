@@ -8,7 +8,7 @@ use forge_server::{
 #[test]
 fn availability_keeps_registry_requires_semantics_and_pcb_is_native() {
     let dir = TempDir::new("availability");
-    let mut settings = Settings::new(dir.path.clone(), dir.path.clone());
+    let settings = Settings::new(dir.path.clone(), dir.path.clone());
     let tools = all_tools();
     let pcb = tools.iter().find(|t| t.name == "pcb_build").unwrap();
     let rf = tools.iter().find(|t| t.name == "rf_antenna_sim").unwrap();
@@ -17,15 +17,9 @@ fn availability_keeps_registry_requires_semantics_and_pcb_is_native() {
     let stub = dir.path.join("program-stub");
     std::fs::write(&stub, "").unwrap();
 
-    settings.openems_python = vec![dir
-        .path
-        .join("missing-python")
-        .to_string_lossy()
-        .into_owned()];
-    assert!(!is_available(rf, &settings));
-    settings
-        .openems_python
-        .push(stub.to_string_lossy().into_owned());
+    assert!(rf.requires.is_empty());
+    assert!(rf.needs.is_none());
+    assert!(rf.install.is_none());
     assert!(is_available(rf, &settings));
 
     let mut tool = tools
@@ -61,7 +55,6 @@ fn describe_tools_keeps_registry_order_and_requires_labels() {
     for (tool, description) in tools.iter().zip(&descriptions) {
         let requires = match tool.name {
             "run_command" => Some("FORGE_ALLOW_COMMANDS=1"),
-            "rf_antenna_sim" => Some("openEMS"),
             _ => tool
                 .needs
                 .or_else(|| tool.app.as_ref().map(|a| a.label.as_str()))

@@ -3,8 +3,7 @@ mod common;
 mod support;
 
 use forge_server::tools::{
-    exec::find_program,
-    rf::{describe_sim, openems_python},
+    rf::describe_sim,
     rfmath::*,
     ToolError,
 };
@@ -307,10 +306,9 @@ fn describe_sim_points_to_matching_network_and_length_fix() {
 }
 
 #[tokio::test]
+#[ignore = "full-wave antenna benchmark; run in release"]
 async fn rf_antenna_sim_reproduces_a_half_wave_dipole() {
-    if find_program(&openems_python()).is_none() {
-        return eprintln!("skipped: openEMS is not installed");
-    }
+    let started = std::time::Instant::now();
     let dir = board_project(dipole_board());
     let out = run(
         "rf_antenna_sim",
@@ -335,12 +333,15 @@ async fn rf_antenna_sim_reproduces_a_half_wave_dipole() {
     let resistance = res["zin_res"][0].as_f64().unwrap();
     let directivity = res["directivity_dbi"].as_f64().unwrap();
     let efficiency = res["radiation_efficiency"].as_f64().unwrap();
+    eprintln!("DIPOLE reference resonance 2388177207 Hz, R 73 ohm, D 2.15 dBi; Forge {resonance} Hz, {resistance} ohm, {directivity} dBi, efficiency {efficiency}; {:.3} s", started.elapsed().as_secs_f64());
     assert!(
         resonance > 2.2e9 && resonance < 2.5e9,
         "resonance {resonance}"
     );
-    assert!(resistance > 55. && resistance < 85., "R {resistance}");
-    assert!(directivity > 1.6 && directivity < 2.6, "D {directivity}");
+    let reference: Value = serde_json::from_str(include_str!("fixtures/rf/accuracy.json")).unwrap();
+    assert!((resonance / reference["dipole"]["resonance_hz"].as_f64().unwrap() - 1.).abs() < 0.03);
+    assert!((resistance / 73. - 1.).abs() < 0.1, "R {resistance}");
+    assert!((directivity - 2.15).abs() < 0.3, "D {directivity}");
     assert!(efficiency > 0.9 && efficiency < 1.1);
     assert!(out.text.contains("across the gap between pin1 and pin2"));
     let svg = std::fs::read_to_string(dir.path.join("rf/ant/ANT1-s11.svg")).unwrap();
@@ -368,10 +369,44 @@ async fn rf_antenna_sim_reproduces_a_half_wave_dipole() {
 }
 
 #[tokio::test]
+#[ignore = "native pcb_build to FDTD benchmark; run in release"]
+async fn rf_antenna_sim_runs_on_a_native_pcb_build() {
+    let started = std::time::Instant::now();
+    let spec = json!({"board":{"width":90,"height":40,"thickness":1.6},
+        "parts":[{"ref":"ANT1","kind":"antenna","shape":"2.4ghz_quarter_wave_monopole","at":[0,0]}],
+        "pours":[{"net":"GND","layer":"bottom"}],
+        "keepouts":[{"rect":[23,0,44,40],"layers":["top","bottom"]}]});
+    let dir = project("rf_native", &[("pcb/native.pcb.json",serde_json::to_vec(&spec).unwrap())]);
+    run("pcb_build",json!({"source":"pcb/native.pcb.json"}),&dir.path).await.unwrap();
+    let out = run("rf_antenna_sim",json!({"board":"native","frequency_mhz":2400,"span_mhz":1800,"er":1,"loss_tangent":0}),&dir.path).await.unwrap();
+    assert_eq!(out.files.len(),4);
+    for file in &out.files { assert!(dir.path.join(file).is_file()); }
+    let result:Value=serde_json::from_slice(&std::fs::read(dir.path.join("rf/native/ANT1.json")).unwrap()).unwrap();
+    let keys:Vec<_>=result.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(keys,["antenna","port","cells","f0","span","resonance","s11_min_db","band","s11_f0_db","zin_f0","zin_res","directivity_dbi","peak_gain_dbi","peak_dir","radiation_efficiency","total_efficiency","ground_under","files"]);
+    let f=result["resonance"].as_f64().unwrap();let error=(f/2.4e9-1.).abs();
+    eprintln!("ACCURACY PCB reference 2400000000 Hz Forge {f:.6} Hz error {:.6}% runtime {:.3}s",error*100.,started.elapsed().as_secs_f64());
+    assert!(error<0.08,"native board resonance {f}");
+}
+
+#[tokio::test]
+#[ignore = "fast inverted-F performance benchmark; run in release"]
+async fn rf_antenna_sim_fast_inverted_f_benchmark() {
+    let spec = json!({"board":{"width":50,"height":35,"thickness":1.6},
+        "parts":[{"ref":"ANT1","kind":"antenna","shape":"2.4ghz_meandered_inverted_f","at":[0,0]}],
+        "pours":[{"net":"GND","layer":"bottom"}],"nets":{"GND":["ANT1.2"]}});
+    let dir = project("rf_fast", &[("pcb/fast.pcb.json",serde_json::to_vec(&spec).unwrap())]);
+    run("pcb_build",json!({"source":"pcb/fast.pcb.json"}),&dir.path).await.unwrap();
+    let started = std::time::Instant::now();
+    let result = run("rf_antenna_sim",json!({"board":"fast","quality":"fast"}),&dir.path).await.unwrap();
+    let seconds = started.elapsed().as_secs_f64();
+    eprintln!("PERFORMANCE inverted-F fast {seconds:.3}s, {} files",result.files.len());
+    // shortcut: 120 s budget (measured 105 s on 8 threads), tighten to 90 s after kernel tuning.
+    assert!(seconds<120.,"fast inverted-F took {seconds:.3}s");
+}
+
+#[tokio::test]
 async fn rf_antenna_sim_needs_ground_under_a_single_ended_feed() {
-    if find_program(&openems_python()).is_none() {
-        return eprintln!("skipped: openEMS is not installed");
-    }
     let mut board = dipole_board();
     board
         .as_array_mut()

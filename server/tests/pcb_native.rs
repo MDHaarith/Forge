@@ -837,21 +837,6 @@ async fn out_555_build_time_and_connection_count() {
 
 #[tokio::test]
 async fn out_circuit_matches_the_rf_reader_for_every_antenna_shape() {
-    use forge_server::tools::exec::{find_program, run as exec};
-    if tokio::task::spawn_blocking(|| find_program(&["python3".into()]))
-        .await
-        .unwrap()
-        .is_none()
-    {
-        eprintln!("skipped: python3 is not installed");
-        return;
-    }
-    let reader = include_str!("../runners/openems_antenna.py")
-        .split("# ---------- mesh ----------")
-        .next()
-        .unwrap()
-        .replace("import numpy as np", "");
-    let check = format!("{reader}\nboard, z, name, copper, barrels, pours, pads, arm = load_board(json.load(open(sys.argv[1])), 'ANT1')\nassert name == 'ANT1' and arm and copper and pours and 'pin1' in pads\nassert set(z) == {{'top', 'bottom', 'inner1', 'inner2'}}\nassert feed_port(z, pads, pours)[2] in ('x', 'y', 'z')\n");
     for shape in [
         "2.4ghz_quarter_wave_monopole",
         "2.4ghz_meandered_monopole",
@@ -864,15 +849,12 @@ async fn out_circuit_matches_the_rf_reader_for_every_antenna_shape() {
         run("pcb_build", json!({"source":"pcb/ant.pcb.json"}), &dir.path)
             .await
             .unwrap();
-        let result = exec(
-            "python3",
-            &["-c".into(), check.clone(), "pcb/ant.circuit.json".into()],
-            &dir.path,
-            30_000,
-            &[],
-        )
-        .await;
-        assert_eq!(result.code, 0, "{shape}: {}", result.stderr);
+        let circuit = serde_json::from_slice(&std::fs::read(dir.path.join("pcb/ant.circuit.json")).unwrap()).unwrap();
+        let model = forge_server::tools::fdtd::geometry::load(&circuit, "ANT1").unwrap();
+        assert_eq!(model.name, "ANT1");
+        assert!(!model.copper.is_empty() && !model.pours.is_empty());
+        assert_eq!(model.layers, [0., 0.2104, 1.6 - 0.2104, 1.6]);
+        assert!(model.feed.axis <= 2);
     }
 }
 

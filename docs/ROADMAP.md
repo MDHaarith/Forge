@@ -2,7 +2,7 @@
 
 ## Goal: Forge stands on its own
 
-Forge must run on a machine with no CAD/EDA apps, Blender, openEMS, git or Node.
+Forge must run on a machine with no CAD/EDA apps, Blender, field-solver apps, git or Node.
 Every capability is built into Forge. Embedded libraries compiled into the binary (for example a CAD kernel
 such as OpenCascade) count as Forge; separately installed programs do not.
 
@@ -14,7 +14,6 @@ the phases, and keep the external version working until its native replacement p
 | Tool | Needs | Native replacement |
 |---|---|---|
 | blender_build | Blender | renderer and mesh modifiers |
-| rf_antenna_sim | openEMS | FDTD solver |
 
 Stage 3 is complete (v0.17.0): PCB builds and DRC are native; neither Node nor KiCad is needed.
 Done in v0.18.0: USB-C, Micro-B, JST-PH and barrel-jack footprints; slots and NPTH; PathFinder autorouter.
@@ -33,10 +32,14 @@ TC1/TC2, Bode/noise plots, and offline ngspice cross-checks with an optional liv
 Done in v0.28.0: gitoxide project creation, status, staging, commits and logs; all project history
 works without an installed git program. Retire the digital logic domain and redundant scripted CAD renderer;
 exact engineering parts use `part_build`.
+Implemented in v0.29.0: native full-wave antenna FDTD with nonuniform Yee cells, lossy dielectric, PEC sheets/vias,
+CPML boundaries, lumped feeds, S parameters and Huygens far fields; no separately installed RF solver.
+Published-reference accuracy checks pass. The 90-second fast meander performance target remains pending
+on the available four-core/eight-thread mobile CPU; keep the performance benchmark strict.
 Next: the renderer (Blender replacement).
 
 Already native: list_files, read_file, write_file, git_status, git_commit, git_log, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
-pcb_build (including manufacturing exports), pcb_import_footprint, pcb_drc and circuit_simulate. `pcb_export_fab` is removed because
+pcb_build (including manufacturing exports), pcb_import_footprint, pcb_drc, circuit_simulate and rf_antenna_sim. `pcb_export_fab` is removed because
 `pcb_build` writes those files.
 
 CAD kernel (`plan.md` stages 1 and 2 done): `part_build` makes exact solids (primitives, extrude,
@@ -64,7 +67,7 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
 
 **Phase 2, common (~30k lines):** drawings (hidden-line views, dimensions, SVG/DXF/PDF), assembly
 joints, FEM (volume mesh + linear-static solver), CAM (2.5D toolpaths + G-code), further SPICE models,
-FDTD antenna solver, animation output, web viewers for FEM results and G-code.
+animation output, web viewers for FEM results and G-code.
 
 **Phase 3, niche:** KiCad file export for exchange, BIM/IFC.
 

@@ -1,0 +1,52 @@
+{
+  "cpml": {
+    "source": "Roden and Gedney, Convolution PML (CPML): An efficient FDTD implementation of the CFS-PML for arbitrary media, Microwave and Optical Technology Letters 27(5), 334-339 (2000), https://doi.org/10.1002/1098-2760(20001205)27:5<334::AID-MOP14>3.0.CO;2-A. Compare the same point pulse against a box with twice each dimension.",
+    "reflection_limit_db": -40
+  },
+  "cavity": {
+    "source": "Balanis, Advanced Engineering Electromagnetics, rectangular PEC cavity TE101: f=c/2 sqrt(a^-2+d^-2).",
+    "a_m": 0.1,
+    "d_m": 0.08,
+    "resonance_hz": 2399510442.524211,
+    "relative_tolerance": 0.005
+  },
+  "line": {
+    "source": "Wheeler/Cohn stripline formulas as implemented by Forge rfmath::stripline. A centred strip whose width is much greater than the ground spacing has two parallel-plate TEM channels in parallel. Compare the numerical TEM impedance scaled to w=100 mm, b=1 mm with rfmath's 0.001 mm copper Wheeler approximation; the finite-width and thickness corrections are below 3 percent.",
+    "width_mm": 100,
+    "ground_spacing_mm": 1,
+    "copper_mm": 0.001,
+    "er": 1,
+    "relative_tolerance": 0.03
+  },
+  "loads": {
+    "source": "Pozar, Microwave Engineering, transmission-line reflection coefficient Gamma=(ZL-Z0)/(ZL+Z0): matched load 0, open +1, short -1.",
+    "matched_magnitude": 0,
+    "open_magnitude": 1,
+    "short_magnitude": 1,
+    "absolute_tolerance": 0.05
+  },
+  "dipole": {
+    "source": "Balanis, Antenna Theory: Analysis and Design, chapter 4, thin half-wave dipole: shortening to about 0.47 lambda, radiation resistance about 73 ohm, maximum directivity 1.64 (2.15 dBi).",
+    "length_m": 0.059,
+    "resonance_hz": 2388177207.79661,
+    "resistance_ohms": 73,
+    "directivity_dbi": 2.15,
+    "frequency_tolerance": 0.03,
+    "resistance_tolerance": 0.1,
+    "directivity_tolerance_db": 0.3
+  },
+  "patch": {
+    "source": "Balanis, Antenna Theory, rectangular microstrip transmission-line model, W=c/(2f) sqrt(2/(er+1)), effective er and 0.412h fringing extension. openEMS Simple Patch Antenna tutorial uses the same probe-fed rectangular-patch resonance and broadside pattern: https://docs.openems.de/en/latest/octave/Tutorials/Simple_Patch_Antenna.html; the tutorial describes a nominal 2.4 GHz patch with er=3.38, h=1.524 mm, resonant length 32 mm and width 40 mm, rather than this FR-4 design. The secondary check is against that nominal frequency and broadside behaviour, not a digitized FR-4 trace.",
+    "frequency_hz": 2450000000,
+    "tutorial_nominal_hz": 2400000000,
+    "tutorial_broadside_max_theta_deg": 15,
+    "er": 4.4,
+    "height_mm": 1.6,
+    "relative_tolerance": 0.03
+  },
+  "pcb": {
+    "source": "Forge native antenna geometry from MIT tscircuit/core 0.0.2132, 2.4ghz_quarter_wave_monopole, 31 mm radiating arm; free-space quarter-wave estimate c/(4L)=2.417681 GHz, design frequency 2.4 GHz.",
+    "frequency_hz": 2400000000,
+    "relative_tolerance": 0.08
+  }
+}

@@ -80,14 +80,23 @@ server/src/
     pcb/panel.rs                            stepped manufacturing layers, polygon tab cutouts, mouse-bites, rails, fiducials/tooling, V-score and suffixed PNP
     pcb/svg.rs                              shared SVG escaping/paths, rounded PCB pads and connected grid schematics with orthogonal A*, junctions and power symbols
     pcb/export.rs                           rounded JS JSON, JLCPCB CSVs and shared-kernel STEP/GLB assemblies with exact two-arc slot cuts
-    rf.rs rfmath.rs                          RF and PCB calculators (IPC-2221/B, Onderdonk, E-series); rf_antenna_sim (openEMS)
+    rf.rs rfmath.rs                          RF and PCB calculators (IPC-2221/B, Onderdonk, E-series); native rf_antenna_sim
+    fdtd/mod.rs                             native antenna model orchestration, edge dielectric averaging and PEC rasterization
+    fdtd/geometry.rs                        saved PCB copper/pours/vias, feed placement and ground-clearance rules
+    fdtd/mesh.rs                            thirds-rule mesh lines, ratio-1.4 grading, air box, CPML padding and Courant step
+    fdtd/engine.rs                          f32 nonuniform Yee curls, packed CFS-CPML, checked SIMD kernels, deterministic z-slab workers and energy stop
+    fdtd/port.rs                            implicit lumped resistors, Gaussian drive, time-aligned port DFT and S parameters
+    fdtd/nf2ff.rs                           streamed collocated E/H DFT, harmonic-source normalization, Huygens currents and 5-degree gain/power integration
+    fdtd/output.rs                         compatible RF JSON, escaped S11/polar SVG and Touchstone writers
+    fdtd/tests.rs                          cavity/CPML/TEM/load/patch references and thread determinism checks
     circuit.rs                               native circuit_simulate tool, project-relative .cir input and async artifact writes
     circuit/parse.rs                         bounded case-insensitive SPICE reader, model scopes, nested subcircuit flattening, waveforms and analyses
     circuit/devices.rs                       Shockley/Gummel-Poon/level-1 MOS equations, temperature scaling, analytic derivatives, Meyer caps and noise generators
     circuit/solve.rs                         MNA, shared real/complex pivoted dense LU and adjoint solves, Newton/gmin/source stepping, adaptive trapezoidal/BE transients
     circuit/ac.rs                            complex arithmetic, operating-point linearization, frequency MNA, adjoint noise spectra and power-law noise integration
     circuit/output.rs                        operating-point tables, deterministic CSV, escaped SVG/Bode plots, temperature file suffixes and concise summaries
-server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
+server/runners/*.py        Blender scripts; forge_art.py = visual modelling helpers
+server/tests/fixtures/rf/accuracy.json       published RF references and tolerances
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
   vcs.rs                   native project/git lifecycle with an empty PATH, identity/ignores/path checks and optional git output comparisons
   vcs_sparse.rs            hidden files in full/compact sparse indexes and uninitialized submodule preservation

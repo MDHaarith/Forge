@@ -5,7 +5,6 @@
 #
 #   scripts/setup-fedora.sh                 everything (3D and PCB tools)
 #   scripts/setup-fedora.sh --only "3d"     just some domains: any of 3d, pcb, rf
-#   scripts/setup-fedora.sh --with-rf       also build openEMS for antenna simulation (about 20 min)
 #   scripts/setup-fedora.sh --desktop       also build and install the Forge desktop app (RPM)
 #   scripts/setup-fedora.sh --dry-run       print what would happen, change nothing
 set -euo pipefail
@@ -15,20 +14,18 @@ DRY_RUN=0
 LAUNCHER=1
 DESKTOP=0
 FORCE=0
-WITH_RF=0
 OS_RELEASE="${OS_RELEASE:-/etc/os-release}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
 usage() {
-  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
   echo
-  echo "Options: --only \"3d pcb rf\"  --with-rf  --desktop  --no-launcher  --dry-run  --force (run on a non-Fedora system)"
+  echo "Options: --only \"3d pcb rf\"  --desktop  --no-launcher  --dry-run  --force (run on a non-Fedora system)"
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --only) DOMAINS="${2:?--only needs a list, e.g. \"3d pcb\"}"; shift ;;
-    --with-rf) WITH_RF=1 ;;
     --no-launcher) LAUNCHER=0 ;;
     --desktop) DESKTOP=1 ;;
     --dry-run) DRY_RUN=1 ;;
@@ -39,7 +36,6 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-[ "$WITH_RF" = 1 ] && DOMAINS="$DOMAINS rf"
 for d in $DOMAINS; do
   case "$d" in 3d|pcb|rf) ;; *) echo "unknown domain \"$d\" (use 3d, pcb, rf)" >&2; exit 2 ;; esac
 done
@@ -78,9 +74,6 @@ say "Setting up Forge on ${ID^} ${VERSION_ID} for: $DOMAINS"
 PACKAGES=(rust cargo nodejs nodejs-npm curl xdg-utils cmake gcc-c++)
 want 3d && PACKAGES+=(blender python3-numpy librsvg2-tools flatpak)
 want pcb && PACKAGES+=(kicad)
-# openEMS is not packaged for Fedora; these build it from source (step 3).
-want rf && PACKAGES+=(gcc gcc-c++ cmake git boost-devel tinyxml-devel hdf5-devel CGAL-devel vtk-devel
-  python3-pip python3-setuptools python3-wheel python3-setuptools_scm python3-Cython python3-numpy python3-h5py python3-matplotlib)
 # What building the desktop app (Tauri) needs.
 [ "$DESKTOP" = 1 ] && PACKAGES+=(gcc webkit2gtk4.1-devel openssl-devel librsvg2-devel libxdo-devel)
 
@@ -91,24 +84,7 @@ run $SUDO dnf install -y "${PACKAGES[@]}"
 # Node.js and npm are build tools for the UI, not runtime PCB dependencies.
 NPM="${NPM:-npm}"
 
-# --- 3. openEMS (antenna simulation) -----------------------------------------------
-
-OPENEMS_VERSION=v0.37.0
-OPENEMS="${FORGE_OPENEMS_HOME:-$HOME/opt/openEMS}"
-if want rf; then
-  if [ -x "$OPENEMS/venv/bin/python3" ] && "$OPENEMS/venv/bin/python3" -c "import openEMS" 2>/dev/null; then
-    say "openEMS is already installed in $OPENEMS"
-  else
-    say "Building openEMS $OPENEMS_VERSION into $OPENEMS (per user, about 20 minutes)"
-    SRC="$HOME/.cache/forge/openEMS-Project"
-    if [ ! -d "$SRC/.git" ]; then
-      run git clone --recursive --shallow-submodules --depth 1 --branch "$OPENEMS_VERSION" https://github.com/thliebig/openEMS-Project.git "$SRC"
-    fi
-    run env -C "$SRC" ./update_openEMS.sh "$OPENEMS" --disable-GUI --python --python-venv-mode site
-  fi
-fi
-
-# --- 4. Forge itself -----------------------------------------------------------------
+# --- 3. Forge itself -----------------------------------------------------------------
 
 say "Installing Forge's dependencies and building the interface"
 run "$NPM" --prefix "$REPO" ci --no-audit --no-fund
@@ -122,7 +98,7 @@ if [ "$DESKTOP" = 1 ]; then
   run $SUDO dnf install -y "$REPO/target/release/bundle/rpm/Forge-$VERSION-1.$(uname -m).rpm"
 fi
 
-# --- 5. Settings, service, command and launcher --------------------------------------
+# --- 4. Settings, service, command and launcher --------------------------------------
 
 CONFIG="$HOME/.config/forge"
 ENV_FILE="$CONFIG/env"
@@ -136,7 +112,6 @@ if [ ! -e "$ENV_FILE" ]; then
 # FORGE_HOME=~/Forge          # where projects are stored
 # FORGE_MODEL=claude-opus-5-5
 # FORGE_ALLOW_COMMANDS=1      # let the agent run programs in a project folder
-# FORGE_OPENEMS_PYTHON=~/opt/openEMS/venv/bin/python3   # openEMS for rf_antenna_sim
 # PORT=4317
 EOF
   run chmod 600 "$ENV_FILE"

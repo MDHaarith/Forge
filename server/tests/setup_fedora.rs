@@ -80,8 +80,7 @@ impl Sandbox {
             .env("HOME", &self.home)
             .env("PATH", std::env::join_paths(paths).unwrap())
             .env("OS_RELEASE", self.root.path.join("os-release"))
-            .env("NPM", self.bin.join("npm"))
-            .env("FORGE_OPENEMS_HOME", self.home.join("opt/openEMS"));
+            .env("NPM", self.bin.join("npm"));
         command
     }
 
@@ -168,36 +167,14 @@ fn a_dry_run_lists_the_dnf_packages_per_domain_and_changes_nothing() {
 }
 
 #[test]
-fn with_rf_adds_openems_build_packages_and_builds_it_into_the_home_folder() {
-    let Some(sandbox) = Sandbox::new(FEDORA) else {
-        return;
-    };
-    let stdout = succeeded(&sandbox.setup(&["--dry-run", "--with-rf", "--only", "pcb"]));
+fn rf_uses_the_built_in_solver_without_extra_packages_or_downloads() {
+    let Some(sandbox) = Sandbox::new(FEDORA) else { return; };
+    let stdout = succeeded(&sandbox.setup(&["--dry-run", "--only", "rf"]));
     let packages = dnf_packages(&stdout);
-    for package in [
-        "kicad",
-        "gcc-c++",
-        "cmake",
-        "boost-devel",
-        "hdf5-devel",
-        "CGAL-devel",
-        "vtk-devel",
-        "python3-Cython",
-        "python3-h5py",
-    ] {
-        assert!(packages.contains(&package), "{package}");
-    }
-    assert!(stdout.contains(&format!(
-        "git clone --recursive --shallow-submodules --depth 1 --branch v0.37.0 https://github.com/thliebig/openEMS-Project.git {}/.cache/forge/openEMS-Project",
-        sandbox.home.display()
-    )));
-    assert!(stdout.contains(&format!(
-        "update_openEMS.sh {}/opt/openEMS --disable-GUI --python --python-venv-mode site",
-        sandbox.home.display()
-    )));
-    let normal = succeeded(&sandbox.setup(&["--dry-run"]));
-    assert!(!normal.contains("openEMS") && !normal.contains("vtk-devel"));
-    succeeded(&sandbox.setup(&["--dry-run", "--only", "rf"]));
+    assert!(!packages.contains(&"git") && !packages.contains(&"python3-numpy"));
+    assert!(!stdout.contains("git clone") && !stdout.contains("vtk-devel"));
+    assert!(stdout.contains("cargo build --release -p forge-server"));
+    assert_eq!(sandbox.setup(&["--with-rf"]).status.code(), Some(2));
     assert!(sandbox.calls().is_empty());
 }
 
