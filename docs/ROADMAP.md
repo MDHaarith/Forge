@@ -2,18 +2,17 @@
 
 ## Goal: Forge stands on its own
 
-Forge must run on a machine with no CAD/EDA apps, Blender, field-solver apps, git or Node.
-Every capability is built into Forge. Embedded libraries compiled into the binary (for example a CAD kernel
+Forge must run on a machine with no CAD/EDA apps, field-solver apps, git or Node.
+Every required capability is built into Forge. Embedded libraries compiled into the binary (for example a CAD kernel
 such as OpenCascade) count as Forge; separately installed programs do not.
 
-shortcut: today several tools still call external programs (table below); replace them in the order of
-the phases, and keep the external version working until its native replacement passes the same tests.
+No required tool depends on an outside program.
 
-### What still depends on an outside program
+### Optional tools (not required)
 
-| Tool | Needs | Native replacement |
+| Tool | Uses | Status |
 |---|---|---|
-| blender_build | Blender | renderer and mesh modifiers |
+| blender_build | Blender, when installed | Kept as is; a native renderer is deferred, not planned |
 
 Stage 3 is complete (v0.17.0): PCB builds and DRC are native; neither Node nor KiCad is needed.
 Done in v0.18.0: USB-C, Micro-B, JST-PH and barrel-jack footprints; slots and NPTH; PathFinder autorouter.
@@ -36,7 +35,7 @@ Implemented in v0.29.0: native full-wave antenna FDTD with nonuniform Yee cells,
 CPML boundaries, lumped feeds, S parameters and Huygens far fields; no separately installed RF solver.
 Published-reference accuracy checks pass. The 90-second fast meander performance target remains pending
 (105 s on four cores/eight threads); the benchmark budget is 120 s until the kernels are tuned.
-Next: the renderer (Blender replacement).
+Next: not chosen yet. The renderer (Blender replacement) is deferred.
 
 Already native: list_files, read_file, write_file, git_status, git_commit, git_log, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
 pcb_build (including manufacturing exports), pcb_import_footprint, pcb_drc, circuit_simulate and rf_antenna_sim. `pcb_export_fab` is removed because
@@ -63,13 +62,15 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
   antenna shapes. Step 4 adds PCB/schematic SVGs, GLB/STEP assemblies, circuit JSON, board boxes,
   all Gerber layers, split drills and assembly CSVs. Step 5 adds native DRC, SMD via fanout
   and PCB calculators. Step 6 retires the Node engine; only `.pcb.json` inputs are accepted.
-- Renderer: CPU path tracer (PBR), glTF export, mesh modifiers (subdivide, bevel, array, mirror, solidify).
 
 **Phase 2, common (~30k lines):** drawings (hidden-line views, dimensions, SVG/DXF/PDF), assembly
 joints, FEM (volume mesh + linear-static solver), CAM (2.5D toolpaths + G-code), further SPICE models,
 animation output, web viewers for FEM results and G-code.
 
 **Phase 3, niche:** KiCad file export for exchange, BIM/IFC.
+
+**Deferred (not required):** renderer to replace Blender: CPU path tracer (PBR), glTF export, mesh
+modifiers (subdivide, bevel, array, mirror, solidify). `blender_build` stays as an optional tool.
 
 Target: about 57 tools in total. More than ~60 tools makes the AI pick badly; group features into
 workflow tools instead of one tool per app command. `docs/reference/app-features.md` lists every
