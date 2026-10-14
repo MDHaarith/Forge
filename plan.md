@@ -15,7 +15,7 @@ bumps the version and commits.
 - [x] Batch 4 (v0.22.0): differential pairs, length matching (meanders), impedance-driven widths from a stackup,
   blind/buried vias, teardrops.
 - [x] Batch 4b (v0.23.0): router beautification (octilinear pulling, chamfers, via reduction and clean pad entries).
-- [ ] Batch 5: panelization (rails, tabs, V-score, fiducials), IPC-D-356 netlist, stencil paste
+- [x] Batch 5 (v0.24.0): panelization (rails, tabs, V-score, fiducials), IPC-D-356 netlist, stencil paste
   reduction, fab drawing (stackup + drill table), true slots in the 3D export.
 - [ ] Batch 6: interactive editing in the UI (move parts, lock tracks, router keeps locked copper),
   KiCad `.kicad_mod` footprint import.

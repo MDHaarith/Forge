@@ -6,7 +6,7 @@ fn n(v: f64) -> String {
     fixed_string(v, 6)
 }
 
-fn escape(s: &str) -> String {
+pub(super) fn escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -14,7 +14,7 @@ fn escape(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-fn path(rings: &[pour::Contour]) -> String {
+pub(super) fn path(rings: &[pour::Contour]) -> String {
     rings
         .iter()
         .map(|ring| {

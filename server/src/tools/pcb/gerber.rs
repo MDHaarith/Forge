@@ -1,4 +1,4 @@
-use super::{pour, route, Layer, Pours, PreparedBoard};
+use super::{pour, route, Layer, Pours, PreparedBoard, Rules};
 use crate::jsfmt::fixed_string;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -88,7 +88,38 @@ fn pad(out: &mut String, p: &route::Pad, expansion: f64) {
     region(out, &[ring]);
 }
 
-fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool) -> String {
+fn paste_pads(p: &route::Pad, rules: &Rules) -> Vec<route::Pad> {
+    let size = p.size.map(|v| v - 2. * rules.paste_reduction);
+    // shortcut: omit stencil openings below 0.1 mm, revisit for a finer stencil process.
+    if size.iter().any(|v| *v < 0.1 - 1e-9) { return vec![]; }
+    let mut opening = p.clone();
+    opening.size = size;
+    opening.radius = (p.radius - rules.paste_reduction).max(0.).min(size[0].min(size[1]) / 2.);
+    if !rules.paste_windowpane || p.size[0].min(p.size[1]) < 2. { return vec![opening]; }
+    let count = size.map(|v| (v / 1.5).ceil().max(1.) as usize);
+    let available = [(size[0] - (count[0] - 1) as f64 * 0.3) / count[0] as f64,
+        (size[1] - (count[1] - 1) as f64 * 0.3) / count[1] as f64];
+    let target = (0.6 * p.size[0] * p.size[1] / (count[0] * count[1]) as f64).sqrt();
+    // shortcut: large reductions cap coverage below 60%, add process-limit validation when a minimum paste area is required.
+    let scale = (target / (available[0] * available[1]).sqrt()).min(1.);
+    let window = available.map(|v| v * scale);
+    if window.iter().any(|v| *v < 0.1 - 1e-9) { return vec![]; }
+    let mut windows = vec![];
+    for y in 0..count[1] {
+        for x in 0..count[0] {
+            let mut pad = opening.clone();
+            pad.at = p.point([(x as f64 - (count[0] - 1) as f64 / 2.) * (window[0] + 0.3),
+                (y as f64 - (count[1] - 1) as f64 / 2.) * (window[1] + 0.3)]);
+            pad.size = window;
+            pad.radius = 0.;
+            pad.round = false;
+            windows.push(pad);
+        }
+    }
+    windows
+}
+
+fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool, rules: &Rules) -> String {
     use std::collections::BTreeMap;
     let side = if layer == Layer::Top { "Top" } else { "Bot" };
     let mut out = header(&format!(
@@ -96,6 +127,11 @@ fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool) -> S
         if paste { "Paste" } else { "Soldermask" }
     ));
     let expansion = if paste { 0. } else { 0.05 };
+    let pads: Vec<_> = b.pads.iter()
+        .filter(|p| p.layers & (1 << layer.index()) != 0 && (!paste || p.drill.is_none()))
+        .flat_map(|p| if paste && (rules.paste_reduction > 0. || rules.paste_windowpane) {
+            paste_pads(p, rules)
+        } else { vec![p.clone()] }).collect();
     let mut apertures = BTreeMap::new();
     if !paste {
         apertures.insert(
@@ -103,11 +139,7 @@ fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool) -> S
             0,
         );
     }
-    for p in b
-        .pads
-        .iter()
-        .filter(|p| p.layers & (1 << layer.index()) != 0 && (!paste || p.drill.is_none()))
-        .filter_map(|p| flash(p, expansion))
+    for p in pads.iter().filter_map(|p| flash(p, expansion))
     {
         apertures.insert(p, 0);
     }
@@ -133,10 +165,7 @@ fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool) -> S
         }
     }
     out.push_str("D10*\n");
-    for p in b
-        .pads
-        .iter()
-        .filter(|p| p.layers & (1 << layer.index()) != 0 && (!paste || p.drill.is_none()))
+    for p in &pads
     {
         if let Some(aper) = flash(p, expansion) {
             out.push_str(&format!("D{}*\n", apertures[&aper]));
@@ -186,19 +215,29 @@ fn silk(prepared: &PreparedBoard, layer: Layer) -> String {
 }
 
 fn edge(b: &route::Board) -> String {
-    let mut out = header("Profile,NP");
+    contours("Profile,NP", std::slice::from_ref(&b.outline), true)
+}
+
+pub(super) fn contours(function: &str, contours: &[pour::Contour], closed: bool) -> String {
+    let mut out = header(function);
     out.push_str("%ADD10C,0.05*%\nD10*\n");
-    out.push_str(&coord(b.outline[0], 2));
-    for q in b
-        .outline
-        .iter()
-        .skip(1)
-        .chain(std::iter::once(&b.outline[0]))
-    {
-        out.push_str(&coord(*q, 1));
+    for ring in contours {
+        out.push_str(&coord(ring[0], 2));
+        for q in ring.iter().skip(1) { out.push_str(&coord(*q, 1)); }
+        if closed { out.push_str(&coord(ring[0], 1)); }
     }
     out.push_str("M02*\n");
     out
+}
+
+pub(super) fn fiducials(out: &mut String, points: &[route::Point], diameter: f64) {
+    let id = out.lines().filter_map(|line| line.strip_prefix("%ADD"))
+        .filter_map(|line| line.split(|c: char| !c.is_ascii_digit()).next()?.parse::<usize>().ok())
+        .max().unwrap_or(10) + 1;
+    out.truncate(out.len() - "M02*\n".len());
+    out.push_str(&format!("%ADD{id}C,{}*%\nD{id}*\n", fixed_string(diameter, 6)));
+    for at in points { out.push_str(&coord(*at, 3)); }
+    out.push_str("M02*\n");
 }
 
 /// A round hole, or a slot drilled with its narrow width along its long axis.
@@ -247,7 +286,7 @@ fn drill(b: &route::Board, r: &route::Routes, plated: bool) -> String {
     drill_file(&holes, &format!("{}Plated,1,{},{}", if plated { "" } else { "Non" }, b.layers, if plated { "PTH" } else { "NPTH" }))
 }
 
-fn drill_file(holes: &[DrillHole], function: &str) -> String {
+pub(super) fn drill_file(holes: &[DrillHole], function: &str) -> String {
     use std::collections::BTreeMap;
     let mut tools: BTreeMap<_, usize> = holes
         .iter()
@@ -311,8 +350,8 @@ pub(super) fn files(
     }
     for (prefix, layer) in [("F", Layer::Top), ("B", Layer::Bottom)] {
         for (suffix, text) in [
-            ("Mask", openings(b, r, layer, false)),
-            ("Paste", openings(b, r, layer, true)),
+            ("Mask", openings(b, r, layer, false, &prepared.spec.rules)),
+            ("Paste", openings(b, r, layer, true, &prepared.spec.rules)),
             ("Silkscreen", silk(prepared, layer)),
         ] {
             files.push((format!("fab/{name}/{name}-{prefix}_{suffix}.gbr"), text));
@@ -491,6 +530,52 @@ mod tests {
     use super::*;
 
     #[test]
+    fn windowpane_has_sixty_percent_coverage_and_rotates_with_pad() {
+        let prepared = super::super::prepare(r#"{"board":{"width":20,"height":20},"rules":{"paste_windowpane":true},"parts":[{"ref":"U1","kind":"chip","footprint":"qfn32","at":[0,0],"rotation":37}]}"#).unwrap();
+        let b = route::Board::from_prepared(&prepared).unwrap();
+        let r = route::route(&b);
+        let pad = b.pads.iter().find(|p| p.size[0].min(p.size[1]) >= 2.).unwrap();
+        let windows = paste_pads(pad, &prepared.spec.rules);
+        let count = pad.size.map(|s| (s / 1.5).ceil() as usize);
+        assert_eq!(windows.len(), count[0] * count[1]);
+        let coverage = windows.iter().map(|p| p.size[0] * p.size[1]).sum::<f64>() / (pad.size[0] * pad.size[1]);
+        assert!((0.5..=0.7).contains(&coverage));
+        assert!((coverage - 0.6).abs() < 1e-9);
+        assert_eq!(openings(&b, &r, Layer::Top, true, &prepared.spec.rules).matches("G36*").count(), windows.len());
+        for window in &windows {
+            assert_eq!(window.rotation, pad.rotation);
+            for corner in pour::rect([0.; 2], window.size) {
+                let local = pad.local(window.point(corner));
+                assert!(local.iter().zip(pad.size).all(|(v, size)| v.abs() < size / 2. + 1e-9));
+            }
+        }
+        let local = pad.local(windows[0].at);
+        assert!((local[0] - (windows[0].at[0] - pad.at[0])).abs() > 0.1);
+        let mut two_mm = pad.clone(); two_mm.size = [2.; 2];
+        let windows = paste_pads(&two_mm, &prepared.spec.rules);
+        assert!((windows.iter().map(|p| p.size[0] * p.size[1]).sum::<f64>() / 4. - 0.6).abs() < 1e-9);
+    }
+
+    #[test]
+    fn paste_reduction_shrinks_radius_and_size_without_changing_mask() {
+        let prepared = super::super::prepare(r#"{"board":{"width":20,"height":20},"parts":[{"ref":"R1","kind":"resistor","footprint":"0603","at":[0,0]}]}"#).unwrap();
+        let b = route::Board::from_prepared(&prepared).unwrap();
+        let r = route::route(&b);
+        let mut rules = prepared.spec.rules.clone(); rules.paste_reduction = 0.05;
+        let p = &b.pads[0];
+        let opening = paste_pads(p, &rules).remove(0);
+        for axis in 0..2 { assert!((opening.size[axis] - (p.size[axis] - 0.1)).abs() < 1e-9); }
+        assert!((opening.radius - (p.radius - 0.05)).abs() < 1e-9);
+        let mut out = String::new();
+        let Some(Aperture::RoundRect(args)) = flash(&opening, 0.) else { panic!("missing rounded stencil aperture"); };
+        roundrect_aperture(&mut out, 11, &args);
+        assert!(openings(&b, &r, Layer::Top, true, &rules).contains(&out));
+        assert_eq!(openings(&b, &r, Layer::Top, false, &rules), openings(&b, &r, Layer::Top, false, &prepared.spec.rules));
+        rules.paste_reduction = 10.;
+        assert_eq!(openings(&b, &r, Layer::Top, true, &rules).matches("D03*").count(), 0);
+    }
+
+    #[test]
     fn buried_vias_emit_only_spanned_copper_and_no_outer_mask() {
         let prepared = super::super::prepare(r#"{"board":{"width":20,"height":10,"layers":4},"rules":{"blind_vias":true},"nets":{"N":[]}}"#).unwrap();
         let b = route::Board::from_prepared(&prepared).unwrap();
@@ -498,7 +583,7 @@ mod tests {
             passes: 0, teardrops: vec![], fallback: vec![] };
         for layer in [Layer::Top, Layer::Bottom] {
             assert_eq!(copper(&b, &r, &vec![], layer).matches("D03*").count(), 0);
-            assert_eq!(openings(&b, &r, layer, false).matches("D03*").count(), 0);
+            assert_eq!(openings(&b, &r, layer, false, &prepared.spec.rules).matches("D03*").count(), 0);
         }
         for layer in [Layer::Inner1, Layer::Inner2] {
             assert_eq!(copper(&b, &r, &vec![], layer).matches("D03*").count(), 1);
@@ -551,7 +636,7 @@ mod tests {
         let b = route::Board::from_prepared(&prepared).unwrap();
         let r = route::route(&b);
         for (text, expansion) in [(copper(&b, &r, &vec![], Layer::Top), 0.),
-            (openings(&b, &r, Layer::Top, false), 0.05), (openings(&b, &r, Layer::Top, true), 0.)]
+            (openings(&b, &r, Layer::Top, false, &prepared.spec.rules), 0.05), (openings(&b, &r, Layer::Top, true, &prepared.spec.rules), 0.)]
         {
             assert_eq!(text.matches("%AMRoundRect*").count(), 1);
             assert_eq!(text.matches("D03*").count(), 2);

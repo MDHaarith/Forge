@@ -832,7 +832,7 @@ async fn out_555_build_time_and_connection_count() {
         "{}",
         out.text
     );
-    assert_eq!(out.files.len(), 19);
+    assert_eq!(out.files.len(), 21);
 }
 
 #[tokio::test]

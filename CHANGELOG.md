@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.24.0 — 2026-10-14
+
+- Always export a metric IPC-D-356A test netlist and an A4 fabrication SVG with drill symbols/counts, stackup, dimensions and manufacturing notes.
+- Add opt-in stencil paste reduction and 60% windowpane openings for large SMD pads; keep copper and mask geometry unchanged.
+- Cut true stadium slots with exact circular ends in STEP and GLB instead of bounding cylinders.
+- Add rectangular panels with stepped Gerbers/drills, routed tab bridges and mouse-bites or full-panel V-score lines, x/y/both rails, fiducials and tooling holes.
+- Export panel pick-and-place with copy-suffixed designators; retain per-board BOM and legacy artifact hashes. Slot-containing STEP/GLB files change to correct their geometry.
+
 ## 0.23.0 — 2026-10-14
 
 - Beautify routed copper by default: normalize overlaps, pull octilinear paths tight, chamfer clear corners, remove redundant vias and centre SMD entries.

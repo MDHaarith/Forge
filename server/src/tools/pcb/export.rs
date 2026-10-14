@@ -87,13 +87,15 @@ pub(super) fn model(
             .chain(gerber::drills(board, r, false))
         {
             let drill = if let Some([p1, p2]) = hole.slot {
-                // shortcut: bounding cylinder for slot in 3D export, upgrade when CAD kernel adds slot primitives
-                let len = (p1[0] - p2[0]).hypot(p1[1] - p2[1]) + hole.tool;
-                Solid::cylinder(len / 2., DVec3::Z * t).translate(DVec3::new(
-                    hole.at[0],
-                    hole.at[1],
-                    -t / 2.,
-                ))
+                let a = DVec3::new(p1[0], p1[1], -t / 2.);
+                let b = DVec3::new(p2[0], p2[1], -t / 2.);
+                let axis = (b - a).normalize() * (hole.tool / 2.);
+                let normal = DVec3::new(-axis.y, axis.x, 0.);
+                let profile = [Edge::line(a - normal, b - normal)?,
+                    Edge::arc_3pts(b - normal, b + axis, b + normal)?,
+                    Edge::line(b + normal, a + normal)?,
+                    Edge::arc_3pts(a + normal, a - axis, a - normal)?];
+                Solid::extrude(&profile, DVec3::Z * t)?
             } else {
                 Solid::cylinder(hole.tool / 2., DVec3::Z * t).translate(DVec3::new(
                     hole.at[0],
@@ -181,6 +183,26 @@ pub(super) fn model(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn usb_c_step_slots_remove_exact_stadium_volume() {
+        let prepared = super::super::prepare(r#"{"board":{"width":30,"height":20},"parts":[{"ref":"J1","kind":"header","footprint":"usb_c_16","at":[0,0],"rotation":37}]}"#).unwrap();
+        let b = route::Board::from_prepared(&prepared).unwrap();
+        let r = route::route(&b);
+        let holes: Vec<_> = gerber::drills(&b, &r, true).into_iter().chain(gerber::drills(&b, &r, false)).collect();
+        assert_eq!(holes.iter().filter(|h| h.slot.is_some()).count(), 4);
+        let removed: f64 = holes.iter().map(|h| {
+            let radius = h.tool / 2.;
+            (std::f64::consts::PI * radius * radius + h.slot.map_or(0., |[a, z]| route::distance(a, z) * h.tool))
+                * prepared.spec.board.thickness
+        }).sum();
+        let (step, _) = model(&prepared, &b, &r).unwrap();
+        let _kernel = super::super::super::part::kernel();
+        let solids = Solid::read_step(&mut step.as_bytes()).unwrap();
+        let actual_removed = 30. * 20. * 1.6 - solids[0].volume();
+        assert!((actual_removed - removed).abs() / removed < 0.02, "{actual_removed} != {removed}");
+        assert!((actual_removed - removed).abs() < 1e-6);
+    }
 
     #[test]
     fn blind_and_buried_bores_stop_at_physical_depths() {

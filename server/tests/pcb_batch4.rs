@@ -16,22 +16,36 @@ fn default_output_matches_0210() {
     let mut raw: Value = serde_json::from_str(DEFAULT).unwrap();
     raw["rules"] = json!({"beautify":false});
     let built = pcb::build(&raw.to_string(), "default", "pcb/default.pcb.json").unwrap();
-    assert_eq!(hash(built.report.as_bytes()), 0x066720c643634129);
+    let old_report = built.report.replace("fab/default/default.ipc, ", "")
+        .replace("fab/default/default-fab.svg, ", "");
+    assert_eq!(hash(old_report.as_bytes()), 0x066720c643634129);
     let expected = [0x0be90ca493265f65, 0x7c43710f699dd942, 0x0c6edc93c24ebabc,
         0x2c64d4476bf1c441, 0xdd8f3824d5533598, 0x1d68a797e7a65ee5, 0x172a41aaa2bb9fab,
         0xb59ec3c696e1ccca, 0xec67f337a1fcd664, 0x91b15a812f886e79, 0x70d01c878bd2caf6,
         0x1928166cfcf60233, 0xd05cb8aac24e76f8, 0xf1cfc38dd324f389, 0xb2305f6aeb00ce3c,
         0x620e758a12ee479d, 0x7eae03a1f0cf9a54, 0xede2bfb9f1f90289, 0x0c7da867792f54b3,
         0x9ac16f19ed320131];
-    assert_eq!(built.files.len(), expected.len());
+    let names = ["pcb/default.circuit.json", "pcb/default.board.json", "fab/default/default-B_Cu.gbr",
+        "fab/default/default-F_Cu.gbr", "fab/default/default-In1_Cu.gbr", "fab/default/default-In2_Cu.gbr",
+        "fab/default/default-F_Mask.gbr", "fab/default/default-F_Paste.gbr", "fab/default/default-F_Silkscreen.gbr",
+        "fab/default/default-B_Mask.gbr", "fab/default/default-B_Paste.gbr", "fab/default/default-B_Silkscreen.gbr",
+        "fab/default/default-Edge_Cuts.gbr", "fab/default/default-PTH.drl", "fab/default/default-NPTH.drl",
+        "pcb/default-pcb.svg", "pcb/default-schematic.svg", "fab/default/default-pnp.csv",
+        "fab/default/default-bom.csv", "pcb/default.step"];
+    assert_eq!(built.files.len(), expected.len() + 2);
+    for name in ["fab/default/default.ipc", "fab/default/default-fab.svg"] {
+        assert!(built.files.iter().any(|(path, _)| path == name));
+    }
     // Gerber headers carry the package version; pin it so the 0.21.0 hashes stay comparable.
     let version = concat!(",pcb,", env!("CARGO_PKG_VERSION"), "*");
-    for ((name, data), hash0210) in built.files.iter().zip(expected) {
+    for (name, hash0210) in names.into_iter().zip(expected) {
+        let data = &built.files.iter().find(|(path, _)| path == name).unwrap().1;
         assert_eq!(hash(data.replace(version, ",pcb,0.21.0*").as_bytes()), hash0210, "{name}");
     }
     assert_eq!(hash(&built.binary_files[0].1), 0xe26fce56bd5843a0);
     let mut explicit: Value = serde_json::from_str(DEFAULT).unwrap();
-    explicit["rules"] = json!({"blind_vias":false,"teardrops":false,"beautify":false});
+    explicit["rules"] = json!({"blind_vias":false,"teardrops":false,"beautify":false,"paste_reduction":0,"paste_windowpane":false});
+    explicit["panel"] = json!(null);
     explicit["diffpairs"] = json!({});
     explicit["length_groups"] = json!({});
     explicit["board"]["er"] = json!(4.5);

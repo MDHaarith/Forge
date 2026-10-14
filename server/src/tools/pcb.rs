@@ -5,9 +5,12 @@ mod antenna;
 mod beautify;
 mod drc;
 mod export;
+mod fab;
 mod footprint;
 mod gerber;
 mod impedance;
+mod ipc356;
+mod panel;
 mod place;
 mod pour;
 mod route;
@@ -19,7 +22,7 @@ pub use footprint::{footprint, Footprint, Pad};
 pub use place::{place, PlacedPart};
 pub use spec::{
     parse, prepare, Board, DiffPair, Hole, Keepout, Kind, Layer, LengthGroup, Net, NetClass, Part, Pin, Pour,
-    PreparedBoard, Rules, Spec, Trace,
+    Panel, PreparedBoard, Rules, Spec, Trace,
 };
 
 pub fn tools() -> Vec<Tool> {
@@ -112,6 +115,7 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
             )
         })
         .collect();
+    let impedance = impedance::report(&prepared.spec)?;
     let mut files = vec![
         (
             format!("pcb/{name}.circuit.json"),
@@ -128,6 +132,11 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         ),
     ];
     files.extend(gerber::files(&prepared, &board, &routed, &pours, name));
+    files.push((format!("fab/{name}/{name}.ipc"), ipc356::netlist(&prepared, &board, &routed, name)));
+    files.push((format!("fab/{name}/{name}-fab.svg"), fab::drawing(&prepared, &board, &routed, name, impedance.as_deref())));
+    if prepared.spec.panel.is_some() {
+        files.extend(panel::files(&prepared, &board, &routed, &pours, name));
+    }
     files.push((
         format!("pcb/{name}-pcb.svg"),
         svg::board(&prepared, &board, &routed, &pours),
@@ -191,19 +200,8 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
     }
     let blind = routed.vias.iter().filter(|v| v.span != (0, board.layers - 1)).count();
     if blind > 0 { lines[2].push_str(&format!(" ({blind} blind/buried)")); }
-    let mut impedances = vec![];
-    for (name, class) in &prepared.spec.netclasses {
-        if let Some(z) = class.impedance {
-            impedances.push((name, format!("{name} {} ohm -> {} mm", n(z), n(impedance::width(&prepared.spec.board, z, None)?))));
-        }
-    }
-    for (name, pair) in &prepared.spec.diffpairs {
-        if let Some(z) = pair.impedance {
-            impedances.push((name, format!("{name} {} ohm differential -> {} mm, gap {} mm", n(z), n(prepared.spec.pair_width(pair)?), n(prepared.spec.pair_gap(pair)))));
-        }
-    }
-    impedances.sort_by(|a, b| a.0.cmp(b.0));
-    if !impedances.is_empty() { lines.push(format!("Impedance: {}", impedances.into_iter().map(|(_, text)| text).collect::<Vec<_>>().join("; "))); }
+    if let Some(impedance) = impedance { lines.push(impedance); }
+    if let Some(panel) = &prepared.spec.panel { lines.push(panel::summary(panel, &prepared)); }
     for pair in &board.pairs {
         if routed.fallback.contains(&pair.name) {
             lines.push(format!("Diffpair {}: routed as separate nets (could not couple)", pair.name));

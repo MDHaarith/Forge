@@ -26,7 +26,9 @@ Done in v0.20.0: wired schematics, ERC warnings, rounded pads, 11 more footprint
 Done in v0.21.0: deterministic 200-part routing, regional searches and inner reference planes.
 Done in v0.22.0: differential pairs, length meanders, impedance widths, blind/buried vias and teardrops.
 Done in v0.23.0: default-on router beautification with octilinear pulling, chamfered corners, fewer vias and centred pad entries.
-Next: PCB batch 5 in plan.md (panelization and fabrication details), then the renderer (Blender replacement).
+Done in v0.24.0: panelization with tabs/mouse-bites or V-score, rails/fiducials/tooling, metric IPC-D-356A,
+reduced/windowpane stencil paste, fabrication drawings and exact 3D slots.
+Next: PCB batch 6 in plan.md (interactive editing and KiCad footprint import), then the renderer (Blender replacement).
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
 pcb_build (including manufacturing exports) and pcb_drc. `pcb_export_fab` is removed because

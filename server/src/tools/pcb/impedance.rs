@@ -11,6 +11,23 @@ fn z0(w: f64, h: f64, er: f64) -> f64 {
     87. / (er + 1.41).sqrt() * (5.98 * h / (0.8 * w + COPPER)).ln()
 }
 
+pub(super) fn report(spec: &super::Spec) -> Result<Option<String>, String> {
+    let n = crate::jsfmt::number;
+    let mut targets = vec![];
+    for (name, class) in &spec.netclasses {
+        if let Some(z) = class.impedance {
+            targets.push((name, format!("{name} {} ohm -> {} mm", n(z), n(width(&spec.board, z, None)?))));
+        }
+    }
+    for (name, pair) in &spec.diffpairs {
+        if let Some(z) = pair.impedance {
+            targets.push((name, format!("{name} {} ohm differential -> {} mm, gap {} mm", n(z), n(spec.pair_width(pair)?), n(spec.pair_gap(pair)))));
+        }
+    }
+    targets.sort_by(|a, b| a.0.cmp(b.0));
+    Ok((!targets.is_empty()).then(|| format!("Impedance: {}", targets.into_iter().map(|(_, text)| text).collect::<Vec<_>>().join("; "))))
+}
+
 pub(super) fn width(board: &Board, target: f64, gap: Option<f64>) -> Result<f64, String> {
     let h = height(board);
     let z = |w| z0(w, h, board.er) * gap.map_or(1., |s| 2. * (1. - 0.48 * (-0.96 * s / h).exp()));

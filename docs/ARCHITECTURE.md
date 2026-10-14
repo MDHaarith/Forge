@@ -70,13 +70,16 @@ server/src/
     pcb/drc.rs                              saved-copper geometry, 4 mm spatial index, pour/via connectivity and sorted DRC faults/ERC warnings
     pcb/route.rs                            regional tree A*, PathFinder, fixed differential pairs, physical via spans, planes and filled vias-in-pad
     pcb/beautify.rs                         deterministic octilinear pulling, corner chamfers, via reduction and centred pad entries before tuning
-    pcb/impedance.rs                        IPC-2141 single/differential microstrip widths by bounded bisection
+    pcb/impedance.rs                        IPC-2141 single/differential microstrip widths and shared report/drawing target text
     pcb/tune.rs                             shared lengths/coupling metrics, continuous-clearance meanders, skew bumps and teardrops
     pcb/pour.rs                             i_overlay planar copper fills, pad/via thermals, foreign-via antipads and hole contours
     pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
-    pcb/gerber.rs                           Gerber X2 layers, explicit clear pour-hole regions, RoundRect flashes and split PTH/NPTH Excellon
-    pcb/svg.rs                              rounded PCB pads and connected grid schematics with orthogonal A*, junctions and power symbols
-    pcb/export.rs                           rounded JS JSON, JLCPCB CSVs and shared-kernel STEP/GLB assemblies
+    pcb/gerber.rs                           Gerber X2 layers, clear pour-hole regions, RoundRect flashes, reduced/windowpane paste, contour/fiducial helpers and split Excellon
+    pcb/ipc356.rs                           fixed-column metric IPC-D-356A netlist, aliases, ordered pad/via test points
+    pcb/fab.rs                              A4 fabrication SVG, dimensions/origin, drill symbols/table, physical stackup and manufacturing notes
+    pcb/panel.rs                            stepped manufacturing layers, polygon tab cutouts, mouse-bites, rails, fiducials/tooling, V-score and suffixed PNP
+    pcb/svg.rs                              shared SVG escaping/paths, rounded PCB pads and connected grid schematics with orthogonal A*, junctions and power symbols
+    pcb/export.rs                           rounded JS JSON, JLCPCB CSVs and shared-kernel STEP/GLB assemblies with exact two-arc slot cuts
     rf.rs rfmath.rs                          RF and PCB calculators (IPC-2221/B, Onderdonk, E-series); rf_antenna_sim (openEMS)
     chip.rs                                  Verilog simulate/synthesize
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
@@ -156,6 +159,32 @@ is deferred. `beautify:false` preserves the previous raw route; changed copper a
 line with segment counts, removed vias and chamfered corners. `server/tests/pcb_beautify.rs` checks
 quality, independent saved-copper connectivity, DRC, repeatability, planes, pairs and length groups.
 `pcb_export_fab` is removed because native `pcb_build` writes every manufacturing artifact.
+
+Batch 5 always appends `fab/<name>/<name>.ipc` after the drill files and adds
+`fab/<name>/<name>-fab.svg`. IPC records use 0.001 mm units, fixed columns, unique NNAME aliases,
+part/pin order followed by route-order vias, physical via spans and mask accessibility.
+The drawing shares the Excellon holes and rounded tool diameters, lists physical copper/dielectric
+thicknesses and impedance report text, and notes filled vias, blind/buried spans and panel separation.
+Slots in STEP/GLB use exact circular ends and straight sides through the board thickness;
+existing slot-containing 3D files necessarily change because the bounding-cylinder geometry is corrected.
+`rules.paste_reduction` (default 0) and `rules.paste_windowpane` (default false) affect only paste:
+shrink each side/radius, omit openings below 0.1 mm, and window large SMD pads with 0.3 mm webs
+and a 60% area target within the reduced opening. Large reductions cap the target at the available
+area; disabled paste fields keep previous paste bytes. Validation retains the existing
+`must be nonnegative` helper wording.
+`panel` is optional: rows/cols 1–20, tabs or V-score, spacing, x/y/both rails, tab count/width,
+mouse-bites, fiducials and tooling. Panels currently require rectangular board outlines; tab
+geometry must leave a tab-width corner margin and fit all tabs. V-score requires zero spacing.
+Tab counts are capped at 64 per edge to bound polygon and mouse-bite work.
+Panel dimensions must fit Gerber 4.6 coordinates; rails must fit enabled fiducials/tooling.
+`fab/<name>-panel/` mirrors every Gerber/drill layer, translating pads, tracks, fixed copper,
+teardrops, pours and drill spans. Polygon differences leave closed routed gaps and tab bridges;
+rail fiducials appear only on outer copper/masks, tooling and mouse-bites only in NPTH.
+V-score adds `<name>-panel-VScore.gbr`; PNP adds `_r<row>c<col>` to each designator,
+with rows ordered from bottom to top. The original BOM remains per board.
+`server/tests/pcb_batch5.rs` checks panel output, compatibility, validation and tool-level writes;
+module tests pin IPC columns, paste coverage, drill totals, stackup sums, tab bridges,
+four-layer translations and analytic STEP slot volume. Batch 4 retains every old artifact hash.
 
 Generated rectangular SMD pads use a 25% corner radius, capped at 0.25 mm; drilled rectangles stay
 sharp. Circuit JSON places `rect_border_radius` immediately after `height` only for positive radii.

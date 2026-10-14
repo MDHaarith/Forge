@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[serde(deny_unknown_fields)]
 pub struct Spec {
     pub board: Board,
+    pub panel: Option<Panel>,
     #[serde(default)]
     pub rules: Rules,
     #[serde(default)]
@@ -62,6 +63,8 @@ pub struct Rules {
     pub blind_vias: bool,
     pub teardrops: bool,
     pub beautify: bool,
+    pub paste_reduction: f64,
+    pub paste_windowpane: bool,
     pub edge: f64,
 }
 impl Default for Rules {
@@ -74,8 +77,107 @@ impl Default for Rules {
             blind_vias: false,
             teardrops: false,
             beautify: true,
+            paste_reduction: 0.,
+            paste_windowpane: false,
             edge: 0.3,
         }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Panel {
+    pub rows: i64,
+    pub cols: i64,
+    pub spacing: Option<f64>,
+    #[serde(default = "rails")]
+    pub rails: f64,
+    #[serde(default = "rail_sides")]
+    pub rail_sides: String,
+    #[serde(default = "separation")]
+    pub separation: String,
+    #[serde(default = "two")]
+    pub tabs: usize,
+    #[serde(default = "tab_width")]
+    pub tab_width: f64,
+    #[serde(default = "enabled")]
+    pub mousebites: bool,
+    #[serde(default = "enabled")]
+    pub fiducials: bool,
+    #[serde(default = "enabled")]
+    pub tooling: bool,
+}
+fn rails() -> f64 { 5. }
+fn rail_sides() -> String { "y".into() }
+fn separation() -> String { "tabs".into() }
+fn tab_width() -> f64 { 3. }
+fn enabled() -> bool { true }
+
+impl Panel {
+    pub fn spacing(&self) -> f64 {
+        self.spacing.unwrap_or(if self.separation == "vscore" { 0. } else { 2. })
+    }
+    pub fn rail_widths(&self) -> [f64; 2] {
+        [if self.rail_sides != "y" { self.rails } else { 0. },
+            if self.rail_sides != "x" { self.rails } else { 0. }]
+    }
+    pub fn size(&self, board: &Board) -> [f64; 2] {
+        let [x0, y0, x1, y1] = board.bounds();
+        let rails = self.rail_widths();
+        [self.cols as f64 * (x1 - x0) + (self.cols - 1) as f64 * self.spacing() + 2. * rails[0],
+            self.rows as f64 * (y1 - y0) + (self.rows - 1) as f64 * self.spacing() + 2. * rails[1]]
+    }
+    fn validate(&self, board: &Board) -> Result<(), String> {
+        if !(1..=20).contains(&self.rows) { return Err("panel.rows must be 1..20".into()); }
+        if !(1..=20).contains(&self.cols) { return Err("panel.cols must be 1..20".into()); }
+        if !matches!(self.separation.as_str(), "tabs" | "vscore") {
+            return Err("panel.separation must be tabs or vscore".into());
+        }
+        if !matches!(self.rail_sides.as_str(), "x" | "y" | "both") {
+            return Err("panel.rail_sides must be x, y or both".into());
+        }
+        nonnegative(self.spacing(), "panel.spacing")?;
+        nonnegative(self.rails, "panel.rails")?;
+        positive(self.tab_width, "panel.tab_width")?;
+        if self.tabs == 0 { return Err("panel.tabs must be positive".into()); }
+        // shortcut: at most 64 tabs per edge, add a geometry work budget before raising this cap.
+        if self.tabs > 64 { return Err("panel.tabs must be at most 64".into()); }
+        if self.separation == "vscore" {
+            let [x0, y0, x1, y1] = board.bounds();
+            let polygon = board.polygon();
+            if polygon.len() != 4 || polygon.iter().any(|p|
+                !((p[0] == x0 || p[0] == x1) && (p[1] == y0 || p[1] == y1)))
+            { return Err("panel: vscore needs a rectangular board".into()); }
+            if self.spacing() != 0. { return Err("panel: vscore needs spacing of 0 mm".into()); }
+        } else if self.spacing() < 1. {
+            return Err("panel: tabs need spacing of at least 1 mm".into());
+        }
+        if self.separation == "tabs" {
+            // shortcut: tabs use rectangular board edges, add arbitrary-edge bridge placement before accepting other outlines.
+            let [x0, y0, x1, y1] = board.bounds();
+            let polygon = board.polygon();
+            if polygon.len() != 4 || polygon.iter().any(|p|
+                !((p[0] == x0 || p[0] == x1) && (p[1] == y0 || p[1] == y1)))
+            { return Err("panel: tabs need a rectangular board".into()); }
+            let [rx, ry] = self.rail_widths();
+            let needed = (self.tabs as f64 + 1.) * 1.5 * self.tab_width;
+            if ((self.cols > 1 || rx > 0.) && y1 - y0 < needed)
+                || ((self.rows > 1 || ry > 0.) && x1 - x0 < needed)
+            { return Err("panel: tabs do not fit board edges".into()); }
+        }
+        if self.rails == 0. && (self.fiducials || self.tooling) {
+            return Err("panel: fiducials and tooling holes need rails".into());
+        }
+        if (self.fiducials || self.tooling) && self.rails < 2. + if self.separation == "tabs" { self.spacing() / 2. } else { 0. } {
+            return Err("panel: rails are too narrow for fiducials and tooling holes".into());
+        }
+        if self.size(board).iter().any(|v| !v.is_finite()) {
+            return Err("panel dimensions must be finite".into());
+        }
+        if self.size(board).iter().any(|v| *v >= 10000.) {
+            return Err("panel dimensions must fit Gerber 4.6 format".into());
+        }
+        Ok(())
     }
 }
 
@@ -307,6 +409,8 @@ impl Spec {
         positive(self.rules.trace, "rules.trace")?;
         nonnegative(self.rules.clearance, "rules.clearance")?;
         nonnegative(self.rules.edge, "rules.edge")?;
+        nonnegative(self.rules.paste_reduction, "rules.paste_reduction")?;
+        if let Some(panel) = &self.panel { panel.validate(&self.board)?; }
         positive(self.rules.via[0], "rules.via diameter")?;
         positive(self.rules.via[1], "rules.via drill")?;
         if self.rules.via[1] >= self.rules.via[0] {
