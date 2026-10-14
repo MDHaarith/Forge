@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.26.0 — 2026-10-14
+
+- Add the native `circuit_simulate` electronics tool for SPICE `.cir` netlists, including nested subcircuits and local models.
+- Support operating points, single-source DC sweeps and adaptive transient analyses with R/C/L, independent and controlled sources, Shockley diodes, Gummel-Poon BJTs and level-1 MOSFETs.
+- Solve modified nodal equations with pivoted dense LU, analytic semiconductor and charge Jacobians, junction limiting, gmin/source stepping and trapezoidal integration with backward Euler at startup and breakpoints.
+- Write deterministic operating-point tables, CSV data and standalone SVG plots. Validate project paths, floating nodes, voltage-source loops and bounded simulation resources.
+- Check analytic accuracy fixtures for passive responses, diode/rectifier current, transistor bias and charge storage, MOS square law/body effect and CMOS switching; include a 200-node debug performance test.
+
 ## 0.25.0 — 2026-10-14
 
 - Edit boards in the Design view: select and drag parts on a 0.1 mm grid, rotate with R, flip with F, and cancel drags with Escape.

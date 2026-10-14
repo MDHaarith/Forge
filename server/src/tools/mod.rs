@@ -1,5 +1,6 @@
 pub mod board;
 pub mod chip;
+pub mod circuit;
 pub mod design;
 pub mod fit;
 pub mod pcb;
@@ -154,6 +155,7 @@ pub fn all_tools() -> Vec<Tool> {
     tools.extend(script3d::tools());
     tools.extend(cad::tools());
     tools.extend(board::tools());
+    tools.extend(circuit::tools());
     tools.extend(rf::tools());
     tools.extend(design::tools());
     tools.extend(pcb::tools());

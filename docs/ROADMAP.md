@@ -29,10 +29,12 @@ Done in v0.23.0: default-on router beautification with octilinear pulling, chamf
 Done in v0.24.0: panelization with tabs/mouse-bites or V-score, rails/fiducials/tooling, metric IPC-D-356A,
 reduced/windowpane stencil paste, fabrication drawings and exact 3D slots.
 Done in v0.25.0: interactive part editing, locked tracks/vias with incremental routing, and native KiCad `.kicad_mod` footprint import.
-Next: PCB batch 7 in plan.md (native circuit simulator), then the renderer (Blender replacement).
+Done in v0.26.0: native SPICE subset with operating points, DC sweeps, adaptive transient analyses,
+R/L/C, diode/BJT/level-1 MOS models, E/G sources, nested subcircuits and analytic reference fixtures.
+Next: the renderer (Blender replacement).
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
-pcb_build (including manufacturing exports), pcb_import_footprint and pcb_drc. `pcb_export_fab` is removed because
+pcb_build (including manufacturing exports), pcb_import_footprint, pcb_drc and circuit_simulate. `pcb_export_fab` is removed because
 `pcb_build` writes those files.
 
 CAD kernel (`plan.md` stages 1 and 2 done): `part_build` makes exact solids (primitives, extrude,
@@ -59,7 +61,7 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
 - Renderer: CPU path tracer (PBR), glTF export, mesh modifiers (subdivide, bevel, array, mirror, solidify).
 
 **Phase 2, common (~30k lines):** drawings (hidden-line views, dimensions, SVG/DXF/PDF), assembly
-joints, FEM (volume mesh + linear-static solver), CAM (2.5D toolpaths + G-code), SPICE simulator,
+joints, FEM (volume mesh + linear-static solver), CAM (2.5D toolpaths + G-code), extended SPICE analyses/models,
 FDTD antenna solver, animation output, web viewers for FEM results and G-code.
 
 **Phase 3, niche (~20k lines):** Verilog simulator and synthesis, KiCad file export for exchange,

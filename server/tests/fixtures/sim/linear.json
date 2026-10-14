@@ -1,0 +1,6 @@
+{
+  "source": "Analytic Kirchhoff nodal equations, exact rational arithmetic. Divider: 10 V, 1k/3k. Bridge: arms 1k/2k, 3k/4k, cross 5k.",
+  "divider_v": 7.5,
+  "bridge_a_v": 6.580645161290323,
+  "bridge_b_v": 5.935483870967742
+}

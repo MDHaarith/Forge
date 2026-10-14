@@ -82,10 +82,17 @@ server/src/
     pcb/svg.rs                              shared SVG escaping/paths, rounded PCB pads and connected grid schematics with orthogonal A*, junctions and power symbols
     pcb/export.rs                           rounded JS JSON, JLCPCB CSVs and shared-kernel STEP/GLB assemblies with exact two-arc slot cuts
     rf.rs rfmath.rs                          RF and PCB calculators (IPC-2221/B, Onderdonk, E-series); rf_antenna_sim (openEMS)
+    circuit.rs                               native circuit_simulate tool, project-relative .cir input and async artifact writes
+    circuit/parse.rs                         bounded case-insensitive SPICE reader, model scopes, nested subcircuit flattening, waveforms and analyses
+    circuit/devices.rs                       Shockley/Gummel-Poon/level-1 MOS equations, analytic current/charge derivatives and junction limiting
+    circuit/solve.rs                         MNA, cached pivoted dense LU, Newton/gmin/source stepping, adaptive trapezoidal/BE transient integration
+    circuit/output.rs                        operating-point tables, deterministic CSV, escaped standalone SVG plots and concise tool summaries
     chip.rs                                  Verilog simulate/synthesize
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
   pcb_batch6.rs            locked-copper geometry/connectivity/DRC, deterministic exports, KiCad parsing and import path/order tests
+  circuit_sim.rs           analytic passive/semiconductor/charge references, parser/errors/path rules, determinism and 200-node debug performance
+  fixtures/sim/*.json      independently derived circuit reference values with source/formula descriptions
 desktop/src/main.rs        Tauri app: binds a free port, runs forge_server::serve in-process
 web/                       UI (TypeScript + Vite + three.js): main.ts app, design.ts PCB/3D view, viewer.ts,
                            markdown.ts (Markdown + KaTeX, sanitized with DOMPurify)
@@ -224,6 +231,49 @@ foreign pins and wire vertices, allows perpendicular crossings without junctions
 same-net branches with junctions. Ground and supply nets use per-pin power symbols; signal nets
 over eight pins or failed/bounded searches use per-pin labels. Search is limited to one million grid
 cells. Unconnected pads carry NC crosses. Both SVG previews remain standalone.
+
+## Native circuit simulation
+
+`circuit_simulate {"source":"sim/<name>.cir"}` reads only through `project_path`, solves in
+`spawn_blocking`, and resolves every output through `project_path` before writing. The one new
+`pcb` domain tool is always available. It writes `sim/<name>/<name>-op.txt`, `-dc.csv`/`-tran.csv`
+and matching standalone SVG plots. CSV contains all user/hierarchical node voltages and V/L/E
+branch currents, positive from the first terminal to the second. Internal parasitic nodes are hidden.
+`.print`/`.plot` selects up to eight SVG traces; CSV retains all columns. Tool text includes one
+summary per analysis and the first 40 operating-point table lines.
+
+The case-insensitive SPICE3 subset treats the first physical line as the title, accepts `*` comments,
+`;` tails, `+` continuations, optional `.end`, `0`/`gnd`, engineering suffixes and trailing units.
+It supports R, C/L with `ic=`, V/I with DC/PULSE/SIN/PWL, D, NPN/PNP Q, level-1 NMOS/PMOS M with
+W/L, E/G, `.model`, and nested `.subckt`/X with scoped models and port mapping. Analyses are `.op`,
+one `.dc source start stop step` and one `.tran tstep tstop [tstart [tmax]] [uic]` per deck.
+`.ic v(node)=value` and `.options reltol abstol vntol gmin itl1 itl4` are supported. Unknown
+directives/parameters fail; external includes and expression/parameter languages are not loaded.
+
+Device currents and charges use analytic terminal derivatives. MNA uses partial-pivot dense LU,
+reusing factors when the matrix is unchanged. Newton checks voltage/current changes and unlimited
+KCL/KVL residuals, limits junction/FET voltages, and retries failed bias points with gmin then source
+stepping. Transient integration uses trapezoidal charge/flux companions, backward Euler at startup
+and after source breakpoints, and charge/flux LTE to accept/reject steps: step doubling for backward
+Euler and third divided differences for trapezoidal integration.
+PULSE/PWL corners, SIN delay, `tstart` and `tstop` are exact integration boundaries.
+
+SPICE choices: zero/omitted PULSE rise/fall times use `tstep`; zero/omitted pulse width/period use
+`tstop`; zero/omitted SIN frequency uses `1/tstop`. Explicit source DC values apply to `.op`/`.dc`,
+while transient bias uses the waveform at zero. Capacitor/inductor `ic=` applies with `uic`;
+without `uic`, `.ic` temporarily clamps the initial bias and releases it for integration.
+Model defaults follow the [ngspice manual](https://ngspice.sourceforge.io/docs/ngspice-46-manual.pdf),
+including the junction-capacitance continuation above FC=0.5. Temperature is fixed at 27 C.
+Floating DC nodes and ideal voltage/inductor loops fail before matrix solving. Limits are 2000
+unknowns, 1 MiB input, 20000 flattened elements, 32 hierarchy levels, 200000 transient attempts and
+two million saved values. Dense LU should become sparse above roughly 500 nodes; streaming and
+an explicit hierarchy stack are the upgrade paths for the other resource limits.
+
+`server/tests/circuit_sim.rs` uses independent analytic fixtures in `server/tests/fixtures/sim/`
+for divider/bridge, RC/RL/RLC, diode Lambert W and breakdown, rectification, Ebers-Moll/Gummel-Poon,
+MOS square law/body effect, CMOS switching and semiconductor charge derivatives. It also checks
+flattening, controlled sources, initial conditions, exact errors, path confinement, deterministic
+artifacts and a 200-node RC ladder with at least 1000 accepted steps under five seconds in debug.
 
 ## HTTP API (all under /api, localhost only)
 

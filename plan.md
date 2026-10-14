@@ -19,4 +19,5 @@ bumps the version and commits.
   reduction, fab drawing (stackup + drill table), true slots in the 3D export.
 - [x] Batch 6 (v0.25.0): interactive editing in the UI (move parts, lock tracks, router keeps locked copper),
   KiCad `.kicad_mod` footprint import.
-- [ ] Batch 7: native circuit simulator (DC operating point, transient; R, L, C, diode, BJT, MOSFET).
+- [x] Batch 7 (v0.26.0): native circuit simulator (DC operating point/sweeps, adaptive transient;
+  R, L, C, diode, BJT, MOSFET, E/G sources and nested subcircuits), analytic accuracy fixtures and deterministic plots.
