@@ -97,7 +97,7 @@ impl Projects {
             .await
             .map_err(|e| e.to_string())?;
         let readme = project_path(&dir, "README.md").map_err(|e| e.to_string())?;
-        tokio::fs::write(readme,format!("# {name}\n\nA Forge project. Designs live here as text: code, models/, pcb/, chip/, fab/.\n")).await.map_err(|e|e.to_string())?;
+        tokio::fs::write(readme,format!("# {name}\n\nA Forge project. Designs live here as text: code, models/, pcb/, sim/, fab/.\n")).await.map_err(|e|e.to_string())?;
         init_repo(&dir).await.map_err(|e| e.to_string())
     }
     /// True while any project's agent is working.

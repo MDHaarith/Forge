@@ -136,19 +136,15 @@ fn a_dry_run_lists_the_dnf_packages_per_domain_and_changes_nothing() {
     let stdout = succeeded(&sandbox.setup(&["--dry-run"]));
     let packages = dnf_packages(&stdout);
     for package in [
-        "git",
         "rust",
         "cargo",
         "nodejs",
         "nodejs-npm",
         "blender",
         "python3-numpy",
-        "openscad",
         "librsvg2-tools",
         "flatpak",
         "kicad",
-        "iverilog",
-        "yosys",
     ] {
         assert!(
             packages.contains(&package),
@@ -158,14 +154,14 @@ fn a_dry_run_lists_the_dnf_packages_per_domain_and_changes_nothing() {
     assert!(!stdout.contains("flatpak install"));
     assert!(stdout.contains("cargo build --release -p forge-server --manifest-path"));
 
-    let chip = succeeded(&sandbox.setup(&["--dry-run", "--only", "chip"]));
-    let packages = dnf_packages(&chip);
+    let pcb = succeeded(&sandbox.setup(&["--dry-run", "--only", "pcb"]));
+    let packages = dnf_packages(&pcb);
     assert!(
-        packages.contains(&"yosys")
+        packages.contains(&"kicad")
             && !packages.contains(&"blender")
-            && !packages.contains(&"kicad")
+            && !packages.contains(&"git")
     );
-    assert!(!chip.contains("flatpak install"));
+    assert!(!pcb.contains("flatpak install"));
     assert_eq!(fs::read_dir(&sandbox.home).unwrap().count(), 0);
     assert!(sandbox.calls().is_empty());
     assert_eq!(sandbox.setup(&["--only", "cnc"]).status.code(), Some(2));
@@ -210,7 +206,7 @@ fn desktop_adds_tauri_packages_builds_and_installs_the_rpm_and_skips_the_browser
     let Some(sandbox) = Sandbox::new(FEDORA) else {
         return;
     };
-    let stdout = succeeded(&sandbox.setup(&["--dry-run", "--desktop", "--only", "chip"]));
+    let stdout = succeeded(&sandbox.setup(&["--dry-run", "--desktop", "--only", "pcb"]));
     let packages = dnf_packages(&stdout);
     for package in [
         "gcc",
@@ -254,14 +250,12 @@ async fn a_real_run_installs_packages_the_service_and_a_working_forge_command() 
     let calls = sandbox.calls();
     let packages = dnf_packages(&calls);
     for package in [
-        "git",
         "rust",
         "cargo",
         "nodejs",
         "nodejs-npm",
         "blender",
         "kicad",
-        "yosys",
     ] {
         assert!(packages.contains(&package), "{package}: {calls}");
     }
@@ -304,7 +298,7 @@ async fn a_real_run_installs_packages_the_service_and_a_working_forge_command() 
 
     // Running setup again keeps the user's settings.
     fs::write(&env_file, "OPENAI_API_KEY=kept\n").unwrap();
-    succeeded(&sandbox.setup(&["--only", "chip"]));
+    succeeded(&sandbox.setup(&["--only", "pcb"]));
     assert_eq!(
         fs::read_to_string(&env_file).unwrap(),
         "OPENAI_API_KEY=kept\n"

@@ -21,16 +21,18 @@ pub fn lexical_path(path: &Path) -> PathBuf {
 }
 
 /// Resolves a project-relative path, refusing anything that escapes the project or enters .git.
-pub fn project_path(project_dir: &Path, relative: &str) -> Result<PathBuf, ToolError> {
+pub fn project_path(project_dir: &Path, relative: impl AsRef<Path>) -> Result<PathBuf, ToolError> {
+    let relative = relative.as_ref();
+    let relative_text = relative.display();
     let root = lexical_path(project_dir);
     let full = lexical_path(&root.join(relative));
     let rel = full
         .strip_prefix(&root)
-        .map_err(|_| ToolError::expected(format!("path \"{relative}\" is outside the project")))?;
+        .map_err(|_| ToolError::expected(format!("path \"{relative_text}\" is outside the project")))?;
     // path.relative().startsWith("..") also refuses names such as "..hidden" in the TS server.
     if rel.to_string_lossy().starts_with("..") {
         return Err(ToolError::expected(format!(
-            "path \"{relative}\" is outside the project"
+            "path \"{relative_text}\" is outside the project"
         )));
     }
     if rel

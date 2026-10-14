@@ -2,8 +2,8 @@
   "name": "forge",
   "private": true,
   "license": "MIT",
-  "version": "0.27.0",
-  "description": "An AI workshop that drives code, 3D, PCB and chip tools from one conversation",
+  "version": "0.28.0",
+  "description": "An AI workshop that drives code, 3D, PCB and circuit tools from one conversation",
   "type": "module",
   "engines": {
     "node": ">=22.18"

@@ -1,12 +1,11 @@
 # Forge
 
 An AI workshop: one conversation that drives the tools for software, 3D/mechanical parts,
-printed circuit boards and chips, and records every step in git.
+printed circuit boards and circuits, and records every step in git.
 
 Claude plans the work and calls **tools**; each tool either does the job itself
-(the built-in OpenCASCADE CAD kernel) or wraps a proven open-source program
-(Blender, KiCad, Icarus Verilog, Yosys); circuit boards are built
-by a PCB engine that ships with Forge. Every project is a git
+(the built-in OpenCASCADE CAD kernel, PCB engine, circuit simulator and gitoxide git engine)
+or wraps a proven open-source program (Blender and openEMS). Every project is a git
 repository, and designs are kept as text so they can be diffed, reviewed and rebuilt.
 
 ## Install on Fedora
@@ -15,14 +14,14 @@ Fedora is Forge's primary platform (Fedora Workstation 42+; relatives such as No
 
 ```sh
 git clone -b forge https://github.com/MDHaarith/GitGUI.git forge && cd forge
-scripts/setup-fedora.sh            # or: --only "3d chip", --dry-run to preview
+scripts/setup-fedora.sh            # or: --only "3d", --dry-run to preview
 ```
 
 The script:
 
-- installs Rust, Cargo, Node.js, git, Blender, OpenSCAD, rsvg-convert (PDF drawings), KiCad, Icarus Verilog and Yosys with `dnf`
-  (KiCad is a large download; leave it out with `--only "3d chip"`);
-- with `--with-rf` (or `--only rf` later), builds the openEMS field solver from source into
+- installs Rust, Cargo, Node.js, Blender, rsvg-convert (PDF drawings) and KiCad with `dnf`
+  (KiCad is a large download; leave it out with `--only "3d"`);
+- with `--with-rf` (or `--only rf` later), installs git for the source checkout and builds the openEMS field solver from source into
   `~/opt/openEMS` for antenna simulation (about 20 minutes);
 - builds Forge and its built-in PCB engine, and adds a `forge` command, an app-menu launcher, and a systemd user service;
 - creates `~/.config/forge/env` (private, mode 600) for your settings and optional provider keys.
@@ -49,8 +48,8 @@ scripts/setup-fedora.sh --desktop    # adds the Rust and WebKitGTK build package
 The desktop app (Tauri, `forge-desktop`, "Forge" in the app menu) opens Forge in its own window
 instead of the browser. It starts a private Forge server on a free local port, so it never clashes
 with the `forge` service, and runs that Rust server in-process until the app exits. It reads the same
-`~/.config/forge/env`. The RPM requires git and WebKitGTK, and recommends Blender, OpenSCAD,
-KiCad, Icarus Verilog and Yosys. The window starts without Node.
+`~/.config/forge/env`. The RPM requires WebKitGTK and recommends Blender and KiCad.
+Project history uses built-in gitoxide; no git program is needed at runtime. The window starts without Node.
 
 To build the RPM yourself: `npm ci && npm run desktop:build` (output in
 `target/release/bundle/rpm/`). `npm run desktop` runs a development build from the repository;
@@ -58,8 +57,8 @@ run `sh scripts/stage-app.sh` once first so Tauri's resource folder exists.
 
 ## Run it anywhere else
 
-Requires the Rust toolchain (Rust and Cargo), Node.js 22.18 or newer for the UI build,
-and git. PCB builds run natively without Node.
+Building Forge requires Rust, Cargo and Node.js 22.18 or newer.
+PCB builds and project history run natively without Node or git.
 
 ```sh
 npm install
@@ -136,20 +135,18 @@ from the agent until that program is on `PATH`, so installing one switches it on
 | Domain | Tools | Needs |
 |---|---|---|
 | Workspace | `list_files`, `read_file`, `write_file` | – |
-| Version control | `git_status`, `git_commit`, `git_log` | git |
+| Version control | `git_status`, `git_commit`, `git_log` | – (built-in gitoxide) |
 | Code | `run_command` | `FORGE_ALLOW_COMMANDS=1` |
 | 3D: engineering | `part_build`: exact solids from Forge's own CAD kernel (OpenCASCADE): shapes, extrude, revolve, loft, sweep, shell, mirror, patterns, threads, sheet metal, booleans, fillet, chamfer, ISO holes, enclosure, lid, standoffs → STEP, STL, JSON | – |
 | | `part_inspect`: size, volume, centre of mass, mass in a material, holes and the screws they fit, print overhangs, interference and clearance with `against` | – |
 | | `part_drawing`: scaled technical views, hidden lines, dimensions, hole table and title block → SVG, top-outline DXF | – |
 | 3D: visual | `blender_build`: models, materials, scenes → GLB/STL/OBJ/.blend, optional Cycles render to PNG | [Blender](https://www.blender.org) 4.0+, native or Flatpak `org.blender.Blender` |
-| 3D: quick | `openscad_render` | [OpenSCAD](https://openscad.org) |
 | PCB | `pcb_build`: native `.pcb.json` board → autorouted PCB, schematic, 3D model, Gerbers, drills, pick-and-place, JLCPCB BOM; `pcb_drc`: saved-copper checks | none |
+| | `pcb_import_footprint`: import KiCad `.kicad_mod` footprints into native board JSON | – |
+| | `circuit_simulate`: native SPICE operating-point, DC, transient, AC, noise and temperature analyses | – |
 | | `design_assemble`: boards and enclosure parts in one 3D assembly, with a fit check | – |
 | RF | `rf_calc`: impedance and trace width (microstrip, coplanar, stripline, differential) on fab stackups, antenna matching networks, link budget and range | – |
 | | `rf_antenna_sim`: full-wave simulation of the board's antenna → S11, bandwidth, impedance, efficiency, gain pattern, Touchstone file | openEMS (`--with-rf`) |
-| | `pcb_drc`, `pcb_export_fab` for KiCad projects (Gerbers + drill for JLCPCB/PCBWay) | [KiCad 8+](https://www.kicad.org) `kicad-cli` |
-| Chip | `chip_simulate` | Icarus Verilog |
-| | `chip_synthesize` | Yosys |
 
 ## Exact CAD and Blender
 

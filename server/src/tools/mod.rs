@@ -1,12 +1,10 @@
 pub mod board;
-pub mod chip;
 pub mod circuit;
 pub mod design;
 pub mod fit;
 pub mod pcb;
 pub mod rf;
 pub mod rfmath;
-pub mod cad;
 pub mod code;
 pub mod exec;
 pub mod launch;
@@ -74,7 +72,7 @@ impl ToolResult {
 
 pub type ToolFuture = Pin<Box<dyn Future<Output = Result<ToolResult, ToolError>> + Send>>;
 
-/// A capability Forge can hand to the agent. Every domain plugin (CAD, PCB, chip, ...)
+/// A capability Forge can hand to the agent. Every domain plugin (CAD, PCB, RF, ...)
 /// is a list of these. Tools that wrap an external program name it in `requires`;
 /// they are hidden from the agent until that program is on PATH.
 #[derive(Clone)]
@@ -153,13 +151,11 @@ pub fn all_tools() -> Vec<Tool> {
     tools.extend(vcs::tools());
     tools.extend(code::tools());
     tools.extend(script3d::tools());
-    tools.extend(cad::tools());
     tools.extend(board::tools());
     tools.extend(circuit::tools());
     tools.extend(rf::tools());
     tools.extend(design::tools());
     tools.extend(pcb::tools());
-    tools.extend(chip::tools());
     tools.extend(part::tools());
     tools
 }

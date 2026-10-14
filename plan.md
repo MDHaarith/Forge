@@ -23,3 +23,5 @@ bumps the version and commits.
   R, L, C, diode, BJT, MOSFET, E/G sources and nested subcircuits), analytic accuracy fixtures and deterministic plots.
 - [x] Batch 8 (v0.27.0): AC small-signal and noise analyses, temperature/model scaling and resistor
   TC1/TC2, Bode/noise plots, and offline ngspice accuracy fixtures with an optional live replay.
+- [x] Batch 9 (v0.28.0): retire digital logic and the redundant scripted CAD renderer; native gitoxide
+  project creation, status, staging, commits and logs, with offline identity/ignore/path regression tests.

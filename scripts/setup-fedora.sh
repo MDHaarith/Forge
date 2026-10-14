@@ -3,14 +3,14 @@
 # and build, and a `forge` command with a desktop launcher that runs Forge as a
 # systemd user service.
 #
-#   scripts/setup-fedora.sh                 everything (3D, PCB, chip tools)
-#   scripts/setup-fedora.sh --only "3d"     just some domains: any of 3d, pcb, chip, rf
+#   scripts/setup-fedora.sh                 everything (3D and PCB tools)
+#   scripts/setup-fedora.sh --only "3d"     just some domains: any of 3d, pcb, rf
 #   scripts/setup-fedora.sh --with-rf       also build openEMS for antenna simulation (about 20 min)
 #   scripts/setup-fedora.sh --desktop       also build and install the Forge desktop app (RPM)
 #   scripts/setup-fedora.sh --dry-run       print what would happen, change nothing
 set -euo pipefail
 
-DOMAINS="3d pcb chip"
+DOMAINS="3d pcb"
 DRY_RUN=0
 LAUNCHER=1
 DESKTOP=0
@@ -22,12 +22,12 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 usage() {
   sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
   echo
-  echo "Options: --only \"3d pcb chip rf\"  --with-rf  --desktop  --no-launcher  --dry-run  --force (run on a non-Fedora system)"
+  echo "Options: --only \"3d pcb rf\"  --with-rf  --desktop  --no-launcher  --dry-run  --force (run on a non-Fedora system)"
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --only) DOMAINS="${2:?--only needs a list, e.g. \"3d chip\"}"; shift ;;
+    --only) DOMAINS="${2:?--only needs a list, e.g. \"3d pcb\"}"; shift ;;
     --with-rf) WITH_RF=1 ;;
     --no-launcher) LAUNCHER=0 ;;
     --desktop) DESKTOP=1 ;;
@@ -41,7 +41,7 @@ done
 
 [ "$WITH_RF" = 1 ] && DOMAINS="$DOMAINS rf"
 for d in $DOMAINS; do
-  case "$d" in 3d|pcb|chip|rf) ;; *) echo "unknown domain \"$d\" (use 3d, pcb, chip, rf)" >&2; exit 2 ;; esac
+  case "$d" in 3d|pcb|rf) ;; *) echo "unknown domain \"$d\" (use 3d, pcb, rf)" >&2; exit 2 ;; esac
 done
 want() { case " $DOMAINS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
@@ -75,10 +75,9 @@ say "Setting up Forge on ${ID^} ${VERSION_ID} for: $DOMAINS"
 
 # --- 2. System packages --------------------------------------------------------------
 
-PACKAGES=(git rust cargo nodejs nodejs-npm curl xdg-utils cmake gcc-c++)
-want 3d && PACKAGES+=(blender python3-numpy openscad librsvg2-tools flatpak)
+PACKAGES=(rust cargo nodejs nodejs-npm curl xdg-utils cmake gcc-c++)
+want 3d && PACKAGES+=(blender python3-numpy librsvg2-tools flatpak)
 want pcb && PACKAGES+=(kicad)
-want chip && PACKAGES+=(iverilog yosys)
 # openEMS is not packaged for Fedora; these build it from source (step 3).
 want rf && PACKAGES+=(gcc gcc-c++ cmake git boost-devel tinyxml-devel hdf5-devel CGAL-devel vtk-devel
   python3-pip python3-setuptools python3-wheel python3-setuptools_scm python3-Cython python3-numpy python3-h5py python3-matplotlib)
@@ -208,12 +207,12 @@ EOF
 [Desktop Entry]
 Type=Application
 Name=Forge
-Comment=AI workshop for code, 3D, PCB and chip design
+Comment=AI workshop for code, 3D and PCB design
 Exec=$HOME/.local/bin/forge
 Icon=forge
 Terminal=false
 Categories=Development;Engineering;
-Keywords=CAD;3D;PCB;FPGA;AI;
+Keywords=CAD;3D;PCB;AI;
 EOF
   fi
 

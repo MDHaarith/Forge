@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.28.0 — 2026-10-14
+
+- Replace the installed git program with gitoxide for project creation, status, staging, commits and logs. Keep ignored files out of commits and use the user's git identity, falling back to Forge.
+- Remove `chip_simulate`, `chip_synthesize` and `openscad_render`; exact engineering parts use `part_build`.
+- Remove their setup packages, desktop dependencies, agent guidance and capability entries. Forge's project history no longer requires git at runtime.
+
 ## 0.27.0 — 2026-10-14
 
 - Add native `.ac dec|oct|lin` small-signal analysis with complex MNA/LU, DC bias reuse, semiconductor junction/diffusion capacitances and level-1 MOS Meyer gate capacitances.

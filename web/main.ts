@@ -32,7 +32,6 @@ const DOMAINS: Record<string, string> = {
   code: "Code",
   "3d": "3D / mechanical",
   pcb: "PCB",
-  chip: "Chip",
 };
 
 const BINARY = new Set(["step", "stp", "iges", "igs", "brep", "blend", "obj", "zip", "vvp", "pdf", "dxf", "kicad_pcb"]);

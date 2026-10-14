@@ -36,7 +36,7 @@ server/src/
   lib.rs                   Settings (all configuration, built once from env) and serve()
   env.rs                   loads ~/.config/forge/env
   http.rs                  every /api route, static UI from dist/, security checks
-  projects.rs              project folders, git init, saved history, busy flag, Claude session id
+  projects.rs              project folders, native git init, saved history, busy flag, Claude session id
   agent.rs                 Forge's own agent loop, system prompt (names only available tools),
                            execute_tool and find_tool (shared with mcp.rs), AgentEvent types
   model.rs, providers.rs   OpenAI-compatible providers, offline demo, provider/model switching
@@ -45,13 +45,12 @@ server/src/
   jsfmt.rs                 JavaScript-style number/JSON formatting (the UI expects it)
   tools/
     mod.rs                 Tool struct, all_tools() registry, availability, describe_tools()
-    paths.rs               project_path(): the only way a tool may turn input into a path
+    paths.rs               project_path(): validates string/native filesystem paths within the project, including non-UTF-8 git names
     exec.rs                run a program: no shell, timeout + kill, 32 MB output cap
     validate.rs            JSON-schema subset used to check tool input (type, enum, anyOf,
                            additionalProperties:false, min/maxItems)
     launch.rs              run an app natively or as a sandboxed Flatpak
-    workspace.rs vcs.rs code.rs              files, git, run_command
-    cad.rs                                   openscad_render
+    workspace.rs vcs.rs code.rs              files, native gitoxide status/commit/log/init, run_command
     part.rs                                  part_build: OCCT solids, booleans and engineering parts → STEP/binary STL/JSON
     part/ops.rs                              outlines, extrude/revolve, edge selectors, fillet/chamfer, place
     part/shapes.rs                           loft, tangential sweep, inward shell, mirror and linear/polar patterns
@@ -88,9 +87,10 @@ server/src/
     circuit/solve.rs                         MNA, shared real/complex pivoted dense LU and adjoint solves, Newton/gmin/source stepping, adaptive trapezoidal/BE transients
     circuit/ac.rs                            complex arithmetic, operating-point linearization, frequency MNA, adjoint noise spectra and power-law noise integration
     circuit/output.rs                        operating-point tables, deterministic CSV, escaped SVG/Bode plots, temperature file suffixes and concise summaries
-    chip.rs                                  Verilog simulate/synthesize
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
+  vcs.rs                   native project/git lifecycle with an empty PATH, identity/ignores/path checks and optional git output comparisons
+  vcs_sparse.rs            hidden files in full/compact sparse indexes and uninitialized submodule preservation
   pcb_batch6.rs            locked-copper geometry/connectivity/DRC, deterministic exports, KiCad parsing and import path/order tests
   circuit_sim.rs           analytic passive/semiconductor/charge references, parser/errors/path rules, determinism and 200-node debug performance
   circuit_ac.rs            frequency grids, complex sources, thermal noise/integrals, temperature options/suffixes, exact errors and tool determinism
@@ -104,6 +104,15 @@ licenses/tscircuit-MIT.txt  licence for the ported printed antenna shapes and ke
 scripts/                   setup-fedora.sh installer, stage-app.sh bundles files for the desktop app
 docs/                      this map, ROADMAP.md, reference/ (engineering CAD, KiCad and Blender feature checklists)
 ```
+
+`vcs.rs` uses gitoxide for repository initialization, short status, staging all changes, commits and
+recent logs. Every operation runs in `spawn_blocking`; file paths pass through `project_path`, and
+staging stores symlink targets without following them. The native directory walk respects ignore
+rules even when status hides untracked files. Compact sparse indexes expand in memory; staging
+keeps hidden tracked files, skip-worktree flags and uninitialized submodule entries. Identity comes from git configuration, with
+`Forge <forge@localhost>` as the fallback. Built-in text conversions remain available; external
+clean filters and hooks are not run. The dependency enables only SHA-1, status and tree editing,
+with default and network features disabled.
 
 `pcb.rs` remains the PCB module root and re-exports the native pure helpers. `pcb_build` validates,
 places, routes and pours `.pcb.json` inputs in `spawn_blocking`. The module root writes the report,

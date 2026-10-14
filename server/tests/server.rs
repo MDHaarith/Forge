@@ -175,7 +175,7 @@ async fn status_lists_every_capability() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect::<Vec<_>>();
-    for n in ["write_file", "git_commit", "part_build", "part_inspect", "part_drawing", "chip_synthesize"] {
+    for n in ["write_file", "git_commit", "part_build", "part_inspect", "part_drawing"] {
         assert!(names.contains(&n), "{n}");
     }
     assert_eq!(
@@ -282,15 +282,11 @@ async fn offline_demo_builds_and_commits_enclosure_end_to_end() {
     .unwrap();
     assert!(!json.contains(".0"));
     assert_eq!(serde_json::from_str::<Value>(&json).unwrap()["bodies"][0]["solids"], 1);
-    let log = forge_server::tools::exec::run(
-        "git",
-        &["log".into(), "-1".into(), "--format=%s".into()],
-        &server.state.projects.dir("rover").unwrap(),
-        5000,
-        &[],
-    )
-    .await;
-    assert_eq!(log.stdout.trim(), "Add demo enclosure");
+    let dir = server.state.projects.dir("rover").unwrap();
+    let message = tokio::task::spawn_blocking(move || {
+        gix::open(dir).unwrap().head_commit().unwrap().message().unwrap().summary().to_string()
+    }).await.unwrap();
+    assert_eq!(message, "Add demo enclosure");
     // A plain folder in the Forge home is not a project.
     std::fs::create_dir(server.state.projects.home.join("scripts")).unwrap();
     assert_eq!(

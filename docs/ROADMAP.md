@@ -2,7 +2,7 @@
 
 ## Goal: Forge stands on its own
 
-Forge must run on a machine with no CAD/EDA apps, Blender, OpenSCAD, openEMS, iverilog, yosys or Node.
+Forge must run on a machine with no CAD/EDA apps, Blender, openEMS, git or Node.
 Every capability is built into Forge. Embedded libraries compiled into the binary (for example a CAD kernel
 such as OpenCascade) count as Forge; separately installed programs do not.
 
@@ -14,10 +14,7 @@ the phases, and keep the external version working until its native replacement p
 | Tool | Needs | Native replacement |
 |---|---|---|
 | blender_build | Blender | renderer and mesh modifiers |
-| openscad_render | OpenSCAD | fold into the CAD kernel, or drop |
-| chip_simulate, chip_synthesize | iverilog, yosys | Verilog simulator and synthesis |
 | rf_antenna_sim | openEMS | FDTD solver |
-| git_status, git_commit, git_log | git | built-in git library (gitoxide) |
 
 Stage 3 is complete (v0.17.0): PCB builds and DRC are native; neither Node nor KiCad is needed.
 Done in v0.18.0: USB-C, Micro-B, JST-PH and barrel-jack footprints; slots and NPTH; PathFinder autorouter.
@@ -33,9 +30,12 @@ Done in v0.26.0: native SPICE subset with operating points, DC sweeps, adaptive 
 R/L/C, diode/BJT/level-1 MOS models, E/G sources, nested subcircuits and analytic reference fixtures.
 Done in v0.27.0: native AC small-signal and noise analyses, temperature/model scaling and resistor
 TC1/TC2, Bode/noise plots, and offline ngspice cross-checks with an optional live fixture replay.
+Done in v0.28.0: gitoxide project creation, status, staging, commits and logs; all project history
+works without an installed git program. Retire the digital logic domain and redundant scripted CAD renderer;
+exact engineering parts use `part_build`.
 Next: the renderer (Blender replacement).
 
-Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
+Already native: list_files, read_file, write_file, git_status, git_commit, git_log, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
 pcb_build (including manufacturing exports), pcb_import_footprint, pcb_drc and circuit_simulate. `pcb_export_fab` is removed because
 `pcb_build` writes those files.
 
@@ -66,8 +66,7 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
 joints, FEM (volume mesh + linear-static solver), CAM (2.5D toolpaths + G-code), further SPICE models,
 FDTD antenna solver, animation output, web viewers for FEM results and G-code.
 
-**Phase 3, niche (~20k lines):** Verilog simulator and synthesis, KiCad file export for exchange,
-OpenSCAD interpreter, BIM/IFC.
+**Phase 3, niche:** KiCad file export for exchange, BIM/IFC.
 
 Target: about 57 tools in total. More than ~60 tools makes the AI pick badly; group features into
 workflow tools instead of one tool per app command. `docs/reference/app-features.md` lists every

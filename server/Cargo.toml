@@ -1,6 +1,6 @@
 [package]
 name = "forge-server"
-version = "0.27.0"
+version = "0.28.0"
 edition = "2021"
 license = "MIT"
 publish = false
@@ -14,6 +14,8 @@ name = "forge-server"
 path = "src/main.rs"
 
 [dependencies]
+gix = { version = "0.84", default-features = false, features = ["sha1", "status", "tree-editor"] }
+# shortcut: kstring 2.0.2 is locked for Rust 1.92, update when the toolchain supports its newer MSRV.
 i_overlay = "~4.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "fs", "net", "time", "io-util", "sync"] }
 axum = "0.8"
