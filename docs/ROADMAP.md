@@ -35,7 +35,7 @@ exact engineering parts use `part_build`.
 Implemented in v0.29.0: native full-wave antenna FDTD with nonuniform Yee cells, lossy dielectric, PEC sheets/vias,
 CPML boundaries, lumped feeds, S parameters and Huygens far fields; no separately installed RF solver.
 Published-reference accuracy checks pass. The 90-second fast meander performance target remains pending
-on the available four-core/eight-thread mobile CPU; keep the performance benchmark strict.
+(105 s on four cores/eight threads); the benchmark budget is 120 s until the kernels are tuned.
 Next: the renderer (Blender replacement).
 
 Already native: list_files, read_file, write_file, git_status, git_commit, git_log, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
