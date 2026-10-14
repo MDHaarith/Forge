@@ -11,6 +11,10 @@ pub struct Spec {
     #[serde(default)]
     pub netclasses: BTreeMap<String, NetClass>,
     #[serde(default)]
+    pub diffpairs: BTreeMap<String, DiffPair>,
+    #[serde(default)]
+    pub length_groups: BTreeMap<String, LengthGroup>,
+    #[serde(default)]
     pub parts: Vec<Part>,
     #[serde(default)]
     pub nets: BTreeMap<String, Vec<String>>,
@@ -34,7 +38,13 @@ pub struct Board {
     pub layers: usize,
     #[serde(default = "thickness")]
     pub thickness: f64,
+    #[serde(default = "er")]
+    pub er: f64,
+    #[serde(default = "prepreg")]
+    pub prepreg: f64,
 }
+fn er() -> f64 { 4.5 }
+fn prepreg() -> f64 { 0.21 }
 fn two() -> usize {
     2
 }
@@ -49,6 +59,8 @@ pub struct Rules {
     pub clearance: f64,
     pub via: [f64; 2],
     pub via_in_pad: bool,
+    pub blind_vias: bool,
+    pub teardrops: bool,
     pub edge: f64,
 }
 impl Default for Rules {
@@ -58,6 +70,8 @@ impl Default for Rules {
             clearance: 0.2,
             via: [0.6, 0.3],
             via_in_pad: false,
+            blind_vias: false,
+            teardrops: false,
             edge: 0.3,
         }
     }
@@ -67,8 +81,29 @@ impl Default for Rules {
 #[serde(deny_unknown_fields)]
 pub struct NetClass {
     pub nets: Vec<String>,
-    pub trace: f64,
+    pub trace: Option<f64>,
+    pub impedance: Option<f64>,
     pub clearance: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiffPair {
+    pub p: String,
+    pub n: String,
+    pub gap: Option<f64>,
+    pub width: Option<f64>,
+    pub impedance: Option<f64>,
+    #[serde(default = "skew")]
+    pub skew: f64,
+}
+fn skew() -> f64 { 0.1 }
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LengthGroup {
+    pub nets: Vec<String>,
+    pub tolerance: f64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
@@ -222,6 +257,23 @@ impl Board {
 }
 
 impl Spec {
+    pub fn pair_gap(&self, pair: &DiffPair) -> f64 {
+        pair.gap.unwrap_or_else(|| self.clearance(&pair.p).max(self.clearance(&pair.n)))
+    }
+    pub fn normal_width(&self, name: &str) -> Result<f64, String> {
+        if let Some(t) = self.traces.iter().find(|t| t.net == name) { return Ok(t.width); }
+        if let Some(c) = self.netclasses.values().find(|c| c.nets.iter().any(|n| n == name)) {
+            return match c.trace {
+                Some(w) => Ok(w),
+                None => super::impedance::width(&self.board, c.impedance.unwrap(), None),
+            };
+        }
+        Ok(self.rules.trace)
+    }
+    pub fn pair_width(&self, pair: &DiffPair) -> Result<f64, String> {
+        if let Some(z) = pair.impedance { return super::impedance::width(&self.board, z, Some(self.pair_gap(pair))); }
+        pair.width.map(Ok).unwrap_or_else(|| Ok(self.normal_width(&pair.p)?.max(self.normal_width(&pair.n)?)))
+    }
     pub fn clearance(&self, net: &str) -> f64 {
         self.netclasses
             .values()
@@ -234,6 +286,11 @@ impl Spec {
             return Err("board.layers must be 2 or 4".into());
         }
         positive(self.board.thickness, "board.thickness")?;
+        positive(self.board.er, "board.er")?;
+        positive(self.board.prepreg, "board.prepreg")?;
+        if self.rules.blind_vias && self.board.layers != 4 {
+            return Err("rules.blind_vias needs 4 layers".into());
+        }
         if let Some(w) = self.board.width {
             positive(w, "board.width")?;
         }
@@ -322,7 +379,15 @@ impl Spec {
         let mut classes = BTreeSet::new();
         for (name, class) in &self.netclasses {
             net_name(name)?;
-            positive(class.trace, "netclass.trace")?;
+            match (class.trace, class.impedance) {
+                (Some(_), Some(_)) => return Err(format!("netclass {name}: set trace or impedance, not both")),
+                (None, None) => return Err(format!("netclass {name}: set trace or impedance")),
+                (Some(w), None) => positive(w, "netclass.trace")?,
+                (None, Some(z)) => {
+                    positive(z, "netclass.impedance")?;
+                    super::impedance::width(&self.board, z, None)?;
+                }
+            }
             if let Some(clearance) = class.clearance {
                 nonnegative(clearance, "netclass.clearance")?;
             }
@@ -339,6 +404,46 @@ impl Spec {
             positive(t.width, "trace width")?;
             if !traces.insert(&t.net) {
                 return Err(format!("duplicate trace width for net {}", t.net));
+            }
+        }
+        if !self.diffpairs.is_empty() || !self.length_groups.is_empty() {
+            for (name, pair) in &self.diffpairs {
+                net_name(name)?;
+                if pair.width.is_some() && pair.impedance.is_some() {
+                    return Err(format!("diffpair {name}: set width or impedance, not both"));
+                }
+                for (value, field) in [(pair.gap, "diffpair.gap"), (pair.width, "diffpair.width"), (pair.impedance, "diffpair.impedance"), (Some(pair.skew), "diffpair.skew")] {
+                    if let Some(v) = value { positive(v, field)?; }
+                }
+            }
+            let nets = self.netlist(&self.footprints()?)?;
+            let mut pairs = BTreeMap::new();
+            for (name, pair) in &self.diffpairs {
+                for net in [&pair.p, &pair.n] {
+                    let Some(n) = nets.iter().find(|n| &n.name == net) else {
+                        return Err(format!("diffpair {name}: unknown net {net}"));
+                    };
+                    if n.pins.len() != 2 { return Err(format!("diffpair {name}: net {net} must connect exactly 2 pins")); }
+                    if pairs.insert(net, name).is_some() { return Err(format!("diffpair {name}: net {net} is already in another diffpair")); }
+                }
+                let clearance = self.clearance(&pair.p).max(self.clearance(&pair.n));
+                let gap = self.pair_gap(pair);
+                if gap < clearance {
+                    return Err(format!("diffpair {name}: gap {} is below clearance {}", crate::jsfmt::number(gap), crate::jsfmt::number(clearance)));
+                }
+                self.pair_width(pair)?;
+            }
+            let mut groups = BTreeSet::new();
+            for (name, group) in &self.length_groups {
+                net_name(name)?;
+                positive(group.tolerance, "length_group.tolerance")?;
+                if group.nets.len() < 2 { return Err(format!("length group {name}: needs at least 2 nets")); }
+                // shortcut: diffpairs cannot join length groups yet, add coupled meanders before allowing this.
+                for net in &group.nets {
+                    if !nets.iter().any(|n| &n.name == net) { return Err(format!("length group {name}: unknown net {net}")); }
+                    if let Some(pair) = pairs.get(net) { return Err(format!("length group {name}: net {net} is in diffpair {pair}")); }
+                    if !groups.insert(net) { return Err(format!("length group {name}: net {net} is already in another length group")); }
+                }
             }
         }
         Ok(())
@@ -416,25 +521,16 @@ impl Spec {
         Ok(pins
             .into_iter()
             .map(|(name, pins)| {
-                let trace = self
-                    .traces
-                    .iter()
-                    .find(|t| t.net == name)
-                    .map(|t| t.width)
-                    .or_else(|| {
-                        self.netclasses
-                            .values()
-                            .find(|c| c.nets.contains(&name))
-                            .map(|c| c.trace)
-                    })
-                    .unwrap_or(self.rules.trace);
-                Net {
+                let trace = if let Some(pair) = self.diffpairs.values().find(|p| p.p == name || p.n == name) {
+                    self.pair_width(pair)?
+                } else { self.normal_width(&name)? };
+                Ok(Net {
                     name,
                     pins: pins.into_iter().collect(),
                     trace,
-                }
+                })
             })
-            .collect())
+            .collect::<Result<_, String>>()?)
     }
 }
 

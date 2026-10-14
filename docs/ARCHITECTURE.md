@@ -68,7 +68,9 @@ server/src/
     pcb/footprint.rs                        pure nominal/KiCad footprint dimensions, rounded SMD pads, courtyard, silk and body geometry
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
     pcb/drc.rs                              saved-copper geometry, 4 mm spatial index, pour/via connectivity and sorted DRC faults/ERC warnings
-    pcb/route.rs                            regional tree A*, shared bitsets, parallel obstacle preparation, PathFinder, inner-plane escapes and filled vias-in-pad
+    pcb/route.rs                            regional tree A*, PathFinder, fixed differential pairs, physical via spans, planes and filled vias-in-pad
+    pcb/impedance.rs                        IPC-2141 single/differential microstrip widths by bounded bisection
+    pcb/tune.rs                             shared lengths/coupling metrics, continuous-clearance meanders, skew bumps and teardrops
     pcb/pour.rs                             i_overlay planar copper fills, pad/via thermals, foreign-via antipads and hole contours
     pcb/antenna.rs                          five MIT tscircuit arm geometries, feed pads and feed-opening keepouts
     pcb/gerber.rs                           Gerber X2 layers, explicit clear pour-hole regions, RoundRect flashes and split PTH/NPTH Excellon
@@ -130,6 +132,19 @@ exact geometry checks and uses saved placements even when source rules change.
 The 4-layer benchmark requires every net routed and clean saved-copper DRC; the 2-layer variant
 requires at least 95% completion. Both print metrics and save copper/SVG review artifacts under
 `/tmp/batch3/board4` or `/tmp/batch3/board2`.
+Batch 4 fields are optional: `board.er`/`prepreg`, impedance net classes, `diffpairs`,
+`length_groups`, `rules.blind_vias` and `rules.teardrops`. Net classes choose trace width or impedance.
+`route::depth` maps logical indices (top, bottom, inner1, inner2) to physical stack depth.
+Via spans filter copper, mask, pours, clearance and saved JSON without changing through-via ordering.
+Blind/buried vias get physical-layer-numbered drill files and partial-depth cuts in STEP/GLB.
+Pairs route a midpoint centreline with pad escapes and miter clearance, then offset both traces and
+spread paired vias. Coupled copper stays fixed through PathFinder; ordinary routing remains the
+fallback if a pair or the remaining board cannot route, including pins with multiple lands.
+Shared metrics measure saved track lengths
+and parallel overlap for reports and DRC. Tuning runs before pours; teardrops run after tuning and
+use the same continuous geometry as DRC. `server/tests/pcb_batch4.rs` checks each feature, validation,
+saved-copper DRC and artifact hashes captured from 0.21.0. Gerber generation metadata stays at
+0.21.0 so an app version bump does not change default output bytes.
 `pcb_export_fab` is removed because native `pcb_build` writes every manufacturing artifact.
 
 Generated rectangular SMD pads use a 25% corner radius, capped at 0.25 mm; drilled rectangles stay

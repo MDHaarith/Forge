@@ -81,6 +81,9 @@ pub(super) fn board(
         {
             line(&mut out, t.a, t.b, t.width, color);
         }
+        for t in r.teardrops.iter().filter(|t| t.layer == layer.index()) {
+            out.push_str(&format!("<path d=\"{}\" fill=\"{color}\"/>", path(std::slice::from_ref(&t.points))));
+        }
     }
     for p in &b.pads {
         if !p.plated {
@@ -150,6 +153,9 @@ pub(super) fn board(
         } else {
             circle(&mut out, hole.at, hole.tool / 2., "#101923");
         }
+    }
+    for v in r.vias.iter().filter(|v| v.span != (0, b.layers - 1)) {
+        circle(&mut out, v.at, b.via[1] / 2., "#101923");
     }
     out.push_str("</g>");
     for p in &prepared.parts {

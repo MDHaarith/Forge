@@ -200,7 +200,19 @@ pub fn pour(b: &Board, r: &Routes, net: usize, layer: usize) -> Shapes {
             ));
         }
     }
-    for v in &r.vias {
+    for t in r.teardrops.iter().filter(|t| t.layer == layer) {
+        if t.net == net { reinforce.push(t.points.clone()); }
+        else {
+            foreign.push(t.points.clone());
+            let margin = b.clearance(net).max(b.clearance(t.net));
+            if margin > 0. {
+                for (a, c) in t.points.iter().zip(t.points.iter().cycle().skip(1)) {
+                    foreign.push(capsule(*a, *c, margin));
+                }
+            }
+        }
+    }
+    for v in r.vias.iter().filter(|v| v.on(layer, b.layers)) {
         if v.net != net {
             foreign.push(circle(
                 v.at,
@@ -310,8 +322,8 @@ mod tests {
     fn via_thermals_touch_annuli_and_foreign_vias_get_antipads() {
         let prepared = super::super::prepare(r#"{"board":{"width":20,"height":16,"layers":4},"pours":[{"net":"GND","layer":"inner1"}]}"#).unwrap();
         let b = Board::from_prepared(&prepared).unwrap();
-        let r = Routes { tracks: vec![], vias: vec![super::super::route::Via { at: [-3., 0.], net: 0 },
-            super::super::route::Via { at: [3., 0.], net: usize::MAX }], routed: vec![true], passes: 1 };
+        let r = Routes { teardrops: vec![], fallback: vec![], tracks: vec![], vias: vec![super::super::route::Via { at: [-3., 0.], net: 0, span: (0, b.layers - 1) },
+            super::super::route::Via { at: [3., 0.], net: usize::MAX, span: (0, b.layers - 1) }], routed: vec![true], passes: 1 };
         let s = pour(&b, &r, 0, 2);
         assert_eq!(s.len(), 1);
         assert!(!contains(&s, [-3., 0.]));

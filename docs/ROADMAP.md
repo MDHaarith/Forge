@@ -23,7 +23,9 @@ Stage 3 is complete (v0.17.0): PCB builds and DRC are native; neither Node nor K
 Done in v0.18.0: USB-C, Micro-B, JST-PH and barrel-jack footprints; slots and NPTH; PathFinder autorouter.
 Done in v0.19.0: complex-board autorouter (tree growth, rip-up, restarts) and opt-in filled vias-in-pad.
 Done in v0.20.0: wired schematics, ERC warnings, rounded pads, 11 more footprints.
-Next: the PCB batches in plan.md, then the renderer (Blender replacement).
+Done in v0.21.0: deterministic 200-part routing, regional searches and inner reference planes.
+Done in v0.22.0: differential pairs, length meanders, impedance widths, blind/buried vias and teardrops.
+Next: PCB batch 5 in plan.md (panelization and fabrication details), then the renderer (Blender replacement).
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
 pcb_build (including manufacturing exports) and pcb_drc. `pcb_export_fab` is removed because

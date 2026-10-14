@@ -12,7 +12,7 @@ bumps the version and commits.
 - [x] Batch 3 (v0.21.0): router for 200-part boards. New 200-part / ~400-net 4-layer benchmark with inner
   GND/power planes; 100 % routed, 0 DRC errors, deterministic, < ~10 min release. Raise the 8M-cell
   grid limit (compact cells), plane vias for power pins, regional routing, multi-core, DRC spatial index.
-- [ ] Batch 4: differential pairs, length matching (meanders), impedance-driven widths from a stackup,
+- [x] Batch 4 (v0.22.0): differential pairs, length matching (meanders), impedance-driven widths from a stackup,
   blind/buried vias, teardrops.
 - [ ] Batch 5: panelization (rails, tabs, V-score, fiducials), IPC-D-356 netlist, stencil paste
   reduction, fab drawing (stackup + drill table), true slots in the 3D export.

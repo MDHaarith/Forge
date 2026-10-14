@@ -103,6 +103,15 @@ pub(super) fn model(
             };
             slab = (&slab - &drill).build()?;
         }
+        for via in r.vias.iter().filter(|v| v.span != (0, board.layers - 1)) {
+            let levels = [t / 2., t / 2. - b.spec.board.prepreg - 0.035,
+                -t / 2. + b.spec.board.prepreg + 0.035, -t / 2.];
+            let bottom = levels[via.span.1];
+            let height = levels[via.span.0] - bottom;
+            let drill = Solid::cylinder(board.via[1] / 2., DVec3::Z * height)
+                .translate(DVec3::new(via.at[0], via.at[1], bottom));
+            slab = (&slab - &drill).build()?;
+        }
         let mut solids = vec![slab.color("#246c47")];
         for p in &b.parts {
             if b.spec.parts[p.part].kind == Kind::Antenna {
@@ -174,11 +183,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn blind_and_buried_bores_stop_at_physical_depths() {
+        let b = super::super::prepare(r#"{"board":{"width":20,"height":10,"layers":4},"rules":{"blind_vias":true},"nets":{"N":[]}}"#).unwrap();
+        let board = route::Board::from_prepared(&b).unwrap();
+        let r = route::Routes { tracks: vec![], vias: vec![route::Via { at: [-2.,0.], net: 0, span: (0,1) },
+            route::Via { at: [2.,0.], net: 0, span: (1,2) }], routed: vec![true], passes: 0, teardrops: vec![], fallback: vec![] };
+        let (step, _) = model(&b, &board, &r).unwrap();
+        let _kernel = super::super::super::part::kernel();
+        let solids = Solid::read_step(&mut step.as_bytes()).unwrap();
+        let expected = 20. * 10. * 1.6 - std::f64::consts::PI * 0.15_f64.powi(2) * (0.245 + 1.11);
+        assert!((solids[0].volume() - expected).abs() < 1e-6);
+    }
+
+    #[test]
     fn outputs_preserve_geometry_frame_drill_split_csv_and_repeated_bytes() {
         let input = r#"{"board":{"outline":[[-12,-8],[15,-8],[15,10],[-12,10]],"layers":4},"parts":[{"ref":"J1","kind":"header","footprint":"pinheader_1x2","at":[-5,2],"rotation":90,"side":"bottom"},{"ref":"R1","kind":"resistor","value":"<x>,\"1k\"","footprint":"0603","at":[5,-3],"rotation":45,"lcsc":"C123"}],"holes":[{"at":[10,5],"d":3.2}]}"#;
         let b = super::super::prepare(input).unwrap();
         let board = route::Board::from_prepared(&b).unwrap();
-        let r = route::Routes {
+        let r = route::Routes { teardrops: vec![], fallback: vec![],
             tracks: vec![],
             vias: vec![],
             routed: vec![],

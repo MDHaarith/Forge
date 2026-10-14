@@ -62,6 +62,7 @@ fn header(function: &str) -> String {
     } else {
         "Positive"
     };
+    // Keep the manufacturing format revision stable across app version bumps.
     format!("G04 Forge native PCB*\n%FSLAX46Y46*%\n%MOMM*%\n%TF.GenerationSoftware,Forge,pcb,{}*%\n%TF.FileFunction,{function}*%\n%TF.FilePolarity,{polarity}*%\n%LPD*%\nG01*\n", env!("CARGO_PKG_VERSION"))
 }
 
@@ -147,7 +148,7 @@ fn openings(b: &route::Board, r: &route::Routes, layer: Layer, paste: bool) -> S
     if !paste {
         let via_aper = Aperture::Circle(((b.via[0] + 2. * expansion) * 1e6).round() as i64);
         out.push_str(&format!("D{}*\n", apertures[&via_aper]));
-        for v in &r.vias {
+        for v in r.vias.iter().filter(|v| v.on(layer.index(), b.layers)) {
             out.push_str(&coord(v.at, 3));
         }
     }
@@ -222,7 +223,7 @@ pub(super) fn drills(b: &route::Board, r: &route::Routes, plated: bool) -> Vec<D
         .filter(|p| p.plated == plated)
         .filter_map(pad_hole);
     if plated {
-        pads.chain(r.vias.iter().map(|v| DrillHole {
+        pads.chain(r.vias.iter().filter(|v| v.span == (0, b.layers - 1)).map(|v| DrillHole {
             at: v.at,
             tool: b.via[1],
             slot: None,
@@ -242,18 +243,17 @@ pub(super) fn drills(b: &route::Board, r: &route::Routes, plated: bool) -> Vec<D
 }
 
 fn drill(b: &route::Board, r: &route::Routes, plated: bool) -> String {
-    use std::collections::BTreeMap;
     let holes = drills(b, r, plated);
+    drill_file(&holes, &format!("{}Plated,1,{},{}", if plated { "" } else { "Non" }, b.layers, if plated { "PTH" } else { "NPTH" }))
+}
+
+fn drill_file(holes: &[DrillHole], function: &str) -> String {
+    use std::collections::BTreeMap;
     let mut tools: BTreeMap<_, usize> = holes
         .iter()
         .map(|h| ((h.tool * 1e6).round() as i64, 0))
         .collect();
-    let mut out = format!(
-        "M48\n; #@! TF.FileFunction,{}Plated,1,{},{}\nMETRIC\n",
-        if plated { "" } else { "Non" },
-        b.layers,
-        if plated { "PTH" } else { "NPTH" }
-    );
+    let mut out = format!("M48\n; #@! TF.FileFunction,{function}\nMETRIC\n");
     for (i, (d, tool)) in tools.iter_mut().enumerate() {
         *tool = i + 1;
         out.push_str(&format!(
@@ -324,6 +324,15 @@ pub(super) fn files(
             format!("fab/{name}/{name}-{suffix}.drl"),
             drill(b, r, plated),
         ));
+    }
+    let mut spans = std::collections::BTreeMap::<_, Vec<DrillHole>>::new();
+    for v in r.vias.iter().filter(|v| v.span != (0, b.layers - 1)) {
+        spans.entry(v.span).or_default().push(DrillHole { at: v.at, tool: b.via[1], slot: None });
+    }
+    for ((a, z), holes) in spans {
+        let (a, z) = (a + 1, z + 1);
+        let kind = if a == 1 || z == b.layers { "Blind" } else { "Buried" };
+        files.push((format!("fab/{name}/{name}-PTH-{a}-{z}.drl"), drill_file(&holes, &format!("Plated,{a},{z},{kind}"))));
     }
     files
 }
@@ -459,13 +468,18 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
         out.push_str(&coord(t.b, 1));
         out.push_str("%TD*%\n");
     }
-    for v in &r.vias {
+    for v in r.vias.iter().filter(|v| v.on(index, b.layers)) {
         out.push_str(&net_attribute(v.net));
         out.push_str(&format!(
             "D{}*\n",
             apertures[&Aperture::Circle((b.via[0] * 1e6).round() as i64)]
         ));
         out.push_str(&coord(v.at, 3));
+        out.push_str("%TD*%\n");
+    }
+    for t in r.teardrops.iter().filter(|t| t.layer == index) {
+        out.push_str(&net_attribute(t.net));
+        region(&mut out, std::slice::from_ref(&t.points));
         out.push_str("%TD*%\n");
     }
     out.push_str("M02*\n");
@@ -475,6 +489,25 @@ pub(super) fn copper(b: &route::Board, r: &route::Routes, pours: &Pours, layer: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn buried_vias_emit_only_spanned_copper_and_no_outer_mask() {
+        let prepared = super::super::prepare(r#"{"board":{"width":20,"height":10,"layers":4},"rules":{"blind_vias":true},"nets":{"N":[]}}"#).unwrap();
+        let b = route::Board::from_prepared(&prepared).unwrap();
+        let r = route::Routes { tracks: vec![], vias: vec![route::Via { at: [0.;2], net: 0, span: (1,2) }], routed: vec![true],
+            passes: 0, teardrops: vec![], fallback: vec![] };
+        for layer in [Layer::Top, Layer::Bottom] {
+            assert_eq!(copper(&b, &r, &vec![], layer).matches("D03*").count(), 0);
+            assert_eq!(openings(&b, &r, layer, false).matches("D03*").count(), 0);
+        }
+        for layer in [Layer::Inner1, Layer::Inner2] {
+            assert_eq!(copper(&b, &r, &vec![], layer).matches("D03*").count(), 1);
+        }
+        assert!(drills(&b, &r, true).is_empty());
+        let files = files(&prepared, &b, &r, &vec![], "buried");
+        let drill = files.iter().find(|(n, _)| n.ends_with("PTH-2-3.drl")).unwrap();
+        assert!(drill.1.contains("; #@! TF.FileFunction,Plated,2,3,Buried\n"));
+    }
 
     #[test]
     fn holed_regions_clear_copper_and_restore_dark_polarity() {

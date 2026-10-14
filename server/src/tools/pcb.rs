@@ -6,16 +6,18 @@ mod drc;
 mod export;
 mod footprint;
 mod gerber;
+mod impedance;
 mod place;
 mod pour;
 mod route;
 mod spec;
 mod svg;
+mod tune;
 
 pub use footprint::{footprint, Footprint, Pad};
 pub use place::{place, PlacedPart};
 pub use spec::{
-    parse, prepare, Board, Hole, Keepout, Kind, Layer, Net, NetClass, Part, Pin, Pour,
+    parse, prepare, Board, DiffPair, Hole, Keepout, Kind, Layer, LengthGroup, Net, NetClass, Part, Pin, Pour,
     PreparedBoard, Rules, Spec, Trace,
 };
 
@@ -182,6 +184,37 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
                 .join(", ")
         ));
     }
+    let blind = routed.vias.iter().filter(|v| v.span != (0, board.layers - 1)).count();
+    if blind > 0 { lines[2].push_str(&format!(" ({blind} blind/buried)")); }
+    let mut impedances = vec![];
+    for (name, class) in &prepared.spec.netclasses {
+        if let Some(z) = class.impedance {
+            impedances.push((name, format!("{name} {} ohm -> {} mm", n(z), n(impedance::width(&prepared.spec.board, z, None)?))));
+        }
+    }
+    for (name, pair) in &prepared.spec.diffpairs {
+        if let Some(z) = pair.impedance {
+            impedances.push((name, format!("{name} {} ohm differential -> {} mm, gap {} mm", n(z), n(prepared.spec.pair_width(pair)?), n(prepared.spec.pair_gap(pair)))));
+        }
+    }
+    impedances.sort_by(|a, b| a.0.cmp(b.0));
+    if !impedances.is_empty() { lines.push(format!("Impedance: {}", impedances.into_iter().map(|(_, text)| text).collect::<Vec<_>>().join("; "))); }
+    for pair in &board.pairs {
+        if routed.fallback.contains(&pair.name) {
+            lines.push(format!("Diffpair {}: routed as separate nets (could not couple)", pair.name));
+        } else {
+            let p = tune::length(&routed.tracks, pair.p);
+            let skew = (p - tune::length(&routed.tracks, pair.n)).abs();
+            let coupled = tune::coupled(&routed.tracks, pair.p, pair.n, pair.width + pair.gap).0;
+            lines.push(format!("Diffpair {}: coupled {:.0}% of {:.2} mm, skew {:.2} mm, gap {:.2} mm", pair.name,
+                if p > 0. { 100. * coupled / p } else { 0. }, p, skew, pair.gap));
+        }
+    }
+    for (name, nets, tolerance) in &board.length_groups {
+        let lengths: Vec<_> = nets.iter().map(|&n| tune::length(&routed.tracks, n)).collect();
+        lines.push(format!("Length group {name}: {:.2}-{:.2} mm, tolerance {tolerance:.2} mm",
+            lengths.iter().copied().fold(f64::INFINITY, f64::min), lengths.iter().copied().fold(0., f64::max)));
+    }
     lines.push("No errors: every connection is routed.".into());
     lines.push(format!(
         "Files: {}",
@@ -268,7 +301,10 @@ fn circuit(prepared: &PreparedBoard, b: &route::Board, r: &route::Routes, pours:
         elements.push(e);
     }
     for (i, v) in r.vias.iter().enumerate() {
-        elements.push(json!({"type":"pcb_via","pcb_via_id":format!("via_{i}"),"x":v.at[0],"y":v.at[1],"outer_diameter":b.via[0],"hole_diameter":b.via[1],"layers":(0..b.layers).map(|l|Layer::from_index(l).name()).collect::<Vec<_>>(),"net":net(v.net)}));
+        elements.push(json!({"type":"pcb_via","pcb_via_id":format!("via_{i}"),"x":v.at[0],"y":v.at[1],"outer_diameter":b.via[0],"hole_diameter":b.via[1],"layers":(0..b.layers).filter(|&l|v.on(l,b.layers)).map(|l|Layer::from_index(l).name()).collect::<Vec<_>>(),"net":net(v.net)}));
+    }
+    for t in &r.teardrops {
+        elements.push(json!({"type":"pcb_trace_teardrop","layer":Layer::from_index(t.layer).name(),"net":net(t.net),"points":t.points.iter().map(|p|point(*p)).collect::<Vec<_>>()}));
     }
     for (net, layer, shapes) in pours {
         for shape in shapes {

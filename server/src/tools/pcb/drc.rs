@@ -7,13 +7,13 @@ use std::collections::BTreeMap;
 // Saved circuit coordinates are rounded to six decimal places in mm.
 const EPS: f64 = 1e-6;
 
-enum Shape {
+pub(super) enum Shape {
     Disk(Point, f64),
     Stroke(Point, Point, f64),
     Region(pour::Shapes),
 }
 impl Shape {
-    fn bounds(&self) -> [f64; 4] {
+    pub(super) fn bounds(&self) -> [f64; 4] {
         match self {
             Self::Disk(p, r) => [p[0] - r, p[1] - r, p[0] + r, p[1] + r],
             Self::Stroke(a, b, r) => [a[0].min(b[0]) - r, a[1].min(b[1]) - r,
@@ -25,7 +25,7 @@ impl Shape {
                 }),
         }
     }
-    fn contains(&self, p: Point) -> bool {
+    pub(super) fn contains(&self, p: Point) -> bool {
         match self {
             Self::Disk(at, radius) => distance(p, *at) <= radius + EPS,
             Self::Stroke(a, b, radius) => segment_distance(p, *a, *b) <= radius + EPS,
@@ -49,7 +49,7 @@ impl Shape {
             _ => vec![],
         }
     }
-    fn gap(&self, other: &Self) -> f64 {
+    pub(super) fn gap(&self, other: &Self) -> f64 {
         match (self, other) {
             (Self::Disk(a, r), Self::Disk(b, s)) => distance(*a, *b) - r - s,
             (Self::Disk(p, r), Self::Stroke(a, b, s)) => segment_distance(*p, *a, *b) - r - s,
@@ -95,7 +95,7 @@ impl Shape {
             _ => other.gap(self),
         }
     }
-    fn edge_gap(&self, outline: &[Point]) -> f64 {
+    pub(super) fn edge_gap(&self, outline: &[Point]) -> f64 {
         let edges: Vec<_> = outline
             .iter()
             .zip(outline.iter().cycle().skip(1))
@@ -255,6 +255,8 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
     let mut pads = BTreeMap::new();
     let mut smd = Vec::new();
     let mut vias = Vec::new();
+    let mut drills = Vec::new();
+    let mut tracks = Vec::new();
     let mut parts: Vec<_> = footprints
         .into_iter()
         .enumerate()
@@ -354,6 +356,14 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     (d, dr, Shape::Disk(at, d / 2.))
                 };
                 let i = add(name.clone(), shape, layers(e)?, false);
+                if rules.blind_vias {
+                    let hole = if is_oval {
+                        let p = route::Pad { name: name.clone(), at, size: [diameter; 2], rotation: num(e, "rotation").unwrap_or(0.),
+                            round: true, radius: 0., layers: 0, drill: Some([positive(e, "hole_width")?, positive(e, "hole_height")?]), plated: true, net: 0 };
+                        super::tune::pad_shape(&p, true)
+                    } else { Shape::Disk(at, drill / 2.) };
+                    drills.push((name.clone(), hole));
+                }
                 let annulus = (diameter - drill) / 2.;
                 let minimum = (rules.via[0] - rules.via[1]) / 2.;
                 if annulus + EPS < minimum {
@@ -380,6 +390,7 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                 let name = e["pcb_hole_id"].as_str().unwrap_or("hole").to_owned();
                 let at = point(e)?;
                 let drill = positive(e, "hole_diameter")?;
+                if rules.blind_vias { drills.push((name.clone(), Shape::Disk(at, drill / 2.))); }
                 if drill + EPS < rules.via[1] {
                     faults.push(format!(
                         "drill size: {name} is {} mm, needs {} mm",
@@ -419,6 +430,9 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                         mask,
                         false,
                     );
+                    if let Some(net) = nets.iter().position(|n| Some(n.name.as_str()) == net.as_deref()) {
+                        tracks.push(route::Track { a: point(&pair[0])?, b: point(&pair[1])?, layer: mask.trailing_zeros() as usize, width: w, net });
+                    }
                 }
                 let minimum = width(net.as_deref());
                 if narrowest + EPS < minimum {
@@ -442,6 +456,10 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     false,
                 );
             }
+            Some("pcb_trace_teardrop") => {
+                add(format!("teardrop {}", net.as_deref().unwrap_or("unconnected")),
+                    Shape::Region(vec![vec![ring(&e["points"])?]]), layers(e)?, false);
+            }
             Some("pcb_component") => {
                 let p = parts
                     .iter_mut()
@@ -464,6 +482,7 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
         return Err("circuit is missing a pcb_component".into());
     }
     for (i, h) in spec.holes.iter().enumerate() {
+        if rules.blind_vias { drills.push((format!("hole {}", i + 1), Shape::Disk(h.at, h.d / 2.))); }
         if h.d + EPS < rules.via[1] {
             faults.push(format!(
                 "drill size: hole {} is {} mm, needs {} mm",
@@ -482,12 +501,21 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
     }
     for (i, at, radius) in vias {
         for (p, pad) in &smd {
+            if items[i].layers & items[*pad].layers == 0 { continue; }
             if rules.via_in_pad && items[i].net.is_some() && items[i].net == items[*pad].net {
                 continue;
             }
             let q = p.local(at);
             if route::rect_distance(q, [0.; 2], p.size) <= radius + EPS {
                 faults.push(format!("via in pad: {} in {}", items[i].name, p.name));
+            }
+        }
+    }
+    for (i, (name, shape)) in drills.iter().enumerate() {
+        for (other, other_shape) in &drills[..i] {
+            let gap = shape.gap(other_shape);
+            if gap + EPS < rules.clearance {
+                faults.push(format!("hole spacing: {other} to {name} is {} mm, needs {} mm", fmt(gap), fmt(rules.clearance)));
             }
         }
     }
@@ -580,6 +608,25 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     spec.parts[b.part].reference, spec.parts[a.part].reference
                 ));
             }
+        }
+    }
+    for (name, group) in &spec.length_groups {
+        let lengths: Vec<_> = group.nets.iter().map(|n| super::tune::length(&tracks, nets.iter().position(|net| &net.name == n).unwrap())).collect();
+        let spread = lengths.iter().copied().fold(0., f64::max) - lengths.iter().copied().fold(f64::INFINITY, f64::min);
+        if spread > group.tolerance + EPS {
+            faults.push(format!("length: group {name} spread {spread:.2} mm exceeds tolerance {:.2} mm", group.tolerance));
+        }
+    }
+    for (name, pair) in &spec.diffpairs {
+        let (p, n) = (nets.iter().position(|n| n.name == pair.p).unwrap(), nets.iter().position(|n| n.name == pair.n).unwrap());
+        let skew = (super::tune::length(&tracks, p) - super::tune::length(&tracks, n)).abs();
+        if skew > pair.skew + EPS {
+            faults.push(format!("diffpair: {name} skew {skew:.2} mm exceeds {:.2} mm", pair.skew));
+        }
+        let gap = spec.pair_gap(pair);
+        let (length, measured) = super::tune::coupled(&tracks, p, n, spec.pair_width(pair)? + gap);
+        if length > 0. && (measured - gap).abs() > 0.02 + EPS {
+            faults.push(format!("diffpair: {name} gap {measured:.2} mm differs from {gap:.2} mm"));
         }
     }
     faults.sort();

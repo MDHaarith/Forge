@@ -45,6 +45,20 @@ pub struct Board {
     pub edge: f64,
     pub via: [f64; 2],
     pub via_in_pad: bool,
+    pub blind_vias: bool,
+    pub teardrops: bool,
+    pub pairs: Vec<Pair>,
+    pub length_groups: Vec<(String, Vec<usize>, f64)>,
+    pub fixed_vias: Vec<Via>,
+}
+#[derive(Clone, Debug)]
+pub struct Pair {
+    pub name: String,
+    pub p: usize,
+    pub n: usize,
+    pub width: f64,
+    pub gap: f64,
+    pub skew: f64,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Track {
@@ -58,6 +72,13 @@ pub struct Track {
 pub struct Via {
     pub at: Point,
     pub net: usize,
+    pub span: (usize, usize),
+}
+#[derive(Clone, Debug, PartialEq)]
+pub struct Teardrop {
+    pub points: Vec<Point>,
+    pub layer: usize,
+    pub net: usize,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Routes {
@@ -65,6 +86,20 @@ pub struct Routes {
     pub vias: Vec<Via>,
     pub routed: Vec<bool>,
     pub passes: usize,
+    pub teardrops: Vec<Teardrop>,
+    pub fallback: Vec<String>,
+}
+
+pub(super) fn depth(index: usize, layers: usize) -> usize {
+    match index { 0 => 0, 1 => layers - 1, _ => index - 1 }
+}
+impl Via {
+    pub fn on(&self, layer: usize, layers: usize) -> bool {
+        (self.span.0..=self.span.1).contains(&depth(layer, layers))
+    }
+    pub fn mask(&self, layers: usize) -> u8 {
+        (0..layers).filter(|&l| self.on(l, layers)).fold(0, |m, l| m | (1 << l))
+    }
 }
 
 pub fn distance(a: Point, b: Point) -> f64 {
@@ -160,6 +195,17 @@ pub fn obround_distance(p: Point, size: Point) -> f64 {
 }
 
 impl Board {
+    fn span(&self, z: usize, nz: usize) -> (usize, usize) {
+        if !self.blind_vias { return (0, self.layers - 1); }
+        let (a, b) = (depth(z, self.layers), depth(nz, self.layers));
+        (a.min(b), a.max(b))
+    }
+    fn plane_span(&self, net: usize, z: usize) -> (usize, usize) {
+        if !self.blind_vias { return (0, self.layers - 1); }
+        self.planes.iter().filter(|p| p.0 == net).fold((depth(z, self.layers), depth(z, self.layers)), |s, p| {
+            let d = depth(p.1, self.layers); (s.0.min(d), s.1.max(d))
+        })
+    }
     pub fn clearance(&self, net: usize) -> f64 {
         self.nets
             .get(net)
@@ -203,6 +249,11 @@ impl Board {
             edge: spec.rules.edge,
             via: spec.rules.via,
             via_in_pad: spec.rules.via_in_pad,
+            blind_vias: spec.rules.blind_vias,
+            teardrops: spec.rules.teardrops,
+            pairs: vec![],
+            length_groups: vec![],
+            fixed_vias: vec![],
         };
         for p in &prepared.parts {
             for pad in &p.footprint.pads {
@@ -265,6 +316,14 @@ impl Board {
         b.planes = spec.pours.iter().filter(|p| p.layer.index() >= 2).map(|p| {
             (b.nets.iter().position(|n| n.name == p.net).unwrap(), p.layer.index())
         }).collect();
+        for (name, pair) in &spec.diffpairs {
+            b.pairs.push(Pair { name: name.clone(), p: b.nets.iter().position(|n| n.name == pair.p).unwrap(),
+                n: b.nets.iter().position(|n| n.name == pair.n).unwrap(), width: spec.pair_width(pair)?,
+                gap: spec.pair_gap(pair), skew: pair.skew });
+        }
+        for (name, group) in &spec.length_groups {
+            b.length_groups.push((name.clone(), group.nets.iter().map(|name| b.nets.iter().position(|n| &n.name == name).unwrap()).collect(), group.tolerance));
+        }
         for p in &prepared.parts {
             if spec.parts[p.part].kind != super::Kind::Antenna {
                 continue;
@@ -570,7 +629,7 @@ impl Grid {
             for p in b.pads.iter().filter(|p| p.drill.is_none()) {
                 let margin = b.via[0] / 2.0 + if reserve { b.clearance(net).max(b.clearance(p.net)) } else { 0. };
                 self.visit(p.at, [p.bounds()[0] + 2. * margin, p.bounds()[1] + 2. * margin],
-                    (1 << b.layers) - 1, |q| rect_distance(p.local(q), [0.; 2], p.size) <= margin + 1e-9, |i| {
+                    if b.blind_vias { p.layers } else { (1 << b.layers) - 1 }, |q| rect_distance(p.local(q), [0.; 2], p.size) <= margin + 1e-9, |i| {
                         let owner = if b.via_in_pad { p.net } else { usize::MAX };
                         owners.entry(i).and_modify(|n| { if *n != owner { *n = usize::MAX; } }).or_insert(owner);
                     });
@@ -603,7 +662,26 @@ impl Grid {
         for f in b.fixed.iter().filter(|f| !f.nets.contains(&net)) {
             self.track(b, &f.track, net, radius + guard, |i| blocked.set(i));
         }
+        let fixed = Routes { teardrops: vec![], fallback: vec![], tracks: vec![], vias: b.fixed_vias.clone(), routed: vec![], passes: 0 };
+        self.copper(b, &fixed, net, radius + guard, |i| blocked.set(i));
         self.copper(b, r, net, radius + guard, |i| blocked.set(i));
+        if b.blind_vias && !segments {
+            // Drills still need spacing when their copper spans do not overlap.
+            for v in r.vias.iter().chain(&b.fixed_vias) {
+                let drill_gap = b.via[1] + b.clearance(net).max(b.clearance(v.net));
+                self.mark(&mut blocked, v.at, [2. * drill_gap; 2], (1 << b.layers) - 1, |q| {
+                    distance(q, v.at) < drill_gap && !(v.net == net && distance(q, v.at) < 1e-9)
+                });
+            }
+            for p in b.pads.iter().filter(|p| p.drill.is_some()) {
+                let hole = super::tune::pad_shape(p, true);
+                let gap = b.via[1] / 2. + b.clearance(net).max(b.clearance(p.net));
+                let [x0, y0, x1, y1] = hole.bounds();
+                self.mark(&mut blocked, [(x0 + x1) / 2., (y0 + y1) / 2.], [x1 - x0 + 2. * gap, y1 - y0 + 2. * gap],
+                    (1 << b.layers) - 1, |q| hole.gap(&super::drc::Shape::Disk(q, gap)) < 0.
+                        && !(p.plated && p.net == net && obround_distance(p.local(q), p.drill.unwrap()) <= 0.));
+            }
+        }
         blocked
     }
     fn track(&self, b: &Board, t: &Track, net: usize, radius: f64, hit: impl FnMut(usize)) {
@@ -625,20 +703,30 @@ impl Grid {
             self.visit(
                 v.at,
                 [radius * 2.0; 2],
-                (1 << self.layers) - 1,
+                v.mask(self.layers),
                 |q| distance(q, v.at) < radius,
                 &mut hit,
             );
         }
+        for t in r.teardrops.iter().filter(|t| t.net != net) {
+            let margin = radius + b.clearance(net).max(b.clearance(t.net));
+            let shape = super::drc::Shape::Region(vec![vec![t.points.clone()]]);
+            let [x0, y0, x1, y1] = shape.bounds();
+            self.visit([(x0 + x1) / 2., (y0 + y1) / 2.], [x1 - x0 + 2. * margin, y1 - y0 + 2. * margin],
+                1 << t.layer, |q| shape.gap(&super::drc::Shape::Disk(q, margin)) < 0., &mut hit);
+        }
     }
     /// Count only the copper tiles a large-board search visits.
     fn congestion<'a>(&'a self, b: &'a Board, others: &Routes, net: usize, history: &'a Cells<u32>, present: u32) -> Congestion<'a> {
-        let mut nets = vec![Routes { tracks: vec![], vias: vec![], routed: vec![], passes: 0 }; b.nets.len()];
+        let mut nets = vec![Routes { teardrops: vec![], fallback: vec![], tracks: vec![], vias: vec![], routed: vec![], passes: 0 }; b.nets.len()];
         for t in others.tracks.iter().filter(|t| t.net != net) {
             if let Some(own) = nets.get_mut(t.net) { own.tracks.push(t.clone()); }
         }
         for v in others.vias.iter().filter(|v| v.net != net) {
             if let Some(own) = nets.get_mut(v.net) { own.vias.push(v.clone()); }
+        }
+        for t in others.teardrops.iter().filter(|t| t.net != net) {
+            if let Some(own) = nets.get_mut(t.net) { own.teardrops.push(t.clone()); }
         }
         let cells = self.nx * self.ny * self.layers;
         if cells > 1_000_000 {
@@ -673,13 +761,14 @@ impl Grid {
     }
 
     /// Cells of `path` that other nets' copper also claims.
-    fn shared(&self, c: &Congestion, path: &[usize]) -> Vec<usize> {
+    fn shared(&self, b: &Board, c: &Congestion, path: &[usize]) -> Vec<usize> {
         let mut shared = vec![];
         for pair in path.windows(2) {
             let (x, y, z) = self.xyz(pair[1]);
             if z != self.xyz(pair[0]).2 {
-                if (0..self.layers).any(|l| c.via(self.id(x, y, l)) > 0) {
-                    shared.extend((0..self.layers).map(|l| self.id(x, y, l)));
+                let span = b.span(z, self.xyz(pair[0]).2);
+                if (0..self.layers).filter(|&l| (span.0..=span.1).contains(&depth(l, b.layers))).any(|l| c.via(self.id(x, y, l)) > 0) {
+                    shared.extend((0..self.layers).filter(|&l| (span.0..=span.1).contains(&depth(l, b.layers))).map(|l| self.id(x, y, l)));
                 }
             } else if c.trace(pair[1]) > 0 {
                 shared.push(pair[1]);
@@ -730,13 +819,14 @@ impl Grid {
         window: [usize; 4],
         plane: bool,
     ) -> Option<Vec<usize>> {
-        let shared_via = |c: &Congestion, x, y| (0..self.layers).map(|l| c.via(self.id(x, y, l))).sum::<u32>();
+        let shared_via = |c: &Congestion, x, y, span: (usize, usize)| (0..self.layers)
+            .filter(|&l| (span.0..=span.1).contains(&depth(l, b.layers))).map(|l| c.via(self.id(x, y, l))).sum::<u32>();
         let source = &b.pads[a];
         let target = &b.pads[bb];
         let target_xy = self.xyz(self.node(target.at, 0));
         let through_pads: Vec<_> = b.nets[net].pads.iter().map(|&p| &b.pads[p]).filter(|p| p.drill.is_some()).collect();
         let through_vias: Vec<_> = r.vias.iter().filter(|v| v.net == net).collect();
-        let via_cells: Option<HashSet<usize>> = (!plane && through_vias.len() >= 8).then(|| {
+        let via_cells: Option<HashSet<usize>> = (!b.blind_vias && !plane && through_vias.len() >= 8).then(|| {
             through_vias.iter().filter_map(|v| {
                 let i = self.node(v.at, 0);
                 (distance(self.at(i), v.at) < 1e-9).then_some(i)
@@ -780,8 +870,8 @@ impl Grid {
             }
             let (x, y, z) = self.xyz(i);
             if if plane {
-                source.layers & (1 << z) != 0 && (0..self.layers).all(|l| !via_blocked[self.id(x, y, l)])
-                    && congestion.is_none_or(|c| shared_via(c, x, y) == 0)
+                source.layers & (1 << z) != 0 && (0..self.layers).filter(|&l| (b.plane_span(net, z).0..=b.plane_span(net, z).1).contains(&depth(l, b.layers))).all(|l| !via_blocked[self.id(x, y, l)])
+                    && congestion.is_none_or(|c| shared_via(c, x, y, b.plane_span(net, z)) == 0)
             } else { x == target_xy.0 && y == target_xy.1 && target.layers & (1 << z) != 0 } {
                 let mut path = vec![i];
                 let mut at = i;
@@ -811,9 +901,10 @@ impl Grid {
                     continue;
                 }
                 let is_via = dx == 0 && dy == 0;
+                let span = b.span(z, nz);
                 let next = self.id(xx as usize, yy as usize, nz);
                 if blocked[next]
-                    || (is_via && (0..self.layers).any(|l| via_blocked[self.id(x, y, l)]))
+                    || (is_via && (0..self.layers).filter(|&l| (span.0..=span.1).contains(&depth(l, b.layers))).any(|l| via_blocked[self.id(x, y, l)]))
                 {
                     continue;
                 }
@@ -825,7 +916,7 @@ impl Grid {
                             && p.drill
                                 .is_some_and(|d| obround_distance(p.local(self.at(i)), d) <= 0.)
                     }) || via_cells.as_ref().map_or_else(
-                        || through_vias.iter().any(|v| distance(self.at(i), v.at) < 1e-9),
+                        || through_vias.iter().any(|v| v.on(z, b.layers) && v.on(nz, b.layers) && distance(self.at(i), v.at) < 1e-9),
                         |cells| cells.contains(&self.id(x, y, 0))));
                 let base = if diagonal {
                     14
@@ -833,14 +924,16 @@ impl Grid {
                     10
                 } else if through {
                     0
+                } else if span != (0, b.layers - 1) {
+                    350
                 } else {
                     300
                 };
                 // PathFinder: other nets' copper is a cost, not a wall: (base + history) * present.
                 let step = congestion.map_or(base, |c| {
-                    let shared = if is_via { shared_via(c, x, y) } else { c.trace(next) };
+                    let shared = if is_via { shared_via(c, x, y, span) } else { c.trace(next) };
                     let history = if is_via {
-                        (0..self.layers).map(|l| c.history[self.id(x, y, l)]).max().unwrap_or(0)
+                        (0..self.layers).filter(|&l| (span.0..=span.1).contains(&depth(l, b.layers))).map(|l| c.history[self.id(x, y, l)]).max().unwrap_or(0)
                     } else { c.history[next] };
                     (base + history).saturating_mul(1 + c.present.saturating_mul(shared))
                 });
@@ -867,14 +960,7 @@ impl Grid {
                         && p.drill
                             .is_some_and(|d| obround_distance(p.local(a), d) <= 0.)
                 });
-                if !through
-                    && !r
-                        .vias
-                        .iter()
-                        .any(|v| v.net == net && distance(v.at, a) < 1e-9)
-                {
-                    r.vias.push(Via { at: a, net });
-                }
+                if !through { add_via(r, Via { at: a, net, span: b.span(z, zz) }); }
                 continue;
             }
             if distance(a, bb) < 1e-9 {
@@ -1000,6 +1086,7 @@ impl Grid {
         paths: &mut Vec<Vec<usize>>,
     ) -> bool {
         let (tracks, vias) = (r.tracks.len(), r.vias.len());
+        let old_vias = b.blind_vias.then(|| r.vias.clone());
         let pads = &b.nets[net].pads;
         let plane = b.planes.iter().any(|p| p.0 == net);
         if !plane && pads.len() < 2 { return true; }
@@ -1015,14 +1102,19 @@ impl Grid {
             for &pad in pads {
                 if b.planes.iter().any(|&(n, l)| n == net && b.pads[pad].layers & (1 << l) != 0) { continue; }
                 let Some(path) = self.astar(b, r, net, pad, pad, &[], masks, congestion, true) else {
-                    r.tracks.truncate(tracks); r.vias.truncate(vias); paths.clear(); return false;
+                    r.tracks.truncate(tracks); r.vias.truncate(vias);
+                    if let Some(old) = &old_vias { r.vias.clone_from(old); }
+                    paths.clear(); return false;
                 };
                 let via = self.at(*path.last().unwrap());
                 self.commit(b, r, net, b.pads[pad].at, via, &path);
-                if !r.vias.iter().any(|v| v.net == net && distance(v.at, via) < 1e-9) { r.vias.push(Via { at: via, net }); }
+                add_via(r, Via { at: via, net, span: b.plane_span(net, self.xyz(*path.last().unwrap()).2) });
                 let mut claimed = path;
                 let (x, y, z) = self.xyz(*claimed.last().unwrap());
-                claimed.push(self.id(x, y, (z + 1) % self.layers));
+                let end = if b.blind_vias {
+                    b.planes.iter().filter(|p| p.0 == net).max_by_key(|p| depth(p.1, b.layers).abs_diff(depth(z, b.layers))).unwrap().1
+                } else { (z + 1) % self.layers };
+                claimed.push(self.id(x, y, end));
                 paths.push(claimed);
             }
             return true;
@@ -1044,6 +1136,7 @@ impl Grid {
             let Some(path) = self.astar(b, r, net, start, end, &tree, masks, congestion, false) else {
                 r.tracks.truncate(tracks);
                 r.vias.truncate(vias);
+                if let Some(old) = &old_vias { r.vias.clone_from(old); }
                 paths.clear();
                 return false;
             };
@@ -1059,14 +1152,14 @@ impl Grid {
 
     /// Routes nets one at a time against hard obstacles, promoting failed nets for up to three passes.
     fn sequential(&self, b: &Board, mut order: Vec<usize>) -> Routes {
-        let mut best = Routes {
+        let mut best = Routes { teardrops: vec![], fallback: vec![],
             tracks: vec![],
             vias: vec![],
             routed: vec![false; b.nets.len()],
             passes: 0,
         };
         for pass in 1..=3 {
-            let mut r = Routes {
+            let mut r = Routes { teardrops: vec![], fallback: vec![],
                 tracks: vec![],
                 vias: vec![],
                 routed: vec![false; b.nets.len()],
@@ -1100,7 +1193,7 @@ impl Grid {
             for net in 0..b.nets.len() {
                 if working.routed[net] { continue; }
                 // Fixed obstacles stay hard; remove routed copper for this tentative escape.
-                let empty = Routes { tracks: vec![], vias: vec![], routed: vec![], passes: 0 };
+                let empty = Routes { teardrops: vec![], fallback: vec![], tracks: vec![], vias: vec![], routed: vec![], passes: 0 };
                 let masks = self.masks(b, &empty, net, false);
                 let congestion = self.congestion(b, &working, net, &history, 4);
                 let mut own = empty;
@@ -1111,14 +1204,14 @@ impl Grid {
                 let mut blockers = vec![];
                 for n in 0..b.nets.len() {
                     if !working.routed[n] { continue; }
-                    let other = Routes {
+                    let other = Routes { teardrops: vec![], fallback: vec![],
                         tracks: working.tracks.iter().filter(|t| t.net == n).cloned().collect(),
                         vias: working.vias.iter().filter(|v| v.net == n).cloned().collect(),
                         routed: vec![], passes: 0,
                     };
                     if !clear(b, &other, &own) { blockers.push(n); }
                 }
-                let shared: Vec<_> = paths.iter().flat_map(|path| self.shared(&congestion, path)).collect();
+                let shared: Vec<_> = paths.iter().flat_map(|path| self.shared(b, &congestion, path)).collect();
                 for i in shared { let cost: &mut u32 = history.entry(i); *cost = cost.saturating_add(10); }
                 let mut candidate = working.clone();
                 candidate.tracks.retain(|t| !blockers.contains(&t.net));
@@ -1147,7 +1240,7 @@ impl Grid {
 
     /// PathFinder negotiated congestion: failed and overlapping nets retry with growing copper costs.
     fn negotiate(&self, b: &Board, order: &[usize], reverse: bool) -> (Routes, bool) {
-        let empty = Routes {
+        let empty = Routes { teardrops: vec![], fallback: vec![],
             tracks: vec![],
             vias: vec![],
             routed: vec![false; b.nets.len()],
@@ -1180,7 +1273,7 @@ impl Grid {
                 }
                 let congestion = self.congestion(b, &others, net, &history, present);
                 let overlaps = |paths: &[Vec<usize>]| -> Vec<usize> {
-                    paths.iter().flat_map(|p| self.shared(&congestion, p)).collect()
+                    paths.iter().flat_map(|p| self.shared(b, &congestion, p)).collect()
                 };
                 // Only nets that still overlap another net are ripped up after the first pass.
                 if pass > 1 && routed[net] && overlaps(&paths[net]).is_empty() {
@@ -1236,7 +1329,7 @@ impl Grid {
 
     /// Accept only continuous, clearance-clean copper, then retry the missing nets with hard obstacles.
     fn legalize(&self, b: &Board, nets: &[Routes], routed: &[bool], order: &[usize], passes: usize) -> Routes {
-        let mut kept = Routes {
+        let mut kept = Routes { teardrops: vec![], fallback: vec![],
             tracks: vec![], vias: vec![], routed: vec![false; b.nets.len()], passes,
         };
         for &net in order {
@@ -1259,7 +1352,7 @@ impl Grid {
 /// True when every track and via in `add` keeps clearance to other nets' copper in `kept`.
 fn clear(b: &Board, kept: &Routes, add: &Routes) -> bool {
     let gap = |n: usize, m: usize| b.clearance(n).max(b.clearance(m)) - 1e-7;
-    add.tracks.iter().all(|t| {
+    let copper_clear = add.tracks.iter().all(|t| {
         kept.tracks
             .iter()
             .filter(|u| u.net != t.net && u.layer == t.layer)
@@ -1267,19 +1360,27 @@ fn clear(b: &Board, kept: &Routes, add: &Routes) -> bool {
             && kept
                 .vias
                 .iter()
-                .filter(|v| v.net != t.net)
+                .filter(|v| v.net != t.net && v.on(t.layer, b.layers))
                 .all(|v| segment_distance(v.at, t.a, t.b) - (b.via[0] + t.width) / 2.0 >= gap(t.net, v.net))
     }) && add.vias.iter().all(|v| {
         kept.tracks
             .iter()
-            .filter(|u| u.net != v.net)
+            .filter(|u| u.net != v.net && v.on(u.layer, b.layers))
             .all(|u| segment_distance(v.at, u.a, u.b) - (b.via[0] + u.width) / 2.0 >= gap(v.net, u.net))
             && kept
                 .vias
                 .iter()
-                .filter(|u| u.net != v.net)
+                .filter(|u| u.net != v.net && (v.span.0 <= u.span.1 && u.span.0 <= v.span.1))
                 .all(|u| distance(u.at, v.at) - b.via[0] >= gap(v.net, u.net))
-    })
+    });
+    copper_clear && [kept, add].into_iter().zip([add, kept]).all(|(drops, other)| {
+        drops.teardrops.iter().all(|t| {
+            let shape = super::drc::Shape::Region(vec![vec![t.points.clone()]]);
+            super::tune::clear_shape(b, other, t.net, t.layer, &shape)
+        })
+    }) && (!b.blind_vias || add.vias.iter().all(|v| kept.vias.iter().all(|u| {
+        distance(v.at, u.at) - b.via[1] >= gap(v.net, u.net)
+    })))
 }
 
 pub fn route(b: &Board) -> Routes {
@@ -1287,6 +1388,150 @@ pub fn route(b: &Board) -> Routes {
 }
 
 fn route_with_threads(b: &Board, threads: usize) -> Routes {
+    let mut r = if b.pairs.is_empty() { route_ordinary(b, threads) } else { route_pairs(b, threads) };
+    if !b.pairs.is_empty() || !b.length_groups.is_empty() || b.teardrops { super::tune::finish(b, &mut r); }
+    r
+}
+
+fn add_via(r: &mut Routes, via: Via) {
+    if let Some(v) = r.vias.iter_mut().find(|v| v.net == via.net && distance(v.at, via.at) < 1e-9) {
+        v.span = (v.span.0.min(via.span.0), v.span.1.max(via.span.1));
+    } else { r.vias.push(via); }
+}
+
+fn route_pairs(b: &Board, threads: usize) -> Routes {
+    let mut locked = b.clone();
+    let mut pair_routes = Routes { tracks: vec![], vias: vec![], teardrops: vec![], fallback: vec![], routed: vec![false; b.nets.len()], passes: 0 };
+    for pair in &b.pairs {
+        if let Some(r) = couple(&locked, pair, &pair_routes) {
+            for t in &r.tracks { locked.fixed.push(FixedTrace { track: t.clone(), nets: vec![t.net], part: usize::MAX }); }
+            locked.fixed_vias.extend(r.vias.clone());
+            for net in [pair.p, pair.n] { locked.nets[net].pads.clear(); pair_routes.routed[net] = true; }
+            pair_routes.tracks.extend(r.tracks);
+            pair_routes.vias.extend(r.vias);
+        } else { pair_routes.fallback.push(pair.name.clone()); }
+    }
+    let mut rest = route_ordinary(&locked, threads);
+    if rest.routed.iter().any(|r| !r) {
+        // Coupling must never prevent a board that ordinary routing can complete.
+        rest = route_ordinary(b, threads);
+        rest.fallback = b.pairs.iter().map(|p| p.name.clone()).collect();
+        return rest;
+    }
+    pair_routes.tracks.extend(rest.tracks);
+    pair_routes.vias.extend(rest.vias);
+    pair_routes.routed = rest.routed;
+    pair_routes.passes = rest.passes;
+    pair_routes
+}
+
+fn couple(b: &Board, pair: &Pair, kept: &Routes) -> Option<Routes> {
+    use super::tune::{clear_track, clear_via};
+    // shortcut: coupling needs single-land terminals, add grouped breakouts when multi-land differential pins are needed.
+    if b.nets[pair.p].pads.len() != 2 || b.nets[pair.n].pads.len() != 2 { return None; }
+    let mut virtual_board = b.clone();
+    let net = virtual_board.nets.len();
+    let terminals: Vec<_> = (0..2).map(|i| (&b.pads[b.nets[pair.p].pads[i]], &b.pads[b.nets[pair.n].pads[i]])).collect();
+    let fanouts = Grid::new(b).fanouts;
+    let midpoints: Vec<_> = terminals.iter().map(|(p, n)| [(p.at[0] + n.at[0]) / 2., (p.at[1] + n.at[1]) / 2.]).collect();
+    let mut pads = vec![];
+    for (i, (p, n)) in terminals.iter().enumerate() {
+        let layers = p.layers & n.layers;
+        if layers == 0 { return None; }
+        pads.push(virtual_board.pads.len());
+        let escape = |pad: &Pad| fanouts.iter().find(|t| t.net == pad.net && distance(t.a, pad.at) < 1e-9).map_or(pad.at, |t| t.b);
+        let (a, c) = (escape(p), escape(n));
+        virtual_board.pads.push(Pad { name: format!("pair_{i}"), at: [(a[0] + c[0]) / 2., (a[1] + c[1]) / 2.],
+            size: [0.01; 2], rotation: 0., round: false, radius: 0., layers, drill: None, plated: true, net });
+    }
+    for p in &mut virtual_board.pads {
+        if p.net == pair.p || p.net == pair.n { p.net = net; }
+    }
+    virtual_board.nets.push(Net { name: pair.name.clone(), pads: pads.clone(), width: 2. * pair.width + pair.gap,
+        // Reserve the outer miter's extra reach around orthogonal corners.
+        clearance: b.clearance(pair.p).max(b.clearance(pair.n)) + (pair.width + pair.gap) / 2. * (2_f64.sqrt() - 1.) });
+    let grid = Grid::new(&virtual_board);
+    let mut center = Routes { tracks: vec![], vias: vec![], teardrops: vec![], fallback: vec![], routed: vec![], passes: 0 };
+    if !grid.connect(&virtual_board, &mut center, net, false, None, None, &mut vec![]) || center.tracks.is_empty() { return None; }
+    // Remove sub-grid terminal kinks before offsetting; their miters can fold back across the pair.
+    while center.tracks.len() > 1 && distance(center.tracks[0].a, center.tracks[0].b) < pair.width + pair.gap
+        && center.tracks[0].layer == center.tracks[1].layer {
+        let first = center.tracks.remove(0); center.tracks[0].a = first.a;
+    }
+    while center.tracks.len() > 1 && distance(center.tracks.last()?.a, center.tracks.last()?.b) < pair.width + pair.gap
+        && center.tracks.last()?.layer == center.tracks[center.tracks.len() - 2].layer {
+        let last = center.tracks.pop()?; center.tracks.last_mut()?.b = last.b;
+    }
+    let first = center.tracks[0].clone();
+    let last = center.tracks.last()?.clone();
+    if distance(midpoints[0], first.a) > 1e-9 { center.tracks.insert(0, Track { a: midpoints[0], b: first.a, ..first }); }
+    if distance(last.b, midpoints[1]) > 1e-9 { center.tracks.push(Track { a: last.b, b: midpoints[1], ..last }); }
+    let mut vertices = vec![center.tracks[0].a];
+    for t in &center.tracks {
+        if distance(*vertices.last().unwrap(), t.a) > 1e-7 { return None; }
+        vertices.push(t.b);
+    }
+    let normals: Vec<_> = center.tracks.iter().map(|t| {
+        let l = distance(t.a, t.b); [-(t.b[1] - t.a[1]) / l, (t.b[0] - t.a[0]) / l]
+    }).collect();
+    let mut offsets = vec![];
+    for i in 0..vertices.len() {
+        let a = normals[i.saturating_sub(1)];
+        let c = normals[i.min(normals.len() - 1)];
+        let denominator = 1. + a[0] * c[0] + a[1] * c[1];
+        if denominator < 1e-6 { return None; }
+        offsets.push([(a[0] + c[0]) / denominator, (a[1] + c[1]) / denominator]);
+    }
+    let p = terminals[0].0.at;
+    let side = ((p[0] - vertices[0][0]) * offsets[0][0] + (p[1] - vertices[0][1]) * offsets[0][1]).signum();
+    if side == 0. { return None; }
+    let mut r = Routes { tracks: vec![], vias: vec![], teardrops: vec![], fallback: vec![], routed: vec![], passes: 0 };
+    let half = (pair.width + pair.gap) / 2.;
+    let via_half = half.max((b.via[0] + b.clearance(pair.p).max(b.clearance(pair.n))) / 2.);
+    let transition = |i: usize| center.vias.iter().find(|v| distance(v.at, vertices[i]) < 1e-7);
+    for (net, sign) in [(pair.p, side), (pair.n, -side)] {
+        let point = |i: usize, radius: f64| [vertices[i][0] + sign * radius * offsets[i][0], vertices[i][1] + sign * radius * offsets[i][1]];
+        let mut points = vec![];
+        for (i, t) in center.tracks.iter().enumerate() {
+            let mut path = vec![point(i, if transition(i).is_some() { via_half } else { half })];
+            let len = distance(t.a, t.b);
+            let taper = 1_f64.max(2. * via_half);
+            if via_half > half && len > 2. * taper {
+                if transition(i).is_some() {
+                    path.push([t.a[0] + (t.b[0] - t.a[0]) * taper / len + sign * half * normals[i][0],
+                        t.a[1] + (t.b[1] - t.a[1]) * taper / len + sign * half * normals[i][1]]);
+                }
+                if transition(i + 1).is_some() {
+                    path.push([t.b[0] - (t.b[0] - t.a[0]) * taper / len + sign * half * normals[i][0],
+                        t.b[1] - (t.b[1] - t.a[1]) * taper / len + sign * half * normals[i][1]]);
+                }
+            }
+            path.push(point(i + 1, if transition(i + 1).is_some() { via_half } else { half }));
+            for p in path.windows(2) { r.tracks.push(Track { a: p[0], b: p[1], layer: t.layer, width: pair.width, net }); }
+            points.extend(path);
+        }
+        for (i, pad) in [b.nets[net].pads[0], b.nets[net].pads[1]].into_iter().enumerate() {
+            let end = if i == 0 { points[0] } else { *points.last().unwrap() };
+            let layer = if i == 0 { center.tracks[0].layer } else { center.tracks.last().unwrap().layer };
+            if distance(end, b.pads[pad].at) > 1e-9 { r.tracks.push(Track { a: b.pads[pad].at, b: end, layer, width: pair.width, net }); }
+        }
+        for (i, _) in vertices.iter().enumerate() {
+            if let Some(v) = transition(i) { add_via(&mut r, Via { at: point(i, via_half), net, span: v.span }); }
+        }
+    }
+    let mut all = kept.clone();
+    all.tracks.extend(r.tracks.clone()); all.vias.extend(r.vias.clone());
+    if r.tracks.iter().any(|t| !clear_track(b, &all, t)) { return None; }
+    // Check drills against other copper, excluding each via itself from drill spacing.
+    for v in &r.vias {
+        let mut others = all.clone();
+        others.vias.retain(|u| u != v);
+        if !clear_via(b, &others, v) { return None; }
+    }
+    Some(r)
+}
+
+fn route_ordinary(b: &Board, threads: usize) -> Routes {
     let grid = Grid::new(b);
     let mut jobs = BTreeMap::new();
     for net in 0..b.nets.len() {
@@ -1390,16 +1635,16 @@ pub fn clearance_check(b: &Board, r: &Routes) -> (usize, f64) {
     let mut bad = 0;
     let mut via_pad_bad = 0;
     let mut min = f64::INFINITY;
-    let mut check = |gap: f64| {
+    let mut check = |gap: f64, rule: f64| {
         min = min.min(gap);
-        if gap + 1e-7 < b.clearance {
+        if gap + 1e-7 < rule {
             bad += 1;
         }
     };
     for (i, t) in r.tracks.iter().enumerate() {
         for u in &r.tracks[..i] {
             if t.net != u.net && t.layer == u.layer {
-                check(segment_segment(t.a, t.b, u.a, u.b) - (t.width + u.width) / 2.0);
+                check(segment_segment(t.a, t.b, u.a, u.b) - (t.width + u.width) / 2.0, b.clearance(t.net).max(b.clearance(u.net)));
             }
         }
         for p in &b.pads {
@@ -1409,16 +1654,16 @@ pub fn clearance_check(b: &Board, r: &Routes) -> (usize, f64) {
                 } else {
                     segment_rect(p.local(t.a), p.local(t.b), [0.0; 2], p.size)
                 };
-                check(d - t.width / 2.0);
+                check(d - t.width / 2.0, b.clearance(t.net).max(b.clearance(p.net)));
             }
         }
         for v in &r.vias {
-            if v.net != t.net {
-                check(segment_distance(v.at, t.a, t.b) - (b.via[0] + t.width) / 2.0);
+            if v.net != t.net && v.on(t.layer, b.layers) {
+                check(segment_distance(v.at, t.a, t.b) - (b.via[0] + t.width) / 2.0, b.clearance(t.net).max(b.clearance(v.net)));
             }
         }
         for &(at, d) in &b.holes {
-            check(segment_distance(at, t.a, t.b) - (d + t.width) / 2.0);
+            check(segment_distance(at, t.a, t.b) - (d + t.width) / 2.0, b.clearance(t.net));
         }
         for p in [t.a, t.b] {
             assert!(place::inside(p, &b.outline));
@@ -1431,6 +1676,7 @@ pub fn clearance_check(b: &Board, r: &Routes) -> (usize, f64) {
     }
     for (i, v) in r.vias.iter().enumerate() {
         for p in &b.pads {
+            if p.plated && p.layers & v.mask(b.layers) == 0 { continue; }
             if p.drill.is_none()
                 && !(b.via_in_pad && p.net != usize::MAX && p.net == v.net)
                 && rect_distance(p.local(v.at), [0.; 2], p.size) <= b.via[0] / 2.0 + 1e-9
@@ -1443,17 +1689,20 @@ pub fn clearance_check(b: &Board, r: &Routes) -> (usize, f64) {
                 } else {
                     rect_distance(p.local(v.at), [0.0; 2], p.size)
                 };
-                check(d - b.via[0] / 2.0);
+                check(d - b.via[0] / 2.0, b.clearance(v.net).max(b.clearance(p.net)));
             }
         }
         for u in &r.vias[..i] {
-            if u.net != v.net {
-                check(distance(u.at, v.at) - b.via[0]);
+            if u.net != v.net && v.span.0 <= u.span.1 && u.span.0 <= v.span.1 {
+                check(distance(u.at, v.at) - b.via[0], b.clearance(v.net).max(b.clearance(u.net)));
             }
         }
         for &(at, d) in &b.holes {
-            check(distance(at, v.at) - (d + b.via[0]) / 2.0);
+            check(distance(at, v.at) - (d + b.via[0]) / 2.0, b.clearance(v.net));
         }
+    }
+    for t in &r.teardrops {
+        if !super::tune::clear_shape(b, r, t.net, t.layer, &super::drc::Shape::Region(vec![vec![t.points.clone()]])) { bad += 1; }
     }
     (bad + via_pad_bad, min)
 }
@@ -1463,6 +1712,26 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::time::Instant;
+
+    #[test]
+    fn via_spans_use_depth_and_merge_at_the_same_point() {
+        assert_eq!((0..4).map(|l| depth(l, 4)).collect::<Vec<_>>(), vec![0,3,1,2]);
+        for (span, mask) in [((0,1), 5), ((1,2), 12), ((2,3), 10), ((0,3), 15)] {
+            assert_eq!(Via { at: [0.;2], net: 0, span }.mask(4), mask);
+        }
+        let mut r = Routes { tracks: vec![], vias: vec![], routed: vec![], passes: 0, teardrops: vec![], fallback: vec![] };
+        add_via(&mut r, Via { at: [0.;2], net: 0, span: (0,1) });
+        add_via(&mut r, Via { at: [0.;2], net: 0, span: (1,3) });
+        assert_eq!(r.vias.len(), 1);
+        assert_eq!(r.vias[0].span, (0,3));
+    }
+
+    #[test]
+    fn new_features_keep_thread_count_determinism() {
+        let prepared = super::super::prepare(r#"{"board":{"width":40,"height":25,"layers":4},"rules":{"clearance":0.15,"blind_vias":true,"teardrops":true},"parts":[{"ref":"J1","kind":"header","footprint":"usb_micro_b","at":[-14,0],"rotation":-90},{"ref":"U1","kind":"chip","footprint":"soic8","at":[14,0]}],"nets":{"P":["J1.3","U1.2"],"N":["J1.2","U1.1"]},"diffpairs":{"USB":{"p":"P","n":"N","gap":0.15,"width":0.2}}}"#).unwrap();
+        let b = Board::from_prepared(&prepared).unwrap();
+        assert_eq!(route_with_threads(&b, 1), route_with_threads(&b, 4));
+    }
 
     #[test]
     fn changes_layers_and_keeps_rotated_pads_clear() {
@@ -1515,7 +1784,7 @@ mod tests {
             });
         }
         let grid = Grid::new(&b);
-        let mut r = Routes {
+        let mut r = Routes { teardrops: vec![], fallback: vec![],
             tracks: vec![],
             vias: vec![],
             routed: vec![true],
@@ -1570,8 +1839,8 @@ mod tests {
             {"ref":"R2","kind":"resistor","footprint":"0603","at":[3,0],"side":"bottom"}],"nets":{"N":["R1.1","R2.1"]}}"#).unwrap();
         let b = Board::from_prepared(&prepared).unwrap();
         let grid = Grid::new(&b);
-        let mut r = Routes { tracks: vec![], vias: vec![Via { at: [0.5e-9, 0.], net: 0 }], routed: vec![false], passes: 0 };
-        r.vias.extend((0..8).map(|i| Via { at: [-4. + i as f64, 3.], net: 0 }));
+        let mut r = Routes { teardrops: vec![], fallback: vec![], tracks: vec![], vias: vec![Via { at: [0.5e-9, 0.], net: 0, span: (0, b.layers - 1) }], routed: vec![false], passes: 0 };
+        r.vias.extend((0..8).map(|i| Via { at: [-4. + i as f64, 3.], net: 0, span: (0, b.layers - 1) }));
         let masks = grid.masks(&b, &r, 0, false);
         assert!(grid.connect(&b, &mut r, 0, false, Some(&masks), None, &mut vec![]));
         assert_eq!(r.vias.len(), 9);
@@ -1583,17 +1852,17 @@ mod tests {
         let prepared = super::super::prepare(r#"{"board":{"width":150,"height":100,"layers":4},"rules":{"clearance":0.15},"nets":{"A":[],"B":[],"C":[]}}"#).unwrap();
         let b = Board::from_prepared(&prepared).unwrap();
         let grid = Grid::new(&b);
-        let others = Routes { tracks: vec![
+        let others = Routes { teardrops: vec![], fallback: vec![], tracks: vec![
             Track { a: [-56., -40.5], b: [-54., -38.5], layer: 0, width: 0.15, net: 1 },
             Track { a: [-56., -39.75], b: [-54., -39.75], layer: 0, width: 0.15, net: 2 }],
-            vias: vec![Via { at: [-55.8, -39.75], net: 1 }], routed: vec![], passes: 0 };
+            vias: vec![Via { at: [-55.8, -39.75], net: 1, span: (0, b.layers - 1) }], routed: vec![], passes: 0 };
         let history = Cells::new(grid.nx * grid.ny * grid.layers);
         let c = grid.congestion(&b, &others, 0, &history, 1);
         assert!(c.lazy.is_some());
         for (via, radius) in [(false, b.nets[0].width / 2.), (true, b.via[0] / 2.)] {
             let mut expected = Cells::<u16>::new(grid.nx * grid.ny * grid.layers);
             for net in 1..3 {
-                let own = Routes { tracks: others.tracks.iter().filter(|t| t.net == net).cloned().collect(),
+                let own = Routes { teardrops: vec![], fallback: vec![], tracks: others.tracks.iter().filter(|t| t.net == net).cloned().collect(),
                     vias: others.vias.iter().filter(|v| v.net == net).cloned().collect(), routed: vec![], passes: 0 };
                 let mut seen = std::collections::BTreeSet::new();
                 grid.copper(&b, &own, 0, radius, |i| { seen.insert(i); });
@@ -1614,7 +1883,7 @@ mod tests {
         let grid = Grid::new(&b);
         let mut masks = (Bits::new(grid.nx * grid.ny * grid.layers), Bits::new(grid.nx * grid.ny * grid.layers));
         masks.0.set(grid.node(b.pads[b.nets[0].pads[1]].at, 0));
-        let empty = Routes { tracks: vec![], vias: vec![], routed: vec![], passes: 0 };
+        let empty = Routes { teardrops: vec![], fallback: vec![], tracks: vec![], vias: vec![], routed: vec![], passes: 0 };
         assert!(grid.astar(&b, &empty, 0, b.nets[0].pads[0], b.nets[0].pads[1], &[], &masks, None, false).is_none());
     }
 

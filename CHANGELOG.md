@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.0 — 2026-10-14
+- Add opt-in differential-pair routing with fixed coupled copper, paired layer changes, ordinary-net fallback and skew tuning.
+- Match length groups with clearance-checked meanders and report saved-copper length/skew faults in DRC.
+- Solve single-ended and differential microstrip widths from dielectric properties and impedance targets.
+- Add span-aware blind/buried vias, split drill files, layer-filtered copper/mask/JSON and partial-depth 3D drills.
+- Add clearance-checked teardrops to saved copper, SVG, Gerbers, pours and DRC. Preserve default 0.21.0 artifact bytes.
+
 ## 0.21.0 — 2026-10-14
 
 - The autorouter finishes 200-part boards: a generated 200-part, 330-net board routes 330/330 and
