@@ -180,11 +180,12 @@ textarea { resize: none; line-height: 1.4; }
   pointer-events: none;
 }
 .board-view { flex: 1; min-height: 0; position: relative; overflow: hidden; background: #001023; } /* KiCad's canvas */
-.board-view svg { display: block; width: 100%; height: 100%; cursor: grab; }
+.board-view svg { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .board-view svg.panning { cursor: grabbing; }
 .model-view { flex: 1; min-height: 0; position: relative; overflow: hidden; }
 .board-view .empty, .model-view .empty { padding: 36px 16px 16px; }
 .design-parts { display: flex; gap: 4px; padding: 5px 8px; background: var(--surface); border-top: 1px solid var(--border); overflow-x: auto; min-height: 34px; align-items: center; }
+.design-parts[hidden] { display: none; }
 .part-chip { flex: none; padding: 1px 8px; font: 12px ui-monospace, "DejaVu Sans Mono", monospace; }
 .part-chip.collision { border-color: var(--bad); color: var(--bad); }
 .part-chip.tight { border-color: var(--warn); color: var(--warn); }

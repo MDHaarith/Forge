@@ -264,14 +264,17 @@ impl Board {
                 } else if pad.drill.is_some() {
                     (1 << b.layers) - 1
                 } else {
-                    1 << p.side.index()
+                    let layer = pad.layer.unwrap_or(Layer::Top);
+                    1 << (if p.side == Layer::Bottom {
+                        if layer == Layer::Bottom { Layer::Top } else { Layer::Bottom }
+                    } else { layer }).index()
                 };
                 b.pads.push(Pad {
                     name: format!("{}.{}", spec.parts[p.part].reference, pad.number),
                     // KiCad footprints have y down; the board and every output have y up.
                     at: p.point([pad.at[0], -pad.at[1]]),
                     size: pad.size,
-                    rotation: p.rotation,
+                    rotation: p.rotation + if p.side == Layer::Bottom { -pad.rotation } else { pad.rotation },
                     round: pad.round,
                     radius: pad.radius,
                     drill: pad.drill,
@@ -318,6 +321,20 @@ impl Board {
         b.planes = spec.pours.iter().filter(|p| p.layer.index() >= 2).map(|p| {
             (b.nets.iter().position(|n| n.name == p.net).unwrap(), p.layer.index())
         }).collect();
+        for t in &spec.tracks {
+            let net = b.nets.iter().position(|n| n.name == t.net).unwrap();
+            for points in t.points.windows(2) {
+                b.fixed.push(FixedTrace { track: Track { a: points[0], b: points[1],
+                    layer: t.layer.index(), width: t.width.unwrap_or(b.nets[net].width), net },
+                    nets: vec![net], part: usize::MAX });
+            }
+        }
+        for v in &spec.vias {
+            let net = b.nets.iter().position(|n| n.name == v.net).unwrap();
+            let from = depth(v.from.unwrap_or(Layer::Top).index(), b.layers);
+            let to = depth(v.to.unwrap_or(Layer::Bottom).index(), b.layers);
+            b.fixed_vias.push(Via { at: v.at, net, span: (from.min(to), from.max(to)) });
+        }
         for (name, pair) in &spec.diffpairs {
             b.pairs.push(Pair { name: name.clone(), p: b.nets.iter().position(|n| n.name == pair.p).unwrap(),
                 n: b.nets.iter().position(|n| n.name == pair.n).unwrap(), width: spec.pair_width(pair)?,
@@ -1075,6 +1092,93 @@ impl CopperTiles<'_> {
 const NEGOTIATION_PASSES: usize = 200;
 
 impl Grid {
+    /// Route only gaps between the connected components of committed copper.
+    fn connect_locked(&self, board: &Board, r: &mut Routes, net: usize, masks: Option<&Masks>,
+        congestion: Option<&Congestion>, paths: &mut Vec<Vec<usize>>) -> bool {
+        use super::{drc::Shape, tune::pad_shape};
+        let mut b = board.clone();
+        // Temporary terminals make even padless locked islands part of this net's routing tree.
+        let terminals = b.fixed.iter().filter(|f| f.part == usize::MAX && f.track.net == net)
+            .flat_map(|f| [(f.track.a, 1 << f.track.layer), (f.track.b, 1 << f.track.layer)])
+            .chain(b.fixed_vias.iter().filter(|v| v.net == net).map(|v| (v.at, v.mask(b.layers))))
+            .collect::<Vec<_>>();
+        for (at, layers) in terminals {
+            b.nets[net].pads.push(b.pads.len());
+            b.pads.push(Pad { name: String::new(), at, size: [0.; 2], rotation: 0., round: true,
+                radius: 0., layers, drill: None, plated: true, net });
+        }
+        let pads = &b.nets[net].pads;
+        if pads.len() < 2 { return true; }
+        let plane = b.planes.iter().filter(|p| p.0 == net).fold(0u8, |mask, p| mask | (1 << p.1));
+        let original = r.clone();
+        let fresh;
+        let masks = match masks { Some(m) => m, None => { fresh = self.masks(&b, r, net, true); &fresh } };
+        loop {
+            let mut items: Vec<_> = pads.iter().map(|&i| (pad_shape(&b.pads[i], false), b.pads[i].layers, b.pads[i].at)).collect();
+            items.extend(b.fixed.iter().filter(|f| f.nets.contains(&net)).map(|f|
+                (Shape::Stroke(f.track.a, f.track.b, f.track.width / 2.), 1 << f.track.layer, f.track.a)));
+            items.extend(r.tracks.iter().filter(|t| t.net == net).map(|t|
+                (Shape::Stroke(t.a, t.b, t.width / 2.), 1 << t.layer, t.a)));
+            items.extend(b.fixed_vias.iter().chain(&r.vias).filter(|v| v.net == net).map(|v|
+                (Shape::Disk(v.at, b.via[0] / 2.), v.mask(b.layers), v.at)));
+            let mut reached = vec![false; items.len()];
+            reached[0] = true;
+            let mut queue = vec![0];
+            // shortcut: quadratic connectivity for locked copper, add a spatial index when large imported track sets need it.
+            while let Some(i) = queue.pop() {
+                for j in 0..items.len() {
+                    if !reached[j] && ((items[i].1 & items[j].1 != 0 && items[i].0.gap(&items[j].0) <= 1e-7)
+                        || (items[i].1 & plane != 0 && items[j].1 & plane != 0)) {
+                        reached[j] = true; queue.push(j);
+                    }
+                }
+            }
+            let Some(target) = (0..pads.len()).filter(|&i| !reached[i]).min_by(|&i, &j| {
+                let gap = |k: usize| items.iter().zip(&reached).filter(|(_, yes)| **yes)
+                    .map(|(item, _)| item.0.gap(&items[k].0)).fold(f64::INFINITY, f64::min);
+                gap(i).total_cmp(&gap(j)).then(i.cmp(&j))
+            }) else { return true; };
+            if plane != 0 {
+                let on_plane = items.iter().zip(&reached).any(|(item, yes)| *yes && item.1 & plane != 0);
+                let pad = pads[if on_plane { target } else { 0 }];
+                let Some(path) = self.astar(&b, r, net, pad, pad, &[], masks, congestion, true) else {
+                    *r = original; paths.clear(); return false;
+                };
+                let end = *path.last().unwrap();
+                let at = self.at(end);
+                self.commit(&b, r, net, b.pads[pad].at, at, &path);
+                add_via(r, Via { at, net, span: b.plane_span(net, self.xyz(end).2) });
+                paths.push(path);
+                continue;
+            }
+            let mut anchors = BTreeMap::new();
+            for ((shape, layers, at), yes) in items.iter().zip(&reached) {
+                if !yes { continue; }
+                let points = match shape {
+                    Shape::Stroke(a, c, _) => {
+                        let steps = (distance(*a, *c) / (self.g / 2.)).ceil().max(1.) as usize;
+                        (0..=steps).map(|i| {
+                            let t = i as f64 / steps as f64;
+                            [a[0] + (c[0]-a[0])*t, a[1] + (c[1]-a[1])*t]
+                        }).collect::<Vec<_>>()
+                    }
+                    _ => vec![*at],
+                };
+                for point in points {
+                    for z in (0..b.layers).filter(|z| layers & (1 << z) != 0) {
+                        anchors.entry(self.node(point, z)).or_insert(point);
+                    }
+                }
+            }
+            let tree: Vec<_> = anchors.keys().copied().collect();
+            let Some(path) = self.astar(&b, r, net, pads[0], pads[target], &tree, masks, congestion, false) else {
+                *r = original; paths.clear(); return false;
+            };
+            self.commit(&b, r, net, anchors[&path[0]], b.pads[pads[target]].at, &path);
+            paths.push(path);
+        }
+    }
+
     /// Connects a net's pads nearest-first into `r`; on failure removes its partial copper.
     #[allow(clippy::too_many_arguments)]
     fn connect(
@@ -1087,6 +1191,14 @@ impl Grid {
         congestion: Option<&Congestion>,
         paths: &mut Vec<Vec<usize>>,
     ) -> bool {
+        // Coupled pairs clear their terminals after committing temporary fixed copper.
+        if b.nets[net].pads.is_empty() && b.pairs.iter().any(|p| p.p == net || p.n == net) {
+            return true;
+        }
+        if b.fixed.iter().any(|f| f.part == usize::MAX && f.track.net == net)
+            || b.fixed_vias.iter().any(|v| v.net == net) {
+            return self.connect_locked(b, r, net, masks, congestion, paths);
+        }
         let (tracks, vias) = (r.tracks.len(), r.vias.len());
         let old_vias = b.blind_vias.then(|| r.vias.clone());
         let pads = &b.nets[net].pads;
@@ -1403,6 +1515,7 @@ fn route_with_threads_and_stats(b: &Board, threads: usize) -> (Routes, Option<su
     let mut r = if b.pairs.is_empty() { route_ordinary(b, threads) } else { route_pairs(b, threads) };
     let stats = b.beautify.then(|| super::beautify::finish(b, &mut r));
     if !b.pairs.is_empty() || !b.length_groups.is_empty() || b.teardrops { super::tune::finish(b, &mut r); }
+    r.vias.extend(b.fixed_vias.clone());
     (r, stats)
 }
 
@@ -1416,6 +1529,11 @@ fn route_pairs(b: &Board, threads: usize) -> Routes {
     let mut locked = b.clone();
     let mut pair_routes = Routes { tracks: vec![], vias: vec![], teardrops: vec![], fallback: vec![], routed: vec![false; b.nets.len()], passes: 0 };
     for pair in &b.pairs {
+        if b.fixed.iter().any(|f| f.part == usize::MAX && (f.track.net == pair.p || f.track.net == pair.n))
+            || b.fixed_vias.iter().any(|v| v.net == pair.p || v.net == pair.n) {
+            pair_routes.fallback.push(pair.name.clone());
+            continue;
+        }
         if let Some(r) = couple(&locked, pair, &pair_routes) {
             for t in &r.tracks { locked.fixed.push(FixedTrace { track: t.clone(), nets: vec![t.net], part: usize::MAX }); }
             locked.fixed_vias.extend(r.vias.clone());

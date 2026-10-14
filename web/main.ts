@@ -1,4 +1,4 @@
-import type { AssemblyPart, BoardBoxes, FitIssue } from "./design.ts";
+import type { AssemblyPart, BoardBoxes, BoardEdit, FitIssue } from "./design.ts";
 import { renderMarkdown } from "./markdown.ts";
 
 type AgentEvent =
@@ -57,6 +57,7 @@ let closeDesign: (() => void) | null = null;
 /** Bumped by each loadDesign, so a slower earlier load stops instead of drawing over a newer one. */
 let designRun = 0;
 let showSchematic = false;
+let editingBoard = false;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init);
@@ -490,7 +491,7 @@ async function fetchFile(file: string): Promise<ArrayBuffer> {
 
 const fetchJson = async <T>(file: string): Promise<T> => JSON.parse(new TextDecoder().decode(await fetchFile(file)));
 
-async function loadDesign() {
+async function loadDesign(preferPart?: string) {
   const run = ++designRun;
   closeDesign?.();
   closeDesign = null;
@@ -499,6 +500,7 @@ async function loadDesign() {
   const chips = $("design-parts");
   const badge = $("fit-status");
   chips.replaceChildren();
+  $("board-nets").hidden = true;
   badge.textContent = "";
   badge.className = "badge";
   const choice = $<HTMLSelectElement>("design-pick").value;
@@ -524,9 +526,57 @@ async function loadDesign() {
     const main = parts.find((p) => p.board);
     const { showAssembly, showBoardSvg, partKey } = await import("./design.ts");
     const base = main?.file.replace(/\.glb$/, "");
+    const source = base && `${base}.pcb.json`;
+    const circuitFile = base && `${base}.circuit.json`;
+    const spec = source && files.includes(source) ? await fetchJson<{ nets?: Record<string, string[]>; tracks?: { net: string }[] }>(source) : undefined;
+    const circuit = circuitFile && files.includes(circuitFile) ? await fetchJson<{
+      type: string; name?: string; net?: string; source_component_id?: string;
+      center?: { x: number; y: number }; rotation?: number; layer?: string;
+    }[]>(circuitFile) : [];
+    for (const c of main?.board?.components ?? []) {
+      const id = circuit.find((e) => e.type === "source_component" && e.name === c.name)?.source_component_id;
+      const part = id && circuit.find((e) => e.type === "pcb_component" && e.source_component_id === id);
+      if (part && part.center) {
+        c.at = [part.center.x, part.center.y];
+        c.rotation = part.rotation ?? 0;
+      }
+    }
     const svgFile = base && `${base}-${showSchematic ? "schematic" : "pcb"}.svg`;
     const svgText = svgFile && files.includes(svgFile) ? new TextDecoder().decode(await fetchFile(svgFile)) : undefined;
     if (run !== designRun) return;
+    const editBoard = async (action: { move: BoardEdit } | { lock: string } | { unlock: string }) => {
+      if (editingBoard || !source || !project) return;
+      editingBoard = true;
+      const currentProject = project;
+      for (const id of ["lock-net", "unlock-net"]) $<HTMLButtonElement>(id).disabled = true;
+      try {
+        const result = await api<{ report: string; unlocked: string[] }>(`/projects/${currentProject}/board`, post({ source, ...action }));
+        if (project !== currentProject) return;
+        await loadFiles();
+        await loadDesign("move" in action ? action.move.ref : undefined);
+        render({ type: "text", text: result.report + (result.unlocked.length ? `\nUnlocked: ${result.unlocked.join(", ")}.` : "") });
+      } catch (error) {
+        if (project === currentProject) render({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      } finally {
+        editingBoard = false;
+        for (const id of ["lock-net", "unlock-net"]) $<HTMLButtonElement>(id).disabled = false;
+      }
+    };
+    if (spec && !showSchematic) {
+      $("board-nets").hidden = false;
+      const pick = $<HTMLSelectElement>("board-net");
+      pick.replaceChildren();
+      const nets = [...new Set([...Object.keys(spec.nets ?? {}), ...circuit.map((e) => e.net).filter((n): n is string => typeof n === "string")])].sort();
+      for (const net of nets) {
+        const option = el("option", "", net) as HTMLOptionElement;
+        option.value = net;
+        pick.append(option);
+      }
+      for (const id of ["lock-net", "unlock-net"]) $<HTMLButtonElement>(id).disabled = editingBoard || !nets.length;
+      $("lock-net").onclick = () => void editBoard({ lock: pick.value });
+      $("unlock-net").onclick = () => void editBoard({ unlock: pick.value });
+      $("locked-nets").textContent = `Locked: ${[...new Set(spec.tracks?.map((t) => t.net) ?? [])].sort().join(", ") || "none"}`;
+    }
 
     // Fit status.
     const collisions = design.fit.filter((f) => f.status === "collision").length;
@@ -546,7 +596,8 @@ async function loadDesign() {
     let select: (key: string | null) => void = () => {};
     let board2d: { select(name: string | null): void; dispose(): void } | undefined;
     if (svgText) {
-      board2d = showBoardSvg(view2d, svgText, showSchematic ? undefined : main?.board, issuesByName, (name) => select(name && main ? partKey(main.file, name) : null));
+      board2d = showBoardSvg(view2d, svgText, showSchematic ? undefined : main?.board, issuesByName, (name) => select(name && main ? partKey(main.file, name) : null),
+        spec && !showSchematic ? (move) => void editBoard({ move }) : undefined);
     } else {
       view2d.replaceChildren(el("div", "empty", showSchematic ? "No schematic for this board." : "No PCB drawing for this board."));
     }
@@ -583,7 +634,9 @@ async function loadDesign() {
       assembly.select(selected);
       board2d?.select(selected && main && selected.startsWith(`${main.file}|`) ? selected.slice(main.file.length + 1) : null);
       for (const [k, chip] of chipFor) chip.classList.toggle("selected", k === selected);
+      if (selected) view2d.querySelector<SVGSVGElement>("svg")?.focus();
     };
+    if (preferPart && main) select(partKey(main.file, preferPart));
     $("xray").onchange = () => assembly.setSeeThrough($<HTMLInputElement>("xray").checked);
     closeDesign = () => {
       assembly.dispose();

@@ -10,6 +10,7 @@ mod footprint;
 mod gerber;
 mod impedance;
 mod ipc356;
+pub mod kicad;
 mod panel;
 mod place;
 mod pour;
@@ -87,6 +88,7 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         .enumerate()
         .filter(|(i, _)| !routed.routed[*i])
         .map(|(_, n)| {
+            if n.pads.is_empty() { return format!("unroutable: net {} (locked copper)", n.name); }
             format!(
                 "unroutable: net {} ({} to {})",
                 n.name,
@@ -206,15 +208,15 @@ pub fn build(json: &str, name: &str, source: &str) -> Result<NativeBuild, String
         if routed.fallback.contains(&pair.name) {
             lines.push(format!("Diffpair {}: routed as separate nets (could not couple)", pair.name));
         } else {
-            let p = tune::length(&routed.tracks, pair.p);
-            let skew = (p - tune::length(&routed.tracks, pair.n)).abs();
+            let p = tune::total_length(&board, &routed, pair.p);
+            let skew = (p - tune::total_length(&board, &routed, pair.n)).abs();
             let coupled = tune::coupled(&routed.tracks, pair.p, pair.n, pair.width + pair.gap).0;
             lines.push(format!("Diffpair {}: coupled {:.0}% of {:.2} mm, skew {:.2} mm, gap {:.2} mm", pair.name,
                 if p > 0. { 100. * coupled / p } else { 0. }, p, skew, pair.gap));
         }
     }
     for (name, nets, tolerance) in &board.length_groups {
-        let lengths: Vec<_> = nets.iter().map(|&n| tune::length(&routed.tracks, n)).collect();
+        let lengths: Vec<_> = nets.iter().map(|&n| tune::total_length(&board, &routed, n)).collect();
         lines.push(format!("Length group {name}: {:.2}-{:.2} mm, tolerance {tolerance:.2} mm",
             lengths.iter().copied().fold(f64::INFINITY, f64::min), lengths.iter().copied().fold(0., f64::max)));
     }
@@ -270,18 +272,26 @@ fn circuit(prepared: &PreparedBoard, b: &route::Board, r: &route::Routes, pours:
             let pin = pad.name.strip_prefix(&prefix).unwrap();
             if let Some(drill) = pad.drill {
                 if !pad.plated {
-                    elements.push(json!({"type":"pcb_hole","pcb_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"hole_diameter":drill[0],"hole_width":drill[0],"hole_height":drill[1]}));
+                    let mut e = json!({"type":"pcb_hole","pcb_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"hole_diameter":drill[0],"hole_width":drill[0],"hole_height":drill[1]});
+                    if prepared.spec.footprints.contains_key(spec.footprint.as_deref().unwrap_or("")) { e["rotation"] = json!(pad.rotation); }
+                    elements.push(e);
                 } else if pad.round && (pad.size[0] != pad.size[1] || drill[0] != drill[1]) {
                     elements.push(json!({"type":"pcb_plated_hole","pcb_plated_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"shape":"oval","outer_diameter":pad.size[0].max(pad.size[1]),"outer_width":pad.size[0],"outer_height":pad.size[1],"hole_diameter":drill[0].min(drill[1]),"hole_width":drill[0],"hole_height":drill[1],"rotation":pad.rotation,"layers":(0..b.layers).map(|i|Layer::from_index(i).name()).collect::<Vec<_>>(),"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
                 } else {
-                    elements.push(json!({"type":"pcb_plated_hole","pcb_plated_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"shape":if pad.round { "circle" } else { "rect" },"outer_diameter":pad.size[0],"hole_diameter":drill[0],"layers":(0..b.layers).map(|i|Layer::from_index(i).name()).collect::<Vec<_>>(),"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}));
+                    let mut e = json!({"type":"pcb_plated_hole","pcb_plated_hole_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"shape":if pad.round { "circle" } else { "rect" },"outer_diameter":pad.size[0],"hole_diameter":drill[0],"layers":(0..b.layers).map(|i|Layer::from_index(i).name()).collect::<Vec<_>>(),"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)});
+                    if prepared.spec.footprints.contains_key(spec.footprint.as_deref().unwrap_or("")) {
+                        e["outer_width"] = json!(pad.size[0]); e["outer_height"] = json!(pad.size[1]);
+                        e["hole_width"] = json!(drill[0]); e["hole_height"] = json!(drill[1]);
+                        e["rotation"] = json!(pad.rotation);
+                    }
+                    elements.push(e);
                 }
             } else {
                 let mut e = json!({"type":"pcb_smtpad","pcb_smtpad_id":pad.name,"pcb_component_id":id,"x":pad.at[0],"y":pad.at[1],"width":pad.size[0],"height":pad.size[1]});
                 if pad.radius > 0. {
                     e["rect_border_radius"] = json!(pad.radius);
                 }
-                e.as_object_mut().unwrap().extend(json!({"rotation":pad.rotation,"layer":p.side.name(),"shape":if pad.round { "circle" } else { "rect" },"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}).as_object().unwrap().clone());
+                e.as_object_mut().unwrap().extend(json!({"rotation":pad.rotation,"layer":if pad.layers & 1 != 0 { "top" } else { "bottom" },"shape":if pad.round { "circle" } else { "rect" },"port_hints":[format!("pin{pin}"),pin],"net":net(pad.net)}).as_object().unwrap().clone());
                 elements.push(e);
             }
         }
@@ -294,7 +304,7 @@ fn circuit(prepared: &PreparedBoard, b: &route::Board, r: &route::Routes, pours:
     {
         let wires = [t.a,t.b].map(|p|json!({"route_type":"wire","x":p[0],"y":p[1],"width":t.width,"layer":Layer::from_index(t.layer).name()}));
         let mut e = json!({"type":"pcb_trace","pcb_trace_id":format!("trace_{i}"),"width":t.width,"net":net(t.net),"route":wires});
-        if i >= r.tracks.len() {
+        if i >= r.tracks.len() && b.fixed[i - r.tracks.len()].part != usize::MAX {
             e["is_antenna_trace"] = json!(true);
             e["pcb_component_id"] = json!(format!(
                 "pcb_component_{}",

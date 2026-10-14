@@ -27,6 +27,12 @@ pub struct Spec {
     pub keepouts: Vec<Keepout>,
     #[serde(default)]
     pub traces: Vec<Trace>,
+    #[serde(default)]
+    pub tracks: Vec<LockedTrack>,
+    #[serde(default)]
+    pub vias: Vec<LockedVia>,
+    #[serde(default)]
+    pub footprints: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -111,7 +117,7 @@ fn rails() -> f64 { 5. }
 fn rail_sides() -> String { "y".into() }
 fn separation() -> String { "tabs".into() }
 fn tab_width() -> f64 { 3. }
-fn enabled() -> bool { true }
+pub(super) fn enabled() -> bool { true }
 
 impl Panel {
     pub fn spacing(&self) -> f64 {
@@ -283,6 +289,24 @@ pub struct Trace {
     pub width: f64,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LockedTrack {
+    pub net: String,
+    pub layer: Layer,
+    pub width: Option<f64>,
+    pub points: Vec<[f64; 2]>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LockedVia {
+    pub net: String,
+    pub at: [f64; 2],
+    pub from: Option<Layer>,
+    pub to: Option<Layer>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pin {
     pub part: usize,
@@ -303,7 +327,7 @@ pub struct PreparedBoard {
     pub nets: Vec<Net>,
 }
 
-fn positive(value: f64, field: &str) -> Result<(), String> {
+pub(super) fn positive(value: f64, field: &str) -> Result<(), String> {
     if !value.is_finite() || value <= 0.0 {
         return Err(format!("{field} must be positive"));
     }
@@ -417,6 +441,12 @@ impl Spec {
             return Err("rules.via drill must be smaller than diameter".into());
         }
         let mut refs = BTreeSet::new();
+        for (name, value) in &self.footprints {
+            if footprint(name).is_ok() {
+                return Err(format!("footprints.{name}: clashes with a built-in footprint"));
+            }
+            super::footprint::native(value)?;
+        }
         for p in &self.parts {
             if !super::super::script3d::valid_name(&p.reference) {
                 return Err("name may only use letters, digits, - and _".into());
@@ -456,11 +486,8 @@ impl Spec {
                 if p.shape.is_some() {
                     return Err(format!("{}: shape is only for antennas", p.reference));
                 }
-                footprint(
-                    p.footprint
-                        .as_deref()
-                        .ok_or_else(|| format!("{} needs a footprint", p.reference))?,
-                )?;
+                self.footprint(p.footprint.as_deref()
+                    .ok_or_else(|| format!("{} needs a footprint", p.reference))?)?;
             }
         }
         for h in &self.holes {
@@ -510,6 +537,33 @@ impl Spec {
             positive(t.width, "trace width")?;
             if !traces.insert(&t.net) {
                 return Err(format!("duplicate trace width for net {}", t.net));
+            }
+        }
+        if !self.tracks.is_empty() || !self.vias.is_empty() {
+            let nets = self.netlist(&self.footprints()?)?;
+            let known = |name: &str| nets.iter().any(|n| n.name == name)
+                || self.pours.iter().any(|p| p.net == name);
+            for (i, t) in self.tracks.iter().enumerate() {
+                if !known(&t.net) { return Err(format!("tracks[{i}]: unknown net {}", t.net)); }
+                if t.points.len() < 2 { return Err(format!("tracks[{i}]: needs at least 2 points")); }
+                if self.board.layers == 2 && t.layer.index() >= 2 {
+                    return Err(format!("tracks[{i}]: layer {} needs 4 layers", t.layer.name()));
+                }
+                if let Some(w) = t.width { positive(w, &format!("tracks[{i}].width"))?; }
+                for (j, &p) in t.points.iter().enumerate() {
+                    point(p)?;
+                    if !super::place::inside(p, &self.board.polygon()) {
+                        return Err(format!("tracks[{i}]: point {j} is outside the board"));
+                    }
+                }
+            }
+            for (i, v) in self.vias.iter().enumerate() {
+                if !known(&v.net) { return Err(format!("vias[{i}]: unknown net {}", v.net)); }
+                point(v.at)?;
+                let (from, to) = (v.from.unwrap_or(Layer::Top), v.to.unwrap_or(Layer::Bottom));
+                if from == to { return Err(format!("vias[{i}]: from and to must differ")); }
+                self.validate_layer(from)?;
+                self.validate_layer(to)?;
             }
         }
         if !self.diffpairs.is_empty() || !self.length_groups.is_empty() {
@@ -567,11 +621,18 @@ impl Spec {
             .iter()
             .map(|p| {
                 if p.kind != Kind::Antenna {
-                    return footprint(p.footprint.as_deref().unwrap_or(""));
+                    return self.footprint(p.footprint.as_deref().unwrap_or(""));
                 }
                 Ok(super::antenna::geometry(p.shape.as_deref().unwrap_or(""))?.footprint())
             })
             .collect()
+    }
+
+    fn footprint(&self, name: &str) -> Result<Footprint, String> {
+        match self.footprints.get(name) {
+            Some(value) => super::footprint::native(value),
+            None => footprint(name),
+        }
     }
 
     /// Explicit nets win over chip labels; unconnected labels join their named net.

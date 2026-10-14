@@ -107,6 +107,8 @@ impl Geometry {
             round: false,
             radius: 0.2,
             plated: true,
+            rotation: 0.,
+            layer: None,
         }];
         if let Some([x, y]) = self.secondary {
             pads.push(Pad {
@@ -117,6 +119,8 @@ impl Geometry {
                 round: self.ground,
                 radius: if self.ground { 0. } else { 0.2 },
                 plated: true,
+                rotation: 0.,
+                layer: None,
             });
         }
         let mut bounds = [

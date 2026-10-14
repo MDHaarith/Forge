@@ -9,7 +9,14 @@ type Vec = [number, number, number];
 export interface BoardBoxes {
   size: Vec;
   center: [number, number];
-  components: { name: string; layer: string; min: Vec; max: Vec }[];
+  components: { name: string; layer: string; min: Vec; max: Vec; at?: [number, number]; rotation?: number }[];
+}
+
+export interface BoardEdit {
+  ref: string;
+  at: [number, number];
+  rotation: number;
+  side: string;
 }
 
 export interface FitIssue {
@@ -199,7 +206,7 @@ export interface BoardView {
  * The 2D half: a PCB or schematic SVG with pan (drag) and zoom (scroll). With board data, parts are
  * outlined in their fit status, the selected one highlighted, and a click on a part calls onPick.
  */
-export function showBoardSvg(host: HTMLElement, svgText: string, board: BoardBoxes | undefined, issues: Map<string, string>, onPick: (name: string | null) => void): BoardView {
+export function showBoardSvg(host: HTMLElement, svgText: string, board: BoardBoxes | undefined, issues: Map<string, string>, onPick: (name: string | null) => void, onEdit?: (edit: BoardEdit) => void): BoardView {
   const doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
   const src = doc.documentElement;
   const vb = src.getAttribute("viewBox")?.split(/[\s,]+/).map(Number);
@@ -208,6 +215,8 @@ export function showBoardSvg(host: HTMLElement, svgText: string, board: BoardBox
   const url = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }));
 
   const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("tabindex", "0");
+  svg.setAttribute("aria-label", "PCB view. Select a part, drag to move, R to rotate, F to flip, Escape to cancel.");
   let view = { x: 0, y: 0, w: W, h: H };
   const setView = () => svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
   setView();
@@ -220,20 +229,25 @@ export function showBoardSvg(host: HTMLElement, svgText: string, board: BoardBox
 
   // Board millimetres -> SVG units, from where the SVG drew the board's outline.
   const outline = src.querySelector('[data-type="pcb_board"]')?.getAttribute("d");
+  const native = !!src.querySelector('g[transform="scale(1,-1)"]');
+  const margin = native ? 0.15 : 3;
   const marks = new Map<string, SVGRectElement>();
   let toSvg: ((x: number, y: number) => [number, number]) | undefined;
-  if (board && outline) {
-    const n = (outline.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+  let fromSvg: ((x: number, y: number) => [number, number]) | undefined;
+  if (board && (outline || native)) {
+    const n = (outline?.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
     const xs = n.filter((_, i) => i % 2 === 0), ys = n.filter((_, i) => i % 2 === 1);
-    const [x0, x1, y0] = [Math.min(...xs), Math.max(...xs), Math.min(...ys)];
-    const s = (x1 - x0) / board.size[0];
     const left = board.center[0] - board.size[0] / 2, top = board.center[1] + board.size[1] / 2;
+    const x0 = native ? left - (vb?.[0] ?? 0) : Math.min(...xs);
+    const y0 = native ? -top - (vb?.[1] ?? 0) : Math.min(...ys);
+    const s = native ? 1 : (Math.max(...xs) - x0) / board.size[0];
     toSvg = (x, y) => [x0 + (x - left) * s, y0 + (top - y) * s];
+    fromSvg = (x, y) => [left + (x - x0) / s, top - (y - y0) / s];
     for (const c of board.components) {
       const [ax, ay] = toSvg(c.min[0], c.max[1]);
       const [bx, by] = toSvg(c.max[0], c.min[1]);
       const r = document.createElementNS(SVG, "rect");
-      Object.entries({ x: ax - 3, y: ay - 3, width: bx - ax + 6, height: by - ay + 6, rx: 4, fill: "none", "stroke-width": 3 }).forEach(([k, v]) => r.setAttribute(k, String(v)));
+      Object.entries({ x: ax - margin, y: ay - margin, width: bx - ax + 2 * margin, height: by - ay + 2 * margin, rx: native ? 0.2 : 4, fill: "none", "stroke-width": native ? 0.1 : 3 }).forEach(([k, v]) => r.setAttribute(k, String(v)));
       marks.set(c.name, r);
       svg.append(r);
     }
@@ -263,9 +277,38 @@ export function showBoardSvg(host: HTMLElement, svgText: string, board: BoardBox
     view = { x: ux - (ux - view.x) * g, y: uy - (uy - view.y) * g, w, h: view.h * g };
     setView();
   }, { passive: false });
-  let drag: { x: number; y: number; vx: number; vy: number; moved: boolean } | null = null;
+  const underPointer = (e: MouseEvent) => {
+    if (!toSvg || !board) return undefined;
+    const [ux, uy] = toUser(e);
+    return board.components.filter((c) => {
+      const [ax, ay] = toSvg!(c.min[0], c.max[1]);
+      const [bx, by] = toSvg!(c.max[0], c.min[1]);
+      return ux >= ax - margin && ux <= bx + margin && uy >= ay - margin && uy <= by + margin;
+    }).sort((a, b) => (a.max[0] - a.min[0]) * (a.max[1] - a.min[1]) - (b.max[0] - b.min[0]) * (b.max[1] - b.min[1]))[0];
+  };
+  let ghost: SVGRectElement | null = null;
+  let drag: { x: number; y: number; vx: number; vy: number; moved: boolean; pointer: number; start: [number, number]; edit?: BoardEdit } | null = null;
+  const cancelDrag = () => {
+    if (drag && svg.hasPointerCapture(drag.pointer)) svg.releasePointerCapture(drag.pointer);
+    ghost?.remove(); ghost = null; drag = null;
+    svg.classList.remove("panning");
+  };
   svg.addEventListener("pointerdown", (e) => {
-    drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false };
+    if (e.button !== 0 || drag) return;
+    svg.focus();
+    const c = underPointer(e);
+    const [ux, uy] = toUser(e);
+    const start = fromSvg?.(ux, uy) ?? [0, 0];
+    const edit = onEdit && c?.name === selected && c.at
+      ? { ref: c.name, at: [...c.at] as [number, number], rotation: c.rotation ?? 0, side: c.layer } : undefined;
+    drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, pointer: e.pointerId, start, edit };
+    if (edit) {
+      ghost = marks.get(edit.ref)!.cloneNode() as SVGRectElement;
+      ghost.setAttribute("fill", "#8b7cf633");
+      ghost.setAttribute("stroke-dasharray", native ? "0.3 0.2" : "6 4");
+      ghost.style.display = "";
+      svg.append(ghost);
+    }
     svg.setPointerCapture(e.pointerId);
   });
   svg.addEventListener("pointermove", (e) => {
@@ -273,26 +316,40 @@ export function showBoardSvg(host: HTMLElement, svgText: string, board: BoardBox
     const k = toUser(e)[2];
     if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 3) drag.moved = true;
     if (!drag.moved) return;
+    if (drag.edit && fromSvg && toSvg) {
+      const c = board!.components.find((c) => c.name === drag!.edit!.ref)!;
+      const [ux, uy] = toUser(e);
+      const point = fromSvg(ux, uy);
+      drag.edit.at = c.at!.map((v, i) => Math.round((v + point[i] - drag!.start[i]) * 10) / 10) as [number, number];
+      const a = toSvg(...c.at!), b = toSvg(...drag.edit.at);
+      ghost?.setAttribute("transform", `translate(${b[0] - a[0]} ${b[1] - a[1]})`);
+      return;
+    }
     svg.classList.add("panning");
     view.x = drag.vx - (e.clientX - drag.x) / k;
     view.y = drag.vy - (e.clientY - drag.y) / k;
     setView();
   });
   svg.addEventListener("pointerup", (e) => {
-    svg.classList.remove("panning");
+    if (!drag) return;
     const click = drag && !drag.moved;
-    drag = null;
+    const edit = drag.moved ? drag.edit : undefined;
+    cancelDrag();
+    if (edit) { onEdit?.(edit); return; }
     if (!click || !toSvg || !board) return;
-    const [ux, uy] = toUser(e);
     // The smallest part under the pointer wins, so a resistor inside a connector's box can be picked.
-    const under = board.components
-      .filter((c) => {
-        const [ax, ay] = toSvg!(c.min[0], c.max[1]);
-        const [bx, by] = toSvg!(c.max[0], c.min[1]);
-        return ux >= ax - 3 && ux <= bx + 3 && uy >= ay - 3 && uy <= by + 3;
-      })
-      .sort((a, b) => (a.max[0] - a.min[0]) * (a.max[1] - a.min[1]) - (b.max[0] - b.min[0]) * (b.max[1] - b.min[1]));
-    onPick(under[0]?.name ?? null);
+    onPick(underPointer(e)?.name ?? null);
+  });
+  svg.addEventListener("pointercancel", cancelDrag);
+  svg.addEventListener("lostpointercapture", cancelDrag);
+  svg.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { cancelDrag(); e.preventDefault(); return; }
+    if (drag || e.repeat || !onEdit || e.ctrlKey || e.metaKey || e.altKey) return;
+    const c = board?.components.find((c) => c.name === selected);
+    if (!c?.at || !["r", "f"].includes(e.key.toLowerCase())) return;
+    e.preventDefault();
+    onEdit({ ref: c.name, at: c.at, rotation: ((c.rotation ?? 0) + (e.key.toLowerCase() === "r" ? 90 : 0)) % 360,
+      side: e.key.toLowerCase() === "f" ? (c.layer === "top" ? "bottom" : "top") : c.layer });
   });
   svg.addEventListener("dblclick", () => {
     view = { x: 0, y: 0, w: W, h: H };
@@ -305,6 +362,7 @@ export function showBoardSvg(host: HTMLElement, svgText: string, board: BoardBox
       paint();
     },
     dispose() {
+      cancelDrag();
       URL.revokeObjectURL(url);
     },
   };

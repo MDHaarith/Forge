@@ -293,7 +293,7 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     at: point(e)?,
                     size: [positive(e, "width")?, positive(e, "height")?],
                     rotation: num(e, "rotation")?,
-                    round: false,
+                    round: matches!(e["shape"].as_str(), Some("circle" | "oval")),
                     radius: e.get("rect_border_radius").map(|_| num(e, "rect_border_radius")).transpose()?.unwrap_or(0.),
                     layers: layers(e)?,
                     drill: None,
@@ -306,7 +306,7 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                     .collect();
                 let i = add(
                     name.clone(),
-                    Shape::Region(vec![vec![corners]]),
+                    if p.round { super::tune::pad_shape(&p, false) } else { Shape::Region(vec![vec![corners]]) },
                     p.layers,
                     false,
                 );
@@ -325,7 +325,8 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                 };
                 let at = point(e)?;
                 let is_oval = e.get("shape").and_then(Value::as_str) == Some("oval");
-                let (diameter, drill, shape) = if is_oval {
+                let has_dimensions = e.get("outer_width").is_some();
+                let (diameter, drill, shape) = if is_oval || has_dimensions {
                     let ow = positive(e, "outer_width")?;
                     let oh = positive(e, "outer_height")?;
                     let hw = positive(e, "hole_width")?;
@@ -349,7 +350,11 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                             ow / 2.,
                         )
                     };
-                    (ow.min(oh), hw.min(hh), Shape::Stroke(a, b, r))
+                    let shape = if e["shape"] == "rect" {
+                        Shape::Region(vec![vec![pour::rect([0.; 2], [ow,oh]).into_iter().map(|p|
+                            [at[0]+cos*p[0]-sin*p[1], at[1]+sin*p[0]+cos*p[1]]).collect()]])
+                    } else { Shape::Stroke(a, b, r) };
+                    (ow.min(oh), hw.min(hh), shape)
                 } else {
                     let d = positive(e, "outer_diameter")?;
                     let dr = positive(e, "hole_diameter")?;
@@ -357,7 +362,7 @@ pub(super) fn check(spec: &str, circuit: &str) -> Result<String, String> {
                 };
                 let i = add(name.clone(), shape, layers(e)?, false);
                 if rules.blind_vias {
-                    let hole = if is_oval {
+                    let hole = if is_oval || has_dimensions {
                         let p = route::Pad { name: name.clone(), at, size: [diameter; 2], rotation: num(e, "rotation").unwrap_or(0.),
                             round: true, radius: 0., layers: 0, drill: Some([positive(e, "hole_width")?, positive(e, "hole_height")?]), plated: true, net: 0 };
                         super::tune::pad_shape(&p, true)

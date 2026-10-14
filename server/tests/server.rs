@@ -64,6 +64,100 @@ impl Drop for TestServer {
         self.task.abort();
     }
 }
+
+#[tokio::test]
+async fn board_edit_move_lock_unlock_and_errors() {
+    let server = TestServer::offline().await;
+    server.state.projects.create("board").await.unwrap();
+    let dir = server.state.projects.dir("board").unwrap();
+    std::fs::create_dir_all(dir.join("pcb")).unwrap();
+    let source = dir.join("pcb/main.pcb.json");
+    let spec = json!({"board":{"width":30,"height":24},"parts":[
+        {"ref":"J1","kind":"header","footprint":"pinheader_1x1","at":[-7,0]},
+        {"ref":"J2","kind":"header","footprint":"pinheader_1x1","at":[7,0]}],
+        "nets":{"N":["J1.1","J2.1"]}});
+    std::fs::write(&source, spec.to_string()).unwrap();
+    let path = "/projects/board/board";
+    let response = server.post(path, json!({"source":"pcb/main.pcb.json","lock":"N"})).await;
+    assert_eq!(response.status(), 422);
+    assert_eq!(response.json::<Value>().await.unwrap()["error"], "board main is not built; run pcb_build first");
+    let response = server.post(path, json!({"source":"pcb/main.pcb.json","move":{"ref":"J1","at":[-6.123,1.237],"rotation":-450,"side":"bottom"}})).await;
+    assert_eq!(response.status(), 200);
+    let result: Value = response.json().await.unwrap();
+    assert!(result["report"].as_str().unwrap().contains("No errors: every connection is routed."));
+    assert_eq!(result["unlocked"], json!([]));
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&source).unwrap()).unwrap();
+    assert_eq!(saved["parts"][0]["at"], json!([-6.12,1.24]));
+    assert_eq!(saved["parts"][0]["rotation"], 270);
+    assert_eq!(saved["parts"][0]["side"], "bottom");
+    let response = server.post(path, json!({"source":"pcb/main.pcb.json","lock":"N"})).await;
+    assert_eq!(response.status(), 200, "{}", response.text().await.unwrap());
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&source).unwrap()).unwrap();
+    assert!(!saved["tracks"].as_array().unwrap().is_empty());
+    let first = saved["tracks"].clone();
+    let response = server.post(path, json!({"source":"pcb/main.pcb.json","lock":"N"})).await;
+    assert_eq!(response.status(), 200);
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&source).unwrap()).unwrap();
+    assert_eq!(saved["tracks"], first, "locking twice must replace previous copper");
+    let response = server.post(path, json!({"source":"pcb/main.pcb.json","unlock":"N"})).await;
+    assert_eq!(response.status(), 200);
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&source).unwrap()).unwrap();
+    assert!(saved["tracks"].as_array().unwrap().is_empty());
+    assert_eq!(server.post(path, json!({"source":"pcb/main.pcb.json","lock":"N"})).await.status(), 200);
+    let response = server.post(path, json!({"source":"pcb/main.pcb.json","move":{"ref":"J2","at":[6,0]}})).await;
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.json::<Value>().await.unwrap()["unlocked"], json!(["N"]));
+    for (body, status, message) in [
+        (json!({"source":"pcb/main.pcb.json","move":{"ref":"BAD","at":[0,0]}}), 404, "no part BAD"),
+        (json!({"source":"pcb/main.json","unlock":"N"}), 400, "source must be a .pcb.json file"),
+        (json!({"source":"pcb/missing.pcb.json","unlock":"N"}), 400, "pcb/missing.pcb.json does not exist; write it with write_file first"),
+        (json!({"source":"pcb/main.pcb.json","lock":"BAD"}), 422, "net BAD has no copper"),
+        (json!({"source":"pcb/main.pcb.json","lock":"N","unlock":"N"}), 400, "choose exactly one of move, lock or unlock"),
+    ] {
+        let response = server.post(path, body).await;
+        assert_eq!(response.status(), status);
+        assert_eq!(response.json::<Value>().await.unwrap()["error"], message);
+    }
+}
+
+#[tokio::test]
+async fn board_edit_guards_paths_json_and_busy_agent_and_keeps_failed_edits() {
+    let server = TestServer::offline().await;
+    server.state.projects.create("board").await.unwrap();
+    let dir = server.state.projects.dir("board").unwrap();
+    std::fs::create_dir_all(dir.join("pcb")).unwrap();
+    let source = dir.join("pcb/main.pcb.json");
+    let original = r#"{"board":{"width":30,"height":24},"parts":[{"ref":"J1","kind":"header","footprint":"pinheader_1x1","at":[0,0]}]}"#;
+    std::fs::write(&source, original).unwrap();
+    let path = "/projects/board/board";
+    let edit = json!({"source":"pcb/main.pcb.json","move":{"ref":"J1","at":[100,0]}});
+    let session = server.state.projects.begin_chat("board").await.unwrap();
+    let response = server.post(path, edit.clone()).await;
+    assert_eq!(response.status(), 409);
+    assert_eq!(response.json::<Value>().await.unwrap()["error"], "agent is running");
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), original);
+    session.agent.send_started("hello", &|_| {}).await;
+    let response = reqwest::Client::new().post(format!("{}/api{path}", server.base)).body(edit.to_string()).send().await.unwrap();
+    assert_eq!(response.status(), 415);
+    let response = server.post(path, json!({"source":"../outside.pcb.json","unlock":"N"})).await;
+    assert_eq!(response.status(), 400);
+    assert_eq!(std::fs::read_to_string(&source).unwrap(), original);
+    let response = server.post(path, edit).await;
+    assert_eq!(response.status(), 422);
+    assert!(response.json::<Value>().await.unwrap()["error"].as_str().unwrap().contains("J1"));
+    let mut saved: Value = serde_json::from_str(&std::fs::read_to_string(&source).unwrap()).unwrap();
+    assert_eq!(saved["parts"][0]["at"], json!([100,0]));
+    let response = server.post(path, json!({"source":"pcb/main.pcb.json","move":{"ref":"J1","at":[0,0]}})).await;
+    assert_eq!(response.status(), 200, "undo after failed placement must work");
+    saved["metadata"] = json!({"owner":"keep"});
+    std::fs::write(&source, saved.to_string()).unwrap();
+    let response = server.post(path, json!({"source":"pcb/main.pcb.json","move":{"ref":"J1","at":[2,1]}})).await;
+    assert_eq!(response.status(), 422, "unknown fields remain for build validation");
+    let saved: Value = serde_json::from_str(&std::fs::read_to_string(&source).unwrap()).unwrap();
+    assert_eq!(saved["metadata"], json!({"owner":"keep"}));
+    assert_eq!(saved["parts"][0]["at"], json!([2,1]));
+    assert_eq!(saved.as_object().unwrap().keys().map(String::as_str).collect::<Vec<_>>(), ["board","parts","metadata"]);
+}
 fn events(text: &str) -> Vec<Value> {
     text.trim()
         .lines()

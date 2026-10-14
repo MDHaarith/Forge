@@ -351,6 +351,11 @@ fn connected(b: &Board, tracks: &[Track], vias: &[Via], net: usize) -> bool {
             (tune::pad_shape(p, false), p.layers)
         })
         .collect();
+    // Locked islands are required terminals too; polishing must preserve their connections.
+    items.extend(b.fixed.iter().filter(|f| f.part == usize::MAX && f.nets.contains(&net)).map(|f|
+        (Shape::Stroke(f.track.a, f.track.b, f.track.width / 2.), 1 << f.track.layer)));
+    items.extend(b.fixed_vias.iter().filter(|v| v.net == net).map(|v|
+        (Shape::Disk(v.at, b.via[0] / 2.), v.mask(b.layers))));
     let pads = items.len();
     items.extend(
         tracks
@@ -358,7 +363,7 @@ fn connected(b: &Board, tracks: &[Track], vias: &[Via], net: usize) -> bool {
             .filter(|t| t.net == net)
             .map(|t| (Shape::Stroke(t.a, t.b, t.width / 2.), 1 << t.layer)),
     );
-    items.extend(b.fixed.iter().filter(|f| f.nets.contains(&net)).map(|f| {
+    items.extend(b.fixed.iter().filter(|f| f.part != usize::MAX && f.nets.contains(&net)).map(|f| {
         (
             Shape::Stroke(f.track.a, f.track.b, f.track.width / 2.),
             1 << f.track.layer,
@@ -366,7 +371,6 @@ fn connected(b: &Board, tracks: &[Track], vias: &[Via], net: usize) -> bool {
     }));
     items.extend(
         vias.iter()
-            .chain(&b.fixed_vias)
             .filter(|v| v.net == net)
             .map(|v| (Shape::Disk(v.at, b.via[0] / 2.), v.mask(b.layers))),
     );

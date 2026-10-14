@@ -63,12 +63,13 @@ server/src/
     part/inspect.rs                          part_inspect: STEP/STP/STL size, volume, centre of mass, holes, configurable overhangs and STEP pair interference/clearance
     part/drawing.rs                          part_drawing: scaled landscape SVG views, hidden lines, dimensions, hole table/title block and top-outline R12 DXF
     script3d.rs                              blender_build and shared runner-output helpers
-    board.rs pcb.rs design.rs fit.rs         native PCB build/exports, DRC, board-in-enclosure fit
+    board.rs pcb.rs design.rs fit.rs         native PCB build/exports, move/lock/unlock edits, footprint import, DRC and board-in-enclosure fit
     pcb/spec.rs                             strict native .pcb.json parser, pin aliases, netlist and rule overrides
     pcb/footprint.rs                        pure nominal/KiCad footprint dimensions, rounded SMD pads, courtyard, silk and body geometry
+    pcb/kicad.rs                            bounded s-expression reader, modern/legacy .kicad_mod pads and outline bounds → y-up native footprint JSON
     pcb/place.rs                            deterministic placement, rotated courtyards, polygon edges and hole checks
     pcb/drc.rs                              saved-copper geometry, 4 mm spatial index, pour/via connectivity and sorted DRC faults/ERC warnings
-    pcb/route.rs                            regional tree A*, PathFinder, fixed differential pairs, physical via spans, planes and filled vias-in-pad
+    pcb/route.rs                            regional tree A*, PathFinder, fixed differential pairs, locked-copper component routing, physical via spans, planes and filled vias-in-pad
     pcb/beautify.rs                         deterministic octilinear pulling, corner chamfers, via reduction and centred pad entries before tuning
     pcb/impedance.rs                        IPC-2141 single/differential microstrip widths and shared report/drawing target text
     pcb/tune.rs                             shared lengths/coupling metrics, continuous-clearance meanders, skew bumps and teardrops
@@ -84,6 +85,7 @@ server/src/
     chip.rs                                  Verilog simulate/synthesize
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
+  pcb_batch6.rs            locked-copper geometry/connectivity/DRC, deterministic exports, KiCad parsing and import path/order tests
 desktop/src/main.rs        Tauri app: binds a free port, runs forge_server::serve in-process
 web/                       UI (TypeScript + Vite + three.js): main.ts app, design.ts PCB/3D view, viewer.ts,
                            markdown.ts (Markdown + KaTeX, sanitized with DOMPurify)
@@ -101,6 +103,26 @@ GLB coordinates, normals and edges use `[x,z,-y]` for Forge's viewer. All output
 `project_path` before async writes. Routing grids are limited to 65 million cells; obstacle bitsets
 and regional search arrays bound memory use.
 Only `.pcb.json` inputs are accepted; other formats fail with `source must be a .pcb.json file`.
+`board.rs::board_source` shares source/path validation with `pcb_build`, `edit` and footprint import.
+`POST /api/projects/<name>/board` accepts `{source, move:{ref,at,rotation?,side?}}`, `{source,lock:net}`
+or `{source,unlock:net}`. `http.rs` applies `read_json` and reserves the session's agent busy guard;
+an active turn returns 409 `agent is running`. `board.rs::edit` preserves JSON key order/unknown fields,
+rounds moves to 0.01 mm, removes affected locked copper, and calls `pcb_build`. Success returns
+`{report,unlocked}`; failed builds return 422 `{error}` while retaining the edited spec.
+Optional spec `tracks` and `vias` become `route::Board.fixed` and `fixed_vias` in `from_prepared`.
+`Grid::connect_locked` connects only missing copper components; beautification and tuning operate on
+new routes. Fixed vias join final routes after tuning so all exports include them. Locked tracks keep
+normal trace JSON, while intrinsic antenna copper retains its existing metadata.
+Length matching counts locked copper without changing it; STEP/GLB adds locked copper solids and via barrels.
+`pcb_import_footprint {file,board,name?}` uses `pcb/kicad.rs::parse` to insert native inline `footprints`.
+`footprint.rs::native` validates pads and converts y-up JSON to the existing internal KiCad frame;
+built-in name clashes are errors. Pad rotations, top/bottom/through layers, rounded pads, oval drills
+and nonplated holes reach the same router and exports. Custom primitives and courtyard/body polygons
+use bounding rectangles; s-expression nesting is capped at 128.
+`web/main.ts` reads part origins/rotations from circuit JSON without changing legacy board-box files.
+`showBoardSvg` maps native and legacy SVG coordinates, supports snapped part dragging, ghost boxes,
+R/F/Escape, and sends `onEdit` callbacks to the board endpoint. Net controls show current nets and
+locked track nets; successful edits reload SVG/JSON/3D views and show reports in the Assistant log.
 `pcb_drc {"board":"<name>"}` reads the saved native circuit and source rules, checks geometry and
 connectivity in `spawn_blocking`, and writes sorted faults to `fab/<name>/<name>-drc.txt`.
 Electrical rules use the expanded source netlist: single-pin nets, unconnected or shorted two-pad

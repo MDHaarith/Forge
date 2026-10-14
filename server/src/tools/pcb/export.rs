@@ -115,6 +115,40 @@ pub(super) fn model(
             slab = (&slab - &drill).build()?;
         }
         let mut solids = vec![slab.color("#246c47")];
+        if !b.spec.tracks.is_empty() || !b.spec.vias.is_empty() {
+            // Keep legacy board meshes byte-identical; edited copper uses the same manufacturing geometry.
+            let level = |depth| {
+                if depth == 0 { t / 2. } else if depth == board.layers - 1 { -t / 2. }
+                else if depth == 1 { t / 2. - b.spec.board.prepreg - 0.035 }
+                else { -t / 2. + b.spec.board.prepreg + 0.035 }
+            };
+            for fixed in board.fixed.iter().filter(|f| f.part == usize::MAX) {
+                let track = &fixed.track;
+                let z = level(route::depth(track.layer, board.layers));
+                let height = if track.layer == Layer::Bottom.index() { -0.035 } else { 0.035 };
+                let a = DVec3::new(track.a[0],track.a[1],z);
+                let end = DVec3::new(track.b[0],track.b[1],z);
+                let copper = if (end-a).length() < 1e-9 {
+                    Solid::cylinder(track.width / 2., DVec3::Z * height).translate(a)
+                } else {
+                    let axis = (end-a).normalize() * (track.width / 2.);
+                    let normal = DVec3::new(-axis.y,axis.x,0.);
+                    let profile = [Edge::line(a-normal,end-normal)?,
+                        Edge::arc_3pts(end-normal,end+axis,end+normal)?,
+                        Edge::line(end+normal,a+normal)?,
+                        Edge::arc_3pts(a+normal,a-axis,a-normal)?];
+                    Solid::extrude(&profile, DVec3::Z * height)?
+                };
+                solids.push(copper.color("#b87333"));
+            }
+            for via in &board.fixed_vias {
+                let bottom = level(via.span.1) - 0.035;
+                let height = level(via.span.0) + 0.035 - bottom;
+                let outer = Solid::cylinder(board.via[0] / 2., DVec3::Z * height);
+                let hole = Solid::cylinder(board.via[1] / 2., DVec3::Z * height);
+                solids.push((&outer - &hole).build()?.translate(DVec3::new(via.at[0],via.at[1],bottom)).color("#b87333"));
+            }
+        }
         for p in &b.parts {
             if b.spec.parts[p.part].kind == Kind::Antenna {
                 continue;

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.25.0 — 2026-10-14
+
+- Edit boards in the Design view: select and drag parts on a 0.1 mm grid, rotate with R, flip with F, and cancel drags with Escape.
+- Add `POST /api/projects/{project}/board` for move, lock and unlock actions; share `pcb_build`, preserve source JSON order, and keep edited specs after failed rebuilds.
+- Add optional locked `tracks` and `vias`: route only missing connections, preserve committed copper through beautification/tuning, and include it in every copper and manufacturing export.
+- Add inline custom `footprints` and the native `pcb_import_footprint` tool for modern and legacy KiCad `.kicad_mod` files, including pad rotations, bottom pads, roundrects, oval drills and nonplated holes.
+- Preserve legacy output hashes for specs without the new fields. Custom pad primitives and footprint outlines use documented bounding rectangles.
+
 ## 0.24.0 — 2026-10-14
 
 - Always export a metric IPC-D-356A test netlist and an A4 fabrication SVG with drill symbols/counts, stackup, dimensions and manufacturing notes.

@@ -17,6 +17,6 @@ bumps the version and commits.
 - [x] Batch 4b (v0.23.0): router beautification (octilinear pulling, chamfers, via reduction and clean pad entries).
 - [x] Batch 5 (v0.24.0): panelization (rails, tabs, V-score, fiducials), IPC-D-356 netlist, stencil paste
   reduction, fab drawing (stackup + drill table), true slots in the 3D export.
-- [ ] Batch 6: interactive editing in the UI (move parts, lock tracks, router keeps locked copper),
+- [x] Batch 6 (v0.25.0): interactive editing in the UI (move parts, lock tracks, router keeps locked copper),
   KiCad `.kicad_mod` footprint import.
 - [ ] Batch 7: native circuit simulator (DC operating point, transient; R, L, C, diode, BJT, MOSFET).

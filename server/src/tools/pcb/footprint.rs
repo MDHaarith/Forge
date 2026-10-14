@@ -7,6 +7,8 @@ pub struct Pad {
     pub round: bool,
     pub radius: f64,
     pub plated: bool,
+    pub rotation: f64,
+    pub layer: Option<super::Layer>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,6 +22,103 @@ pub struct Footprint {
 }
 
 const NAMES: &str = "0402, 0603, 0805, 1206, sot23, sot23_5, sot223, soicN (even 8..16), tssopN (even 8..28), qfnN (multiples of 4, 16..48), dipN (even 4..40), bgaN (square), pinheader_1xN, pinheader_2xN, crystal_hc49, crystal_3225, button_6x6, sod123, usb_c_16, usb_micro_b, jst_ph_N (2..16), barrel_jack, to220, to92, sot23_6, sot89, sod323, sma, smb, smc, msop8, msop10, microsd";
+
+/// Inline footprints use Forge's y-up frame; nominal footprints retain their KiCad frame internally.
+pub(super) fn native(value: &serde_json::Value) -> Result<Footprint, String> {
+    use serde::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Native {
+        pads: Vec<NativePad>,
+        courtyard: Option<Vec<[f64; 2]>>,
+        body: Option<Vec<[f64; 2]>>,
+        height: f64,
+    }
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct NativePad {
+        number: String,
+        at: [f64; 2],
+        size: [f64; 2],
+        shape: String,
+        drill: Option<serde_json::Value>,
+        layers: String,
+        #[serde(default)]
+        rotation: f64,
+        roundrect_rratio: Option<f64>,
+        #[serde(default = "super::spec::enabled")]
+        plated: bool,
+    }
+    let native: Native = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
+    super::spec::positive(native.height, "footprint.height")?;
+    if native.pads.is_empty() { return Err("footprint needs at least one pad".into()); }
+    let mut pads = vec![];
+    for p in native.pads {
+        if p.at.iter().any(|v| !v.is_finite()) || !p.rotation.is_finite() {
+            return Err("coordinates must be finite".into());
+        }
+        for v in p.size { super::spec::positive(v, "pad.size")?; }
+        let drill = match p.drill {
+            None => None,
+            Some(serde_json::Value::Number(n)) => Some([n.as_f64().unwrap(); 2]),
+            Some(v) => Some(serde_json::from_value::<[f64; 2]>(v).map_err(|e| e.to_string())?),
+        };
+        if let Some(d) = drill {
+            for v in d { super::spec::positive(v, "pad.drill")?; }
+            if d.iter().zip(p.size).any(|(d, s)| *d >= s) && p.plated {
+                return Err("pad.drill must be smaller than size".into());
+            }
+        }
+        let layer = match p.layers.as_str() {
+            "top" => Some(super::Layer::Top),
+            "bottom" => Some(super::Layer::Bottom),
+            "through" => None,
+            _ => return Err("pad.layers must be top, bottom or through".into()),
+        };
+        if (p.layers == "through") != drill.is_some() {
+            return Err("through pads need a drill; surface pads cannot have a drill".into());
+        }
+        let round = match p.shape.as_str() {
+            "rect" | "roundrect" => false,
+            "circle" | "oval" => true,
+            _ => return Err("pad.shape must be rect, roundrect, circle or oval".into()),
+        };
+        let ratio = p.roundrect_rratio.unwrap_or(0.25);
+        if !ratio.is_finite() || !(0. ..=0.5).contains(&ratio) {
+            return Err("pad.roundrect_rratio must be 0..0.5".into());
+        }
+        pads.push(Pad { number: p.number, at: [p.at[0], -p.at[1]], size: p.size, drill,
+            round, radius: if p.shape == "roundrect" { ratio * p.size[0].min(p.size[1]) } else { 0. },
+            plated: p.plated, rotation: p.rotation, layer });
+    }
+    let bounds = |points: &[[f64; 2]]| -> Result<[f64; 4], String> {
+        if points.len() < 3 || points.iter().flatten().any(|v| !v.is_finite()) {
+            return Err("footprint outline needs at least three finite points".into());
+        }
+        // shortcut: footprint body and courtyard use bounding rectangles, add polygon placement when concave packages need it.
+        Ok(points.iter().fold([f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY], |mut b, p| {
+            b[0] = b[0].min(p[0]); b[1] = b[1].min(-p[1]);
+            b[2] = b[2].max(p[0]); b[3] = b[3].max(-p[1]); b
+        }))
+    };
+    let mut pad_bounds = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+    for p in &pads {
+        let (s, c) = p.rotation.to_radians().sin_cos();
+        let size = [c.abs() * p.size[0] + s.abs() * p.size[1], s.abs() * p.size[0] + c.abs() * p.size[1]];
+        for i in 0..2 {
+            pad_bounds[i] = pad_bounds[i].min(p.at[i] - size[i] / 2.);
+            pad_bounds[i + 2] = pad_bounds[i + 2].max(p.at[i] + size[i] / 2.);
+        }
+    }
+    let body = native.body.as_deref().map(bounds).transpose()?.unwrap_or(pad_bounds);
+    let mut fp = package_body(pads, body, native.height);
+    fp.courtyard = native.courtyard.as_deref().map(bounds).transpose()?.unwrap_or([
+        pad_bounds[0].min(body[0]) - 0.25, pad_bounds[1].min(body[1]) - 0.25,
+        pad_bounds[2].max(body[2]) + 0.25, pad_bounds[3].max(body[3]) + 0.25]);
+    fp.silkscreen = vec![[body[0],body[1]], [body[2],body[1]], [body[2],body[3]], [body[0],body[3]], [body[0],body[1]]];
+    fp.pin1 = [body[0], body[1]];
+    Ok(fp)
+}
 
 #[derive(Clone, Copy)]
 struct Range(f64, f64);
@@ -57,6 +156,8 @@ fn pad(number: usize, at: [f64; 2], size: [f64; 2], drill: Option<f64>) -> Pad {
         round: drill.is_some(),
         radius: if drill.is_none() { (0.25 * size[0].min(size[1])).min(0.25) } else { 0. },
         plated: true,
+        rotation: 0.,
+        layer: None,
     }
 }
 
@@ -76,6 +177,8 @@ fn pad_ext(
         round,
         radius: if drill.is_none() && !round { (0.25 * size[0].min(size[1])).min(0.25) } else { 0. },
         plated,
+        rotation: 0.,
+        layer: None,
     }
 }
 

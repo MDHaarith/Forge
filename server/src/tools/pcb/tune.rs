@@ -5,6 +5,11 @@ pub(super) fn length(tracks: &[Track], net: usize) -> f64 {
     tracks.iter().filter(|t| t.net == net).map(|t| route::distance(t.a, t.b)).sum()
 }
 
+pub(super) fn total_length(b: &Board, r: &Routes, net: usize) -> f64 {
+    length(&r.tracks, net) + b.fixed.iter().filter(|f| f.part == usize::MAX && f.track.net == net)
+        .map(|f| route::distance(f.track.a, f.track.b)).sum::<f64>()
+}
+
 pub(super) fn coupled(tracks: &[Track], p: usize, n: usize, spacing: f64) -> (f64, f64) {
     let mut total = 0.;
     let mut gaps = vec![];
@@ -107,7 +112,7 @@ pub(super) fn tune_net(b: &Board, r: &mut Routes, net: usize, target: f64, toler
         let mut added = 0.;
         let mut x = spacing;
         while x + 2. * spacing <= len {
-            let debt = target - length(&r.tracks, net) - added;
+            let debt = target - total_length(b, r, net) - added;
             if debt <= tolerance / 2. + 1e-7 { break; }
             // shortcut: 4096 tuning positions per net, use delay-based optimization when larger buses need more.
             if bends >= 4096 { break; }
@@ -142,7 +147,7 @@ pub(super) fn tune_net(b: &Board, r: &mut Routes, net: usize, target: f64, toler
                 .map(|p| Track { a: p[0], b: p[1], ..original.clone() });
             r.tracks.splice(index..=index, tracks);
         }
-        if target - length(&r.tracks, net) <= tolerance / 2. + 1e-7 { break; }
+        if target - total_length(b, r, net) <= tolerance / 2. + 1e-7 { break; }
     }
 }
 
@@ -166,12 +171,12 @@ mod tests {
 
 pub(super) fn finish(b: &Board, r: &mut Routes) {
     for pair in &b.pairs {
-        let (p, n) = (length(&r.tracks, pair.p), length(&r.tracks, pair.n));
+        let (p, n) = (total_length(b, r, pair.p), total_length(b, r, pair.n));
         // shortcut: single-line skew bumps, upgrade to coupled meanders later.
         tune_net(b, r, if p < n { pair.p } else { pair.n }, p.max(n), pair.skew, Some(pair.gap + pair.width));
     }
     for (_, nets, tolerance) in &b.length_groups {
-        let target = nets.iter().map(|&n| length(&r.tracks, n)).fold(0., f64::max);
+        let target = nets.iter().map(|&n| total_length(b, r, n)).fold(0., f64::max);
         for &net in nets { tune_net(b, r, net, target, *tolerance, None); }
     }
     if b.teardrops { teardrops(b, r); }

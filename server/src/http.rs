@@ -292,6 +292,15 @@ async fn route(state: AppState, request: Request<Body>) -> Result<Response<Body>
         }
         let dir = state.projects.dir(name).map_err(|e| error(500, e))?;
         let action = parts[3].as_str();
+        if method == "POST" && action == "board" {
+            let body = read_json(request, "source").await?;
+            let session = state.projects.session(name).await.map_err(|e| error(500, e))?;
+            session.agent.try_start().map_err(|_| error(409, "agent is running"))?;
+            let _busy = session.agent.turn_guard();
+            let result = crate::tools::board::edit(body,
+                crate::tools::ToolContext::from_settings(dir, &state.settings)).await?;
+            return Ok(json_response(200, result));
+        }
         if method == "GET" && action == "files" {
             return Ok(json_response(
                 200,
