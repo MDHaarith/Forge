@@ -6,16 +6,16 @@ pub(super) const NONE: usize = usize::MAX;
 #[derive(Clone)]
 pub(super) struct Options {
     pub reltol: f64, pub abstol: f64, pub vntol: f64, pub gmin: f64,
-    pub itl1: usize, pub itl4: usize,
+    pub itl1: usize, pub itl4: usize, pub temp: f64, pub tnom: f64,
 }
 impl Default for Options {
-    fn default() -> Self { Self { reltol: 1e-3, abstol: 1e-12, vntol: 1e-6, gmin: 1e-12, itl1: 100, itl4: 10 } }
+    fn default() -> Self { Self { reltol: 1e-3, abstol: 1e-12, vntol: 1e-6, gmin: 1e-12, itl1: 100, itl4: 10, temp: 27., tnom: 27. } }
 }
 
 #[derive(Clone)]
 pub(super) enum Waveform { Pulse(Vec<f64>), Sin(Vec<f64>), Pwl(Vec<(f64, f64)>) }
 #[derive(Clone)]
-pub(super) struct Source { pub dc: Option<f64>, pub wave: Option<Waveform> }
+pub(super) struct Source { pub dc: Option<f64>, pub wave: Option<Waveform>, pub ac: Option<(f64, f64)> }
 impl Source {
     pub fn value(&self, time: Option<f64>, step: f64, stop: f64) -> f64 {
         if time.is_none() { return self.dc.unwrap_or_else(|| self.value(Some(0.), step, stop)); }
@@ -76,17 +76,42 @@ pub(super) enum Kind {
     R(f64), C(f64, Option<f64>), L(f64, Option<f64>), V(Source), I(Source), E(f64), G(f64),
     Device(Model),
 }
-pub(super) struct Element { pub name: String, pub nodes: [usize; 4], pub kind: Kind, pub branch: usize }
+#[derive(Clone)]
+pub(super) struct Element { pub name: String, pub nodes: [usize; 4], pub kind: Kind, pub branch: usize, pub tc: [f64; 2] }
 impl Element {
     pub fn voltages(&self, x: &[f64]) -> [f64; 4] { self.nodes.map(|n| if n == 0 { 0. } else { x[n - 1] }) }
 }
 #[derive(Clone)]
 pub(super) struct Tran { pub step: f64, pub stop: f64, pub start: f64, pub max: f64, pub uic: bool }
-pub(super) enum Analysis { Op, Dc { source: usize, start: f64, stop: f64, step: f64 }, Tran(Tran) }
+#[derive(Clone)]
+pub(super) struct Sweep { pub frequencies: Vec<f64> }
+#[derive(Clone)]
+pub(super) struct Noise { pub output: [usize; 2], pub source: usize, pub sweep: Sweep }
+#[derive(Clone)]
+pub(super) enum Analysis { Op, Dc { source: usize, start: f64, stop: f64, step: f64 }, Tran(Tran), Ac(Sweep), Noise(Noise) }
+#[derive(Clone)]
 pub(super) struct Circuit {
     pub title: String, pub nodes: Vec<String>, pub visible: Vec<bool>, pub elements: Vec<Element>,
     pub analyses: Vec<Analysis>, pub options: Options, pub ic: BTreeMap<usize, f64>,
-    pub traces: BTreeMap<String, Vec<String>>, pub size: usize,
+    pub traces: BTreeMap<String, Vec<String>>, pub size: usize, pub temperatures: Vec<f64>,
+}
+impl Circuit {
+    pub fn at_temperature(&self, temp: f64) -> Result<Self, String> {
+        let mut c = self.clone();
+        c.options.temp = temp;
+        for e in &mut c.elements {
+            match &mut e.kind {
+                Kind::R(r) => {
+                    let delta = temp - c.options.tnom;
+                    *r *= 1. + e.tc[0] * delta + e.tc[1] * delta * delta;
+                    if !r.is_finite() || *r <= 0. { return Err(format!("{} must be positive", e.name)); }
+                }
+                Kind::Device(model) => model.temperature(temp, c.options.tnom)?,
+                _ => {}
+            }
+        }
+        Ok(c)
+    }
 }
 
 #[derive(Clone)]
@@ -181,7 +206,7 @@ impl Builder {
         if !self.names.insert(name.to_ascii_lowercase()) { return Err(error(line, format!("duplicate element {name}"))); }
         // shortcut: 20000 flattened elements, raise with resource budgeting for larger decks.
         if self.circuit.elements.len() >= 20000 { return Err("too many elements (limit 20000)".into()); }
-        self.circuit.elements.push(Element { name, nodes, kind, branch: NONE }); Ok(())
+        self.circuit.elements.push(Element { name, nodes, kind, branch: NONE, tc: [0.; 2] }); Ok(())
     }
     fn expand(&mut self, current: &Scope, parents: &[&Scope], prefix: &str, ports: &BTreeMap<String, String>, depth: usize) -> Result<(), String> {
         // shortcut: 32 definition/instance levels, use an explicit stack for deeper hierarchies.
@@ -224,14 +249,16 @@ impl Builder {
             let mut nodes = [0; 4];
             for i in 0..count { nodes[i] = self.node(&mapped(&w[i + 1]), true); }
             let tail = &w[count + 1..];
+            let mut tc = [0.; 2];
             let kind = match first.as_bytes()[0] {
                 b'r' | b'c' | b'l' => {
                     let value = number(&tail[0], line.n)?;
                     if value <= 0. { return Err(error(line.n, format!("{} must be positive", w[0]))); }
                     let params = parameters(&tail[1..], line.n)?;
-                    if params.keys().any(|k| k != "ic") || (first.starts_with('r') && !params.is_empty()) {
+                    if params.keys().any(|k| if first.starts_with('r') { !["tc1", "tc2"].contains(&k.as_str()) } else { k != "ic" }) {
                         return Err(error(line.n, format!("unsupported parameter on {}", w[0])));
                     }
+                    tc = [params.get("tc1").copied().unwrap_or(0.), params.get("tc2").copied().unwrap_or(0.)];
                     match first.as_bytes()[0] { b'r' => Kind::R(value), b'c' => Kind::C(value, params.get("ic").copied()), _ => Kind::L(value, params.get("ic").copied()) }
                 }
                 b'v' => Kind::V(source(tail, line.n)?), b'i' => Kind::I(source(tail, line.n)?),
@@ -254,17 +281,29 @@ impl Builder {
                 }
             };
             self.add(name, nodes, kind, line.n)?;
+            self.circuit.elements.last_mut().unwrap().tc = tc;
         }
         Ok(())
     }
 }
 fn source(w: &[String], line: usize) -> Result<Source, String> {
-    let mut result = Source { dc: None, wave: None };
+    let mut result = Source { dc: None, wave: None, ac: None };
     let mut i = 0;
     while i < w.len() {
         let kind = w[i].to_ascii_lowercase();
+        if kind == "ac" {
+            i += 1;
+            let magnitude = number(w.get(i).ok_or_else(|| error(line, "missing source value"))?, line)?;
+            i += 1;
+            let phase = if w.get(i).is_some_and(|s| !["dc", "pulse", "sin", "pwl", "ac"].contains(&s.to_ascii_lowercase().as_str())) {
+                let phase = number(&w[i], line)?; i += 1; phase
+            } else { 0. };
+            if result.ac.replace((magnitude, phase)).is_some() { return Err(error(line, "duplicate AC source value")); }
+            continue;
+        }
         if ["pulse", "sin", "pwl"].contains(&kind.as_str()) {
-            let values = w[i + 1..].iter().map(|s| number(s, line)).collect::<Result<Vec<_>, _>>()?;
+            let end = w[i + 1..].iter().position(|s| s.eq_ignore_ascii_case("ac") || s.eq_ignore_ascii_case("dc")).map(|k| i + 1 + k).unwrap_or(w.len());
+            let values = w[i + 1..end].iter().map(|s| number(s, line)).collect::<Result<Vec<_>, _>>()?;
             result.wave = Some(match kind.as_str() {
                 "pulse" if (2..=7).contains(&values.len()) && values[2..].iter().all(|v| *v >= 0.) => Waveform::Pulse(values),
                 "sin" if (2..=5).contains(&values.len()) && values[2..].iter().all(|v| *v >= 0.) => Waveform::Sin(values),
@@ -275,7 +314,7 @@ fn source(w: &[String], line: usize) -> Result<Source, String> {
                 }
                 _ => return Err(error(line, format!("invalid {} source", w[i]))),
             });
-            break;
+            i = end; continue;
         }
         if kind == "dc" { i += 1; }
         let value = w.get(i).ok_or_else(|| error(line, "missing source value"))?;
@@ -283,6 +322,21 @@ fn source(w: &[String], line: usize) -> Result<Source, String> {
         result.dc = Some(number(value, line)?); i += 1;
     }
     Ok(result)
+}
+
+fn sweep(words: &[String], line: usize, analysis: &str) -> Result<Sweep, String> {
+    let mode = words.first().map(|s| s.to_ascii_lowercase()).unwrap_or_default();
+    if !["dec", "oct", "lin"].contains(&mode.as_str()) { return Err(error(line, format!(".{analysis} needs dec, oct or lin"))); }
+    if words.len() != 4 { return Err(error(line, format!("expected .{analysis} dec|oct|lin n fstart fstop"))); }
+    let (n, start, stop) = (number(&words[1], line)?, number(&words[2], line)?, number(&words[3], line)?);
+    if start <= 0. || stop < start { return Err(error(line, format!(".{analysis} needs fstart > 0 and fstop >= fstart"))); }
+    if n < 1. || n.fract() != 0. || n > 100001. { return Err(error(line, "invalid frequency sweep (limit 100001 points)")); }
+    let count = if start == stop { 1. } else if mode == "lin" { n } else { ((stop.ln() - start.ln()) / if mode == "dec" { 10f64.ln() } else { 2f64.ln() } * n + 1e-10).floor() + 1. };
+    if !(1. ..=100001.).contains(&count) { return Err(error(line, "invalid frequency sweep (limit 100001 points)")); }
+    let frequencies = (0..count as usize).map(|i| if mode == "lin" {
+        if n == 1. { start } else { start + (stop - start) * i as f64 / (n - 1.) }
+    } else { (start.ln() + i as f64 / n * if mode == "dec" { 10f64.ln() } else { 2f64.ln() }).exp() }).collect();
+    Ok(Sweep { frequencies })
 }
 
 pub(super) fn parse(text: &str) -> Result<Circuit, String> {
@@ -303,7 +357,7 @@ pub(super) fn parse(text: &str) -> Result<Circuit, String> {
     if let Some(line) = lines.iter().find(|line| line.words.is_empty()) { return Err(error(line.n, "empty statement")); }
     let root = scope(&lines, &mut 0, false, 0)?;
     let mut builder = Builder { circuit: Circuit { title, nodes: vec!["0".into()], visible: vec![true], elements: vec![], analyses: vec![],
-        options: Options::default(), ic: BTreeMap::new(), traces: BTreeMap::new(), size: 0 }, node_ids: BTreeMap::new(), names: BTreeSet::new(), directives: vec![], initials: vec![] };
+        options: Options::default(), ic: BTreeMap::new(), traces: BTreeMap::new(), size: 0, temperatures: vec![] }, node_ids: BTreeMap::new(), names: BTreeSet::new(), directives: vec![], initials: vec![] };
     builder.expand(&root, &[], "", &BTreeMap::new(), 0)?;
     let mut circuit = builder.circuit;
     for (node, value) in builder.initials {
@@ -317,6 +371,33 @@ pub(super) fn parse(text: &str) -> Result<Circuit, String> {
         let num = |i: usize| -> Result<f64, String> { number(w.get(i).ok_or_else(|| error(line.n, format!("missing argument for {}", w[0])))?, line.n) };
         match first.as_str() {
             ".op" => { if seen.insert("op") { circuit.analyses.push(Analysis::Op); } }
+            ".ac" => {
+                let sweep = sweep(&w[1..], line.n, "ac")?;
+                if !seen.insert("ac") { return Err(error(line.n, "only one .ac analysis is supported")); }
+                circuit.analyses.push(Analysis::Ac(sweep));
+            }
+            ".noise" => {
+                let invalid = || error(line.n, ".noise needs an output node and an independent source");
+                if w.len() < 8 || !w[1].eq_ignore_ascii_case("v") { return Err(invalid()); }
+                let source_index = w.len() - 5;
+                if !(3..=4).contains(&source_index) { return Err(invalid()); }
+                let node = |s: &str| if s.eq_ignore_ascii_case("gnd") { Some(0) } else { circuit.nodes.iter().position(|n| n.eq_ignore_ascii_case(s)) };
+                let output = [node(&w[2]).ok_or_else(invalid)?, if source_index == 4 { node(&w[3]).ok_or_else(invalid)? } else { 0 }];
+                let source = circuit.elements.iter().position(|e| e.name.eq_ignore_ascii_case(&w[source_index]) && matches!(e.kind, Kind::V(_) | Kind::I(_))).ok_or_else(invalid)?;
+                let sweep = sweep(&w[source_index + 1..], line.n, "noise")?;
+                if !seen.insert("noise") { return Err(error(line.n, "only one .noise analysis is supported")); }
+                circuit.analyses.push(Analysis::Noise(Noise { output, source, sweep }));
+            }
+            ".temp" => {
+                if w.len() < 2 { return Err(error(line.n, ".temp needs at least one temperature")); }
+                for i in 1..w.len() {
+                    let temp = num(i)?;
+                    if temp <= -273.15 { return Err(error(line.n, "temperature must exceed absolute zero")); }
+                    if !circuit.temperatures.contains(&temp) { circuit.temperatures.push(temp); }
+                }
+                // shortcut: 100 temperature runs, add total-work budgeting before raising this limit.
+                if circuit.temperatures.len() > 100 { return Err(error(line.n, "too many temperatures (limit 100)")); }
+            }
             ".dc" => {
                 if w.len() != 5 { return Err(error(line.n, "expected .dc source start stop step")); }
                 let source = circuit.elements.iter().position(|e| e.name.eq_ignore_ascii_case(&w[1]) && matches!(e.kind, Kind::V(_) | Kind::I(_)))
@@ -339,6 +420,7 @@ pub(super) fn parse(text: &str) -> Result<Circuit, String> {
             }
             ".options" | ".option" => for (key, value) in parameters(&w[1..], line.n)? {
                 match key.as_str() {
+                    "temp" | "tnom" if value > -273.15 => if key == "temp" { circuit.options.temp = value; } else { circuit.options.tnom = value; },
                     "reltol" | "abstol" | "vntol" if value > 0. => match key.as_str() { "reltol" => circuit.options.reltol = value, "abstol" => circuit.options.abstol = value, _ => circuit.options.vntol = value },
                     "gmin" if value >= 0. => circuit.options.gmin = value,
                     "itl1" | "itl4" if (1. ..=10000.).contains(&value) && value.fract() == 0. => if key == "itl1" { circuit.options.itl1 = value as usize; } else { circuit.options.itl4 = value as usize; },
@@ -347,7 +429,7 @@ pub(super) fn parse(text: &str) -> Result<Circuit, String> {
             },
             ".print" | ".plot" => {
                 let mut i = 1;
-                let analysis = if w.get(i).is_some_and(|s| s.eq_ignore_ascii_case("tran") || s.eq_ignore_ascii_case("dc")) { i += 1; w[1].to_ascii_lowercase() } else { "all".into() };
+                let analysis = if w.get(i).is_some_and(|s| ["tran", "dc", "ac", "noise"].contains(&s.to_ascii_lowercase().as_str())) { i += 1; w[1].to_ascii_lowercase() } else { "all".into() };
                 let traces = circuit.traces.entry(analysis).or_default();
                 while i < w.len() {
                     let label = if (w[i].eq_ignore_ascii_case("v") || w[i].eq_ignore_ascii_case("i")) && i + 1 < w.len() {

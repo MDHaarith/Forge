@@ -1,0 +1,16 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "diode_temp_85\nV1 in 0 DC 5\nR1 in out 1k\nD1 out 0 d\n.model d D(IS=1e-14 N=1)\n.options reltol=1e-9 vntol=1e-12\n.temp 85\n.op\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nlet value0 = v(out)\nwrdata reference.dat value0\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "op",
+  "columns": [
+    "v(out)"
+  ],
+  "relative_tolerance": 0.0,
+  "absolute_tolerance": 0.001,
+  "rows": [
+    [
+      0.5966108106253075
+    ]
+  ]
+}

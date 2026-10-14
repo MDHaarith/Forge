@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.27.0 — 2026-10-14
+
+- Add native `.ac dec|oct|lin` small-signal analysis with complex MNA/LU, DC bias reuse, semiconductor junction/diffusion capacitances and level-1 MOS Meyer gate capacitances.
+- Add `.noise` spectra and integrated output/input noise for resistor thermal, diode/BJT shot, BJT parasitic resistance, and MOS channel thermal/flicker noise, using the shared LU factors for adjoint transfer coefficients.
+- Support AC source magnitude/phase, `.temp` sweeps, `.options temp/tnom`, model TNOM/EG/XTI/XTB scaling, MOS KP/VTO/PHI scaling, and resistor TC1/TC2.
+- Write deterministic AC/noise CSVs, standalone Bode/noise SVGs, and temperature-suffixed artifacts while preserving existing default-temperature outputs and error messages.
+- Store ngspice-41 reference decks and accuracy fixtures for diode/CE/CMOS/passive/filter/noise/temperature/rectifier cases; normal tests read fixtures, with one optional live replay when ngspice exists on PATH.
+
 ## 0.26.0 — 2026-10-14
 
 - Add the native `circuit_simulate` electronics tool for SPICE `.cir` netlists, including nested subcircuits and local models.

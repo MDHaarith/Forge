@@ -84,15 +84,19 @@ server/src/
     rf.rs rfmath.rs                          RF and PCB calculators (IPC-2221/B, Onderdonk, E-series); rf_antenna_sim (openEMS)
     circuit.rs                               native circuit_simulate tool, project-relative .cir input and async artifact writes
     circuit/parse.rs                         bounded case-insensitive SPICE reader, model scopes, nested subcircuit flattening, waveforms and analyses
-    circuit/devices.rs                       Shockley/Gummel-Poon/level-1 MOS equations, analytic current/charge derivatives and junction limiting
-    circuit/solve.rs                         MNA, cached pivoted dense LU, Newton/gmin/source stepping, adaptive trapezoidal/BE transient integration
-    circuit/output.rs                        operating-point tables, deterministic CSV, escaped standalone SVG plots and concise tool summaries
+    circuit/devices.rs                       Shockley/Gummel-Poon/level-1 MOS equations, temperature scaling, analytic derivatives, Meyer caps and noise generators
+    circuit/solve.rs                         MNA, shared real/complex pivoted dense LU and adjoint solves, Newton/gmin/source stepping, adaptive trapezoidal/BE transients
+    circuit/ac.rs                            complex arithmetic, operating-point linearization, frequency MNA, adjoint noise spectra and power-law noise integration
+    circuit/output.rs                        operating-point tables, deterministic CSV, escaped SVG/Bode plots, temperature file suffixes and concise summaries
     chip.rs                                  Verilog simulate/synthesize
 server/runners/*.py        Blender and openEMS scripts; forge_art.py = visual modelling helpers
 server/tests/              integration tests (common/ has TempDir, fake Claude, tool helpers)
   pcb_batch6.rs            locked-copper geometry/connectivity/DRC, deterministic exports, KiCad parsing and import path/order tests
   circuit_sim.rs           analytic passive/semiconductor/charge references, parser/errors/path rules, determinism and 200-node debug performance
+  circuit_ac.rs            frequency grids, complex sources, thermal noise/integrals, temperature options/suffixes, exact errors and tool determinism
+  circuit_ngspice.rs       offline reference comparisons plus one optional PATH-based live ngspice replay of every stored deck
   fixtures/sim/*.json      independently derived circuit reference values with source/formula descriptions
+  fixtures/sim/ngspice/*.json  ngspice-41 reference decks, generating commands, precision/tolerances and sampled results
 desktop/src/main.rs        Tauri app: binds a free port, runs forge_server::serve in-process
 web/                       UI (TypeScript + Vite + three.js): main.ts app, design.ts PCB/3D view, viewer.ts,
                            markdown.ts (Markdown + KaTeX, sanitized with DOMPurify)
@@ -236,8 +240,8 @@ cells. Unconnected pads carry NC crosses. Both SVG previews remain standalone.
 
 `circuit_simulate {"source":"sim/<name>.cir"}` reads only through `project_path`, solves in
 `spawn_blocking`, and resolves every output through `project_path` before writing. The one new
-`pcb` domain tool is always available. It writes `sim/<name>/<name>-op.txt`, `-dc.csv`/`-tran.csv`
-and matching standalone SVG plots. CSV contains all user/hierarchical node voltages and V/L/E
+`pcb` domain tool is always available. It writes `sim/<name>/<name>-op.txt`, `-dc.csv`/`-tran.csv`,
+`-ac.csv`/`-noise.csv` and matching standalone SVG plots. DC/transient CSV contains all user/hierarchical node voltages and V/L/E
 branch currents, positive from the first terminal to the second. Internal parasitic nodes are hidden.
 `.print`/`.plot` selects up to eight SVG traces; CSV retains all columns. Tool text includes one
 summary per analysis and the first 40 operating-point table lines.
@@ -246,9 +250,30 @@ The case-insensitive SPICE3 subset treats the first physical line as the title, 
 `;` tails, `+` continuations, optional `.end`, `0`/`gnd`, engineering suffixes and trailing units.
 It supports R, C/L with `ic=`, V/I with DC/PULSE/SIN/PWL, D, NPN/PNP Q, level-1 NMOS/PMOS M with
 W/L, E/G, `.model`, and nested `.subckt`/X with scoped models and port mapping. Analyses are `.op`,
-one `.dc source start stop step` and one `.tran tstep tstop [tstart [tmax]] [uic]` per deck.
-`.ic v(node)=value` and `.options reltol abstol vntol gmin itl1 itl4` are supported. Unknown
+one `.dc source start stop step`, one `.tran tstep tstop [tstart [tmax]] [uic]`, one
+`.ac dec|oct|lin n fstart fstop` and one `.noise v(out[,ref]) src dec|oct|lin n fstart fstop` per deck.
+V/I sources accept `AC mag [phase]` in degrees; unspecified AC excitation is zero.
+`.ic v(node)=value` and `.options reltol abstol vntol gmin itl1 itl4 temp tnom` are supported. Unknown
 directives/parameters fail; external includes and expression/parameter languages are not loaded.
+
+`.temp t1 [t2 ...]` runs every analysis at each temperature, overriding `.options temp` (default 27 C).
+Artifact names add `-{t}C` before the extension when there are multiple temperatures or the temperature differs from 27 C.
+Models inherit `.options tnom` (default 27 C) unless they specify `TNOM`. Thermal voltage, diode/BJT
+IS (`EG`/`XTI`), BJT beta (`XTB`), junction potentials/capacitances, and MOS KP/VTO/PHI scale with temperature.
+Resistors accept `TC1`/`TC2`, referenced to the global nominal temperature.
+
+AC reuses the unbiased `.op` solution and analytic device current/charge derivatives to stamp `G+jωC`.
+Level-1 MOS gate capacitances use ngspice's Meyer model when `TOX` is supplied, plus overlap capacitances;
+transients integrate those differential capacitances between accepted states. AC CSV uses linear
+`vm(node)` and degree-valued `vp(node)` columns; SVG has log-frequency magnitude (dB) and phase panels.
+Noise solves the transpose of the same LU factors for output transfer coefficients. Resistor/parasitic
+thermal noise, diode and BJT shot noise, MOS channel thermal and `KF`/`AF` flicker noise produce
+`onoise_spectrum`/`inoise_spectrum`; tool text reports integrated RMS noise over the requested band.
+Integration applies local power laws to each independent generator before summing, including the exact flat-spectrum and 1/f limits.
+As in SPICE3, integrated input noise applies the current frequency's gain factor to each interval;
+input-referred spectra use that frequency's output gain (V/√Hz for V sources, A/√Hz for I sources).
+SPICE3's BJT noise uses collector and total base current generators, including reverse operation.
+Its BJT junction temperature preprocessing uses the operating-temperature potential shift in both factors.
 
 Device currents and charges use analytic terminal derivatives. MNA uses partial-pivot dense LU,
 reusing factors when the matrix is unchanged. Newton checks voltage/current changes and unlimited
@@ -274,6 +299,14 @@ for divider/bridge, RC/RL/RLC, diode Lambert W and breakdown, rectification, Ebe
 MOS square law/body effect, CMOS switching and semiconductor charge derivatives. It also checks
 flattening, controlled sources, initial conditions, exact errors, path confinement, deterministic
 artifacts and a 200-node RC ladder with at least 1000 accepted steps under five seconds in debug.
+`server/tests/circuit_ngspice.rs` compares ngspice-41 fixtures for diode bias/DC, CE bias/AC/SIN
+transient/noise, CMOS DC and PULSE delays, RC/RLC/Sallen-Key AC, resistor-divider noise,
+diode/resistor temperature sweeps and a rectifier peak. Additional fixtures cover diode storage,
+BJT high-frequency response/model TNOM/XTB, and MOS Meyer AC/transient, flicker noise and temperature scaling.
+Fixtures record the exact reference deck, command, ngspice version, values and required tolerances.
+Diode reference decks tighten solver tolerances so Newton residuals do not dominate the reference values.
+Ordinary tests only read stored fixtures. One async test probes PATH in `spawn_blocking`, reruns every
+deck through `exec::run` when ngspice exists, and otherwise prints `skipped: ngspice not installed`.
 
 ## HTTP API (all under /api, localhost only)
 

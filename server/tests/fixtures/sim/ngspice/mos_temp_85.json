@@ -1,0 +1,18 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "mos_temp_85\nVd supply 0 DC 5\nVg in 0 DC 2 AC 1\nVb bulk 0 -1\nRd supply out 1k\nM1 out in 0 bulk n W=10u L=1u\n.model n NMOS(LEVEL=1 VTO=1 KP=200u GAMMA=.5 PHI=.6 LAMBDA=.02 TOX=20n CGSO=100p CGDO=200p CGBO=50p CBD=2p CBS=3p KF=1e-25 AF=1.2)\n.options reltol=1e-6 vntol=1e-9\n.temp 85\n.op\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nlet value0 = v(out)\nlet value1 = i(Vd)\nwrdata reference.dat value0 value1\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "op",
+  "columns": [
+    "v(out)",
+    "i(Vd)"
+  ],
+  "relative_tolerance": 0.001,
+  "absolute_tolerance": 0.0,
+  "rows": [
+    [
+      4.411570978447037,
+      -0.0005884290215529622
+    ]
+  ]
+}

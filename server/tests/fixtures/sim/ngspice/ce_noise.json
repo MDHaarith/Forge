@@ -1,0 +1,68 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "ce_noise\nVcc supply 0 12\nVin in 0 DC 0 AC 1 SIN(0 1m 1k)\nCin in base 10u\nRtop supply base 100k\nRbottom base 0 22k\nRc supply out 2.2k\nRe1 emitter bypass 100\nRe2 bypass 0 900\nCe bypass 0 100u\nQ1 out base emitter q\n.model q NPN(IS=1e-15 BF=150 BR=3 VAF=100 VAR=30 IKF=50m RB=40 RC=2 RE=1 CJE=20p CJC=8p TF=400p TR=20n)\n.options reltol=1e-6 vntol=1e-9\n.noise v(out) Vin dec 3 10 10k\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nsetplot noise1\nlet value0 = onoise_spectrum\nlet value1 = inoise_spectrum\nwrdata reference.dat value0 value1\nsetplot noise2\nwrdata reference_total.dat onoise_total inoise_total\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "noise",
+  "columns": [
+    "onoise_spectrum",
+    "inoise_spectrum"
+  ],
+  "relative_tolerance": 0.02,
+  "absolute_tolerance": 0.0,
+  "rows": [
+    [
+      10.0,
+      3.66485999960482e-08,
+      3.763570525582832e-09
+    ],
+    [
+      21.54434690031884,
+      3.296590385552456e-08,
+      2.274639854825352e-09
+    ],
+    [
+      46.41588833612779,
+      3.043282274700441e-08,
+      1.797426228071823e-09
+    ],
+    [
+      100.0,
+      2.958303101943024e-08,
+      1.676836234210468e-09
+    ],
+    [
+      215.4434690031884,
+      2.937708373541597e-08,
+      1.649697906685125e-09
+    ],
+    [
+      464.158883361278,
+      2.933150849069972e-08,
+      1.643792270914876e-09
+    ],
+    [
+      1000.0,
+      2.932163196544175e-08,
+      1.642517150957968e-09
+    ],
+    [
+      2154.434690031885,
+      2.931950119761004e-08,
+      1.642242304946466e-09
+    ],
+    [
+      4641.588833612781,
+      2.931904087417953e-08,
+      1.642183086586588e-09
+    ],
+    [
+      10000.00000000001,
+      2.931893641070751e-08,
+      1.64217033487852e-09
+    ]
+  ],
+  "totals": [
+    2.931928808185272e-06,
+    1.643299255332723e-07
+  ]
+}

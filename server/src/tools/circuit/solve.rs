@@ -1,8 +1,17 @@
 use super::parse::{Circuit, Element, Kind, Tran, NONE};
-use std::collections::{BTreeMap, VecDeque};
+use std::{collections::{BTreeMap, VecDeque}, iter::Sum, ops::{Add, AddAssign, Sub, SubAssign, Mul, Div, DivAssign, Neg}};
+
+pub(super) trait Scalar: Copy + PartialEq + From<f64> + Add<Output=Self> + Sub<Output=Self> + Mul<Output=Self> + Div<Output=Self> + Neg<Output=Self> + AddAssign + SubAssign + DivAssign + Sum {
+    fn norm(self) -> f64;
+    fn finite(self) -> bool;
+}
+impl Scalar for f64 {
+    fn norm(self) -> f64 { self.abs() }
+    fn finite(self) -> bool { self.is_finite() }
+}
 
 pub(super) struct Row { pub axis: f64, pub x: Vec<f64> }
-struct State { time: f64, x: Vec<f64>, q: Vec<[f64; 4]>, dq: Vec<[f64; 4]> }
+struct State { time: f64, x: Vec<f64>, q: Vec<[f64; 4]>, dq: Vec<[f64; 4]>, gate_q: Vec<[f64; 4]> }
 #[derive(Clone, Copy)]
 struct Step<'a> { h: f64, trap: bool, previous: &'a State }
 impl Step<'_> { fn factor(self) -> f64 { if self.trap { 2. / self.h } else { 1. / self.h } } }
@@ -10,31 +19,31 @@ impl Step<'_> { fn factor(self) -> f64 { if self.trap { 2. / self.h } else { 1. 
 struct Bias<'a> { time: Option<f64>, source: Option<(usize, f64)>, scale: f64, gmin: f64, clamps: Option<&'a BTreeMap<usize, f64>> }
 
 // shortcut: dense LU, upgrade to sparse LU above ~500 nodes.
-struct System { n: usize, a: Vec<f64>, b: Vec<f64>, previous: Vec<f64>, lu: Vec<f64>, pivots: Vec<usize> }
-impl System {
-    fn new(n: usize) -> Self { Self { n, a: vec![0.; n * n], b: vec![0.; n], previous: vec![], lu: vec![], pivots: vec![] } }
-    fn reset(&mut self) { self.a.fill(0.); self.b.fill(0.); }
-    fn add(&mut self, row: usize, col: usize, value: f64) { if row != NONE && col != NONE { self.a[row * self.n + col] += value; } }
-    fn rhs(&mut self, row: usize, value: f64) { if row != NONE { self.b[row] += value; } }
-    fn solve(&mut self) -> Option<Vec<f64>> {
+pub(super) struct System<T = f64> { pub n: usize, pub a: Vec<T>, pub b: Vec<T>, previous: Vec<T>, lu: Vec<T>, pivots: Vec<usize> }
+impl<T: Scalar> System<T> {
+    pub fn new(n: usize) -> Self { Self { n, a: vec![T::from(0.); n * n], b: vec![T::from(0.); n], previous: vec![], lu: vec![], pivots: vec![] } }
+    pub fn reset(&mut self) { self.a.fill(T::from(0.)); self.b.fill(T::from(0.)); }
+    pub fn add(&mut self, row: usize, col: usize, value: T) { if row != NONE && col != NONE { self.a[row * self.n + col] += value; } }
+    pub fn rhs(&mut self, row: usize, value: T) { if row != NONE { self.b[row] += value; } }
+    pub fn solve(&mut self) -> Option<Vec<T>> {
         let n = self.n;
         if self.a != self.previous {
             self.previous.clear();
             self.lu.clone_from(&self.a); self.pivots.clear();
             for k in 0..n {
-                let pivot = (k..n).max_by(|&a, &b| self.lu[a * n + k].abs().total_cmp(&self.lu[b * n + k].abs()))?;
+                let pivot = (k..n).max_by(|&a, &b| self.lu[a * n + k].norm().total_cmp(&self.lu[b * n + k].norm()))?;
                 let diagonal = self.lu[pivot * n + k];
-                if !diagonal.is_finite() || diagonal.abs() < 1e-300 { return None; }
+                if !diagonal.finite() || diagonal.norm() < 1e-300 { return None; }
                 self.pivots.push(pivot);
                 if pivot != k { for j in 0..n { self.lu.swap(k * n + j, pivot * n + j); } }
                 let diagonal = self.lu[k * n + k];
                 let (head, tail) = self.lu.split_at_mut((k + 1) * n);
                 let upper = &head[k * n..(k + 1) * n];
                 for row in tail.chunks_exact_mut(n) {
-                    if row[k] == 0. { continue; }
+                    if row[k] == T::from(0.) { continue; }
                     row[k] /= diagonal;
                     let factor = row[k];
-                    for (value, upper) in row[k + 1..].iter_mut().zip(&upper[k + 1..]) { *value -= factor * upper; }
+                    for (value, upper) in row[k + 1..].iter_mut().zip(&upper[k + 1..]) { *value -= factor * *upper; }
                 }
             }
             self.previous.clone_from(&self.a);
@@ -43,27 +52,42 @@ impl System {
         for (k, &pivot) in self.pivots.iter().enumerate() { x.swap(k, pivot); }
         for i in 0..n {
             let row = &self.lu[i * n..(i + 1) * n];
-            let sum: f64 = row[..i].iter().zip(&x[..i]).map(|(a, b)| a * b).sum();
+            let sum: T = row[..i].iter().zip(&x[..i]).map(|(a, b)| *a * *b).sum();
             x[i] -= sum;
         }
         for i in (0..n).rev() {
             let row = &self.lu[i * n..(i + 1) * n];
-            let sum: f64 = row[i + 1..].iter().zip(&x[i + 1..]).map(|(a, b)| a * b).sum();
+            let sum: T = row[i + 1..].iter().zip(&x[i + 1..]).map(|(a, b)| *a * *b).sum();
             x[i] = (x[i] - sum) / row[i];
         }
-        x.iter().all(|v| v.is_finite()).then_some(x)
+        x.iter().all(|v| v.finite()).then_some(x)
+    }
+    /// Solve Aᵀx=b using the same pivoted factors as the forward solve.
+    pub fn transpose(&self, b: &[T]) -> Option<Vec<T>> {
+        let n = self.n;
+        let mut x = b.to_vec();
+        for i in 0..n {
+            let sum: T = (0..i).map(|j| self.lu[j * n + i] * x[j]).sum();
+            x[i] = (x[i] - sum) / self.lu[i * n + i];
+        }
+        for i in (0..n).rev() {
+            let sum: T = (i + 1..n).map(|j| self.lu[j * n + i] * x[j]).sum();
+            x[i] -= sum;
+        }
+        for (k, &pivot) in self.pivots.iter().enumerate().rev() { x.swap(k, pivot); }
+        x.iter().all(|v| v.finite()).then_some(x)
     }
 }
-fn index(node: usize) -> usize { if node == 0 { NONE } else { node - 1 } }
-fn conductance(s: &mut System, a: usize, b: usize, g: f64) {
+pub(super) fn index(node: usize) -> usize { if node == 0 { NONE } else { node - 1 } }
+pub(super) fn conductance<T: Scalar>(s: &mut System<T>, a: usize, b: usize, g: T) {
     let (a, b) = (index(a), index(b));
     s.add(a, a, g); s.add(b, b, g); s.add(a, b, -g); s.add(b, a, -g);
 }
-fn current(s: &mut System, a: usize, b: usize, i: f64) { s.rhs(index(a), -i); s.rhs(index(b), i); }
-fn branch(s: &mut System, element: &Element) {
+pub(super) fn current<T: Scalar>(s: &mut System<T>, a: usize, b: usize, i: T) { s.rhs(index(a), -i); s.rhs(index(b), i); }
+pub(super) fn branch<T: Scalar>(s: &mut System<T>, element: &Element) {
     let [a, b, _, _] = element.nodes;
-    s.add(index(a), element.branch, 1.); s.add(index(b), element.branch, -1.);
-    s.add(element.branch, index(a), 1.); s.add(element.branch, index(b), -1.);
+    s.add(index(a), element.branch, T::from(1.)); s.add(index(b), element.branch, T::from(-1.));
+    s.add(element.branch, index(a), T::from(1.)); s.add(element.branch, index(b), T::from(-1.));
 }
 
 pub(super) fn topology(c: &Circuit, dc: bool) -> Result<(), String> {
@@ -140,8 +164,13 @@ impl<'a> Solver<'a> {
                     s.add(index(b), index(cp), -gain); s.add(index(b), index(cn), *gain);
                 }
                 Kind::Device(model) => {
-                    let eval = model.evaluate(e.voltages(x), previous[id], bias.gmin, limit);
+                    let mut eval = model.evaluate(e.voltages(x), previous[id], bias.gmin, limit);
                     limited |= eval.limited; previous[id] = eval.voltage;
+                    if let Some(step) = step {
+                        if let Some(q) = model.gate_charge(eval.voltage, e.voltages(&step.previous.x), step.previous.gate_q[id]) {
+                            for (charge, gate) in eval.charge.iter_mut().zip(q) { *charge = *charge + gate; }
+                        }
+                    }
                     for terminal in 0..model.terminal_count() {
                         let mut i = eval.current[terminal];
                         if let Some(step) = step {
@@ -232,12 +261,21 @@ impl<'a> Solver<'a> {
     fn state(&self, time: f64, x: Vec<f64>, step: Option<Step<'_>>) -> State {
         let mut q = vec![[0.; 4]; self.c.elements.len()];
         let mut dq = q.clone();
+        let mut gate_q = q.clone();
         for (id, e) in self.c.elements.iter().enumerate() {
             let v = e.voltages(&x);
             match &e.kind {
                 Kind::C(cap, _) => { q[id][0] = cap * (v[0] - v[1]); q[id][1] = -q[id][0]; }
                 Kind::L(inductance, _) => { q[id][0] = inductance * x[e.branch]; dq[id][0] = v[0] - v[1]; }
-                Kind::Device(model) => q[id] = model.evaluate(v, v, self.c.options.gmin, false).charge.map(|q| q.v),
+                Kind::Device(model) => {
+                    q[id] = model.evaluate(v, v, self.c.options.gmin, false).charge.map(|q| q.v);
+                    if let Some(step) = step {
+                        if let Some(gate) = model.gate_charge(v, e.voltages(&step.previous.x), step.previous.gate_q[id]) {
+                            gate_q[id] = gate.map(|q| q.v);
+                            for (charge, gate) in q[id].iter_mut().zip(gate_q[id]) { *charge += gate; }
+                        }
+                    }
+                }
                 _ => {}
             }
             if !matches!(e.kind, Kind::L(_, _)) {
@@ -246,7 +284,7 @@ impl<'a> Solver<'a> {
                 }
             }
         }
-        State { time, x, q, dq }
+        State { time, x, q, dq, gate_q }
     }
     pub fn transient(&mut self, tran: &Tran) -> Result<Vec<Row>, String> {
         self.step = tran.step; self.stop = tran.stop;

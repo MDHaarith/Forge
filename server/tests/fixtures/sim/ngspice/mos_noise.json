@@ -1,0 +1,73 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "mos_noise\nVd supply 0 DC 5\nVg in 0 DC 2 AC 1\nVb bulk 0 -1\nRd supply out 1k\nM1 out in 0 bulk n W=10u L=1u\n.model n NMOS(LEVEL=1 VTO=1 KP=200u GAMMA=.5 PHI=.6 LAMBDA=.02 TOX=20n CGSO=100p CGDO=200p CGBO=50p CBD=2p CBS=3p KF=1e-25 AF=1.2)\n.options reltol=1e-6 vntol=1e-9\n.noise v(out) Vg dec 2 10 1meg\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nsetplot noise1\nlet value0 = onoise_spectrum\nlet value1 = inoise_spectrum\nwrdata reference.dat value0 value1\nsetplot noise2\nwrdata reference_total.dat onoise_total inoise_total\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "noise",
+  "columns": [
+    "onoise_spectrum",
+    "inoise_spectrum"
+  ],
+  "relative_tolerance": 0.02,
+  "absolute_tolerance": 0.0,
+  "rows": [
+    [
+      10.0,
+      0.0002153797981523386,
+      0.0001326685609019803
+    ],
+    [
+      31.6227766016838,
+      0.0001211169612080275,
+      7.460501440773432e-05
+    ],
+    [
+      100.0,
+      6.810907263912575e-05,
+      4.195348277284122e-05
+    ],
+    [
+      316.227766016838,
+      3.830054646832323e-05,
+      2.359217728546188e-05
+    ],
+    [
+      1000.0,
+      2.153798059511067e-05,
+      1.326685657071589e-05
+    ],
+    [
+      3162.27766016838,
+      1.21116975068096e-05,
+      7.460502295268419e-06
+    ],
+    [
+      10000.0,
+      6.810909723941145e-06,
+      4.195349796814763e-06
+    ],
+    [
+      31622.77660168381,
+      3.830058995139218e-06,
+      2.359220430695114e-06
+    ],
+    [
+      100000.0,
+      2.153805644056138e-06,
+      1.326690462241052e-06
+    ],
+    [
+      316227.7660168381,
+      1.211182406076543e-06,
+      7.460587744251286e-07
+    ],
+    [
+      1000000.000000001,
+      6.811087982278545e-07,
+      4.195501746978052e-07
+    ]
+  ],
+  "totals": [
+    0.002310994551963833,
+    0.001423516348166273
+  ]
+}

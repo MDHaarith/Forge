@@ -1,0 +1,18 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "cmos_meyer_tran\nVdd supply 0 5\nVin in 0 DC 0 PULSE(0 5 1n 1n 1n 20n 42n)\nMn out in 0 0 nf W=10u L=1u\nMp out in supply supply pf W=20u L=1u\nCload out 0 1p\n.model nf NMOS(LEVEL=1 VTO=1 KP=200u LAMBDA=.02 CGSO=100p CGDO=100p TOX=20n)\n.model pf PMOS(LEVEL=1 VTO=-1 KP=100u LAMBDA=.02 CGSO=100p CGDO=100p TOX=20n)\n.options reltol=1e-6 vntol=1e-9\n.tran 20p 40n\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nlet value0 = v(out)\nwrdata reference.dat value0\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "tran",
+  "columns": [
+    "v(out)"
+  ],
+  "relative_tolerance": 0.02,
+  "absolute_tolerance": 0.0,
+  "rows": [
+    [
+      3.738687164197873e-10,
+      3.7276260791567164e-10
+    ]
+  ],
+  "metric": "delay"
+}

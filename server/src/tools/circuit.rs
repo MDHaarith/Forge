@@ -1,5 +1,6 @@
 //! Native, deterministic SPICE subset. No external simulator or model files are loaded.
 mod devices;
+mod ac;
 mod output;
 mod parse;
 mod solve;
@@ -10,7 +11,7 @@ use std::path::Path;
 use tokio::io::AsyncReadExt;
 
 pub fn tools() -> Vec<Tool> {
-    vec![Tool::new("pcb", "circuit_simulate", "Simulate sim/<name>.cir natively; first line is the title, node 0/gnd is ground, SPICE suffixes work.\nR/C/L (ic=), V/I (DC, PULSE, SIN, PWL), D, NPN/PNP Q, level-1 NMOS/PMOS M (W= L=), E/G sources.\nUse .model and nested .subckt/X; comments use * or ; and continuations use +. No external includes.\nAnalyses: .op, .dc source start stop step, .tran tstep tstop [tstart [tmax]] [uic]; .ic v(node)=value.\n.options reltol abstol vntol gmin itl1 itl4; .print/.plot tran|dc v(node) selects up to 8 plotted traces.\nWrites sim/<name>/<name>-op.txt, -tran.csv/-dc.csv and standalone SVG plots; limit 2000 unknowns.",
+    vec![Tool::new("pcb", "circuit_simulate", "Simulate sim/<name>.cir natively; first line is the title, node 0/gnd is ground, SPICE suffixes work.\nR (TC1/TC2), C/L (ic=), V/I (DC, AC mag [phase], PULSE, SIN, PWL), D, NPN/PNP Q, level-1 NMOS/PMOS M, E/G.\nUse .model, nested .subckt/X, .ic v(node)=value and .print/.plot tran|dc|ac v(node); * or ; comments, + continuations.\n.op; .dc source start stop step; .tran tstep tstop [tstart [tmax]] [uic]; .ac dec|oct|lin n fstart fstop.\n.noise v(out[,ref]) src dec|oct|lin n fstart fstop; .temp t...; .options temp tnom reltol abstol vntol gmin itl1 itl4.\nWrites sim/<name>/<name>-op.txt, -dc/-tran/-ac/-noise.csv and SVG plots, temperature suffixes; no includes, limit 2000 unknowns.",
         json!({"type":"object","additionalProperties":false,"properties":{"source":{"type":"string","description":"Project-relative SPICE netlist, such as sim/filter.cir; write it with write_file first"}},"required":["source"]}), circuit_simulate)]
 }
 

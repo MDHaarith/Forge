@@ -1,0 +1,17 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "rectifier_tran\nV1 in 0 SIN(0 5 1k)\nD1 in out d\nR1 out 0 1k\n.model d D(IS=1e-14)\n.tran 1u 1m\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nlet value0 = v(out)\nwrdata reference.dat value0\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "tran",
+  "columns": [
+    "v(out)"
+  ],
+  "relative_tolerance": 0.01,
+  "absolute_tolerance": 0.0,
+  "rows": [
+    [
+      4.30710470979538
+    ]
+  ],
+  "metric": "peak"
+}

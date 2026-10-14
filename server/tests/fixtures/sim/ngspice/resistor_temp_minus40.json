@@ -1,0 +1,16 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "resistor_temp_minus40\nV1 in 0 1\nR1 in 0 1k TC1=.004\n.temp -40\n.op\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nlet value0 = i(V1)\nwrdata reference.dat value0\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "op",
+  "columns": [
+    "i(V1)"
+  ],
+  "relative_tolerance": 1e-06,
+  "absolute_tolerance": 0.0,
+  "rows": [
+    [
+      -0.001366120218579235
+    ]
+  ]
+}

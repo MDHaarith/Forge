@@ -1,0 +1,64 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "sallen_key_ac\nV1 in 0 AC 1\nR1 in mid 10k\nR2 mid sense 10k\nC1 mid out 10n\nC2 sense 0 10n\nEamp out 0 sense out 1e6\nRload out 0 100k\n.ac dec 3 10 10k\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nlet value0 = mag(v(out))\nlet value1 = 180/pi*vp(out)\nwrdata reference.dat value0 value1\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "ac",
+  "columns": [
+    "vm(out)",
+    "vp(out)"
+  ],
+  "relative_tolerance": 0.001,
+  "absolute_tolerance": 0.1,
+  "rows": [
+    [
+      10.0,
+      0.9999595231024092,
+      -0.7199908853612053
+    ],
+    [
+      21.54434690031884,
+      0.9998157908072971,
+      -1.551099014205963
+    ],
+    [
+      46.41588833612779,
+      0.9991491852280845,
+      -3.340998628118771
+    ],
+    [
+      100.0,
+      0.9960666785375957,
+      -7.190551117375071
+    ],
+    [
+      215.4434690031884,
+      0.9820044613252191,
+      -15.41821717929137
+    ],
+    [
+      464.158883361278,
+      0.9216123413603067,
+      -32.51756685244608
+    ],
+    [
+      1000.0,
+      0.7169557923857769,
+      -64.28382647017142
+    ],
+    [
+      2154.434690031885,
+      0.3530537446006624,
+      -107.091069646974
+    ],
+    [
+      4641.588833612781,
+      0.105203595667554,
+      -142.1474378760452
+    ],
+    [
+      10000.00000000001,
+      0.02470449713688954,
+      -161.9138693877309
+    ]
+  ]
+}

@@ -21,3 +21,5 @@ bumps the version and commits.
   KiCad `.kicad_mod` footprint import.
 - [x] Batch 7 (v0.26.0): native circuit simulator (DC operating point/sweeps, adaptive transient;
   R, L, C, diode, BJT, MOSFET, E/G sources and nested subcircuits), analytic accuracy fixtures and deterministic plots.
+- [x] Batch 8 (v0.27.0): AC small-signal and noise analyses, temperature/model scaling and resistor
+  TC1/TC2, Bode/noise plots, and offline ngspice accuracy fixtures with an optional live replay.

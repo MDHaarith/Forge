@@ -31,6 +31,8 @@ reduced/windowpane stencil paste, fabrication drawings and exact 3D slots.
 Done in v0.25.0: interactive part editing, locked tracks/vias with incremental routing, and native KiCad `.kicad_mod` footprint import.
 Done in v0.26.0: native SPICE subset with operating points, DC sweeps, adaptive transient analyses,
 R/L/C, diode/BJT/level-1 MOS models, E/G sources, nested subcircuits and analytic reference fixtures.
+Done in v0.27.0: native AC small-signal and noise analyses, temperature/model scaling and resistor
+TC1/TC2, Bode/noise plots, and offline ngspice cross-checks with an optional live fixture replay.
 Next: the renderer (Blender replacement).
 
 Already native: list_files, read_file, write_file, part_build, part_inspect, part_drawing, rf_calc, design_assemble,
@@ -61,7 +63,7 @@ now use the built-in kernel; the external CAD tools, runners and settings are re
 - Renderer: CPU path tracer (PBR), glTF export, mesh modifiers (subdivide, bevel, array, mirror, solidify).
 
 **Phase 2, common (~30k lines):** drawings (hidden-line views, dimensions, SVG/DXF/PDF), assembly
-joints, FEM (volume mesh + linear-static solver), CAM (2.5D toolpaths + G-code), extended SPICE analyses/models,
+joints, FEM (volume mesh + linear-static solver), CAM (2.5D toolpaths + G-code), further SPICE models,
 FDTD antenna solver, animation output, web viewers for FEM results and G-code.
 
 **Phase 3, niche (~20k lines):** Verilog simulator and synthesis, KiCad file export for exchange,
@@ -75,6 +77,8 @@ engineering CAD, KiCad and Blender feature as the checklist of what to cover.
 
 Solvers (autorouter, FEM, FDTD, SPICE) must be checked against published reference results in tests
 before they are trusted for real hardware. Keep the reference numbers in `server/tests/fixtures/`.
+Circuit AC, noise, temperature, DC and transient results now compare against stored ngspice-41 decks
+under `server/tests/fixtures/sim/ngspice/`; normal tests require no external simulator.
 
 ## Other planned work
 

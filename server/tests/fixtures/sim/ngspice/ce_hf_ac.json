@@ -1,0 +1,49 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "ce_hf_ac\nVcc supply 0 12\nVin in 0 DC 0 AC 1 SIN(0 1m 1k)\nCin in base 10u\nRtop supply base 100k\nRbottom base 0 22k\nRc supply out 2.2k\nRe1 emitter bypass 100\nRe2 bypass 0 900\nCe bypass 0 100u\nQ1 out base emitter q\n.model q NPN(IS=1e-15 BF=150 BR=3 VAF=100 VAR=30 IKF=50m RB=40 RC=2 RE=1 CJE=20p CJC=8p TF=400p TR=20n)\n.options reltol=1e-6 vntol=1e-9\n.ac dec 2 1meg 1g\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nlet value0 = mag(v(out))\nlet value1 = 180/pi*vp(out)\nwrdata reference.dat value0 value1\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "ac",
+  "columns": [
+    "vm(out)",
+    "vp(out)"
+  ],
+  "relative_tolerance": 0.005,
+  "absolute_tolerance": 0.5,
+  "rows": [
+    [
+      1000000.0,
+      17.80996652150656,
+      175.4943128996875
+    ],
+    [
+      3162277.660168379,
+      17.42950308623351,
+      165.9320900435857
+    ],
+    [
+      9999999.999999998,
+      14.61428210798874,
+      140.0381773545753
+    ],
+    [
+      31622776.60168378,
+      7.355002735333804,
+      99.00708084062028
+    ],
+    [
+      99999999.99999997,
+      2.607615706001387,
+      54.74877851208186
+    ],
+    [
+      316227766.0168378,
+      1.066012658139414,
+      12.52728430055892
+    ],
+    [
+      999999999.9999996,
+      0.7501828177111419,
+      1.226176229680591
+    ]
+  ]
+}

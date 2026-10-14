@@ -1,0 +1,68 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "divider_noise\nV1 in 0 DC 0 AC 1\nR1 in out 1k\nR2 out 0 3k\n.noise v(out) V1 dec 3 10 10k\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nsetplot noise1\nlet value0 = onoise_spectrum\nlet value1 = inoise_spectrum\nwrdata reference.dat value0 value1\nsetplot noise2\nwrdata reference_total.dat onoise_total inoise_total\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "noise",
+  "columns": [
+    "onoise_spectrum",
+    "inoise_spectrum"
+  ],
+  "relative_tolerance": 0.001,
+  "absolute_tolerance": 0.0,
+  "rows": [
+    [
+      10.0,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      21.54434690031884,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      46.41588833612779,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      100.0,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      215.4434690031884,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      464.158883361278,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      1000.0,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      2154.434690031885,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      4641.588833612781,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ],
+    [
+      10000.00000000001,
+      3.525911172780732e-09,
+      4.701214897040976e-09
+    ]
+  ],
+  "totals": [
+    3.524147776234939e-07,
+    4.698863701646585e-07
+  ]
+}

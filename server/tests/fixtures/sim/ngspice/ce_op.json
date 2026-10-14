@@ -1,0 +1,22 @@
+{
+  "ngspice_version": "ngspice-41 (conda-forge, built 2024-03-25)",
+  "netlist": "ce_op\nVcc supply 0 12\nVin in 0 DC 0 AC 1 SIN(0 1m 1k)\nCin in base 10u\nRtop supply base 100k\nRbottom base 0 22k\nRc supply out 2.2k\nRe1 emitter bypass 100\nRe2 bypass 0 900\nCe bypass 0 100u\nQ1 out base emitter q\n.model q NPN(IS=1e-15 BF=150 BR=3 VAF=100 VAR=30 IKF=50m RB=40 RC=2 RE=1 CJE=20p CJC=8p TF=400p TR=20n)\n.options reltol=1e-6 vntol=1e-9\n.op\n.control\nset numdgt=15\nset wr_singlescale\nset wr_vecnames\nrun\nlet value0 = v(base)\nlet value1 = v(emitter)\nlet value2 = v(out)\nlet value3 = i(Vcc)\nwrdata reference.dat value0 value1 value2 value3\nquit\n.endc\n.end\n",
+  "command": "ngspice -b reference.cir",
+  "analysis": "op",
+  "columns": [
+    "v(base)",
+    "v(emitter)",
+    "v(out)",
+    "i(Vcc)"
+  ],
+  "relative_tolerance": 0.0001,
+  "absolute_tolerance": 0.0,
+  "rows": [
+    [
+      2.013143245778145,
+      1.290983106054866,
+      9.178233670507154,
+      -0.001382489626402604
+    ]
+  ]
+}
